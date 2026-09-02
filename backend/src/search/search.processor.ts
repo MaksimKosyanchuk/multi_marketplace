@@ -36,25 +36,36 @@ export class SearchProcessor extends WorkerHost {
             },
         });
         if (!claimed.count) return;
-        const first = await this.redis.setIfAbsent(
-            `search:consumer:${job.id}`,
-            '1',
-            60 * 60 * 24 * 30,
-        );
-        if (!first) {
-            await this.prisma.outboxEvent.update({
-                where: { id: eventId },
-                data: {
-                    status: OutboxStatus.PROCESSED,
-                    processedAt: new Date(),
+        try {
+            const receipt = await this.prisma.eventConsumerReceipt.findUnique({
+                where: {
+                    eventId_consumerName: {
+                        eventId,
+                        consumerName: 'product-search',
+                    },
                 },
             });
-            return;
-        }
-        try {
+            if (receipt) {
+                await this.prisma.outboxEvent.update({
+                    where: { id: eventId },
+                    data: {
+                        status: OutboxStatus.PROCESSED,
+                        processedAt: new Date(),
+                    },
+                });
+                return;
+            }
             if (job.data.action === 'delete')
                 await this.search.deleteProduct(job.data.productId);
             else await this.search.indexProduct(job.data.productId);
+            await this.redis.setIfAbsent(
+                `search:consumer:${job.id}`,
+                '1',
+                60 * 60 * 24 * 30,
+            );
+            await this.prisma.eventConsumerReceipt.create({
+                data: { eventId, consumerName: 'product-search' },
+            });
             await this.prisma.outboxEvent.update({
                 where: { id: eventId },
                 data: {

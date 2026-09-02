@@ -167,6 +167,14 @@ export class OrdersController {
         return this.ordersService.findMyOrders(req.user.id);
     }
 
+    @Get('resync')
+    @ApiOperation({ summary: 'REST resync заказов после reconnect WebSocket' })
+    resyncOrders(
+        @Req() req: Request & { user: { id: string } },
+    ): ReturnType<OrdersService['findMyOrders']> {
+        return this.ordersService.findMyOrders(req.user.id);
+    }
+
     @UseGuards(RolesGuard)
     @Roles(Role.SELLER)
     @Get('seller/me')

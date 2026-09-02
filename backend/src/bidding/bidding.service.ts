@@ -280,9 +280,15 @@ export class BiddingService {
             if (!auction || auction.status !== AuctionStatus.ACTIVE)
                 return auction;
             const winner = auction.bids[0];
+            if (new Date() < auction.endsAt) return auction;
             const status = winner ? AuctionStatus.SOLD : AuctionStatus.EXPIRED;
-            const result = await tx.auction.update({
-                where: { id: auctionId },
+            const claimed = await tx.auction.updateMany({
+                where: {
+                    id: auctionId,
+                    status: AuctionStatus.ACTIVE,
+                    version: auction.version,
+                    endsAt: { lte: new Date() },
+                },
                 data: {
                     status,
                     winnerId: winner?.bidderId,
@@ -290,6 +296,14 @@ export class BiddingService {
                         ? new Date(Date.now() + 15 * 60 * 1000)
                         : null,
                 },
+            });
+            if (!claimed.count)
+                return tx.auction.findUnique({
+                    where: { id: auctionId },
+                    include: auctionDetails,
+                });
+            const result = await tx.auction.findUnique({
+                where: { id: auctionId },
                 include: auctionDetails,
             });
             if (winner)
@@ -326,13 +340,23 @@ export class BiddingService {
                 auction.checkoutExpiresAt > new Date()
             )
                 return auction;
-            const result = await tx.auction.update({
-                where: { id: auctionId },
+            const claimed = await tx.auction.updateMany({
+                where: {
+                    id: auctionId,
+                    status: AuctionStatus.SOLD,
+                    winnerId: auction.winnerId,
+                    checkoutExpiresAt: auction.checkoutExpiresAt,
+                },
                 data: {
                     status: AuctionStatus.EXPIRED,
                     winnerId: null,
                     checkoutExpiresAt: null,
+                    version: { increment: 1 },
                 },
+            });
+            if (!claimed.count) return auction;
+            const result = await tx.auction.findUnique({
+                where: { id: auctionId },
             });
             await tx.outboxEvent.create({
                 data: {

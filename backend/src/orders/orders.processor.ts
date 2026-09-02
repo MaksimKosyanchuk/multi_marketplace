@@ -80,6 +80,21 @@ export class OrdersProcessor extends WorkerHost {
             });
             if (!event)
                 throw new Error(`Outbox event ${outboxEventId} was not found`);
+            const receipt = await this.prisma.eventConsumerReceipt.findUnique({
+                where: {
+                    eventId_consumerName: {
+                        eventId: event.id,
+                        consumerName: 'orders-websocket',
+                    },
+                },
+            });
+            if (receipt) {
+                await this.prisma.outboxEvent.update({
+                    where: { id: outboxEventId },
+                    data: { status: 'PROCESSED', processedAt: new Date() },
+                });
+                return;
+            }
             if (event.type === 'product.stock-changed') {
                 const payload = event.payload as {
                     productId?: string;
@@ -121,6 +136,9 @@ export class OrdersProcessor extends WorkerHost {
                     }
                 }
             }
+            await this.prisma.eventConsumerReceipt.create({
+                data: { eventId: event.id, consumerName: 'orders-websocket' },
+            });
             await this.prisma.outboxEvent.update({
                 where: { id: outboxEventId },
                 data: {

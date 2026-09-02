@@ -17,6 +17,9 @@ import { SellersModule } from './sellers/sellers.module';
 import { PaymentsModule } from './payments/payments.module';
 import { BiddingModule } from './bidding/bidding.module';
 import { SearchModule } from './search/search.module';
+import { MetricsModule } from './metrics/metrics.module';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
     imports: [
@@ -50,9 +53,11 @@ import { SearchModule } from './search/search.module';
         BiddingModule,
 
         SearchModule,
+        MetricsModule,
+        ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]),
     ],
 
     controllers: [AppController],
-    providers: [AppService],
+    providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

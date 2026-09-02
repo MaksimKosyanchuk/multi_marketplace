@@ -79,6 +79,21 @@ export class BiddingProcessor extends WorkerHost {
             });
             if (!event)
                 throw new Error(`Auction event ${outboxEventId} was not found`);
+            const receipt = await this.prisma.eventConsumerReceipt.findUnique({
+                where: {
+                    eventId_consumerName: {
+                        eventId: event.id,
+                        consumerName: 'auction-websocket',
+                    },
+                },
+            });
+            if (receipt) {
+                await this.prisma.outboxEvent.update({
+                    where: { id: outboxEventId },
+                    data: { status: 'PROCESSED', processedAt: new Date() },
+                });
+                return;
+            }
             const firstDelivery = await this.redis.setIfAbsent(
                 `outbox:delivered:${event.id}`,
                 '1',
@@ -100,6 +115,9 @@ export class BiddingProcessor extends WorkerHost {
                 }
                 this.gateway.emitAuctionEvent(event.type, event.payload);
             }
+            await this.prisma.eventConsumerReceipt.create({
+                data: { eventId: event.id, consumerName: 'auction-websocket' },
+            });
             await this.prisma.outboxEvent.update({
                 where: { id: outboxEventId },
                 data: {

@@ -491,6 +491,17 @@ model OutboxEvent {
   @@index([type, createdAt])
 }
 
+
+model EventConsumerReceipt {
+  id            String   @id @default(uuid())
+  eventId       String
+  consumerName  String
+  processedAt   DateTime @default(now())
+
+  @@unique([eventId, consumerName])
+  @@index([consumerName, processedAt])
+}
+
 model Log {
   id            String   @id @default(uuid())
   level         String
