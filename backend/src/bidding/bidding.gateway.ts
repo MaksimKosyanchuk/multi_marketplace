@@ -33,9 +33,15 @@ export class BiddingGateway implements OnGatewayInit, OnGatewayConnection {
     async handleConnection(client: Socket): Promise<void> {
         try {
             const token = client.handshake.auth?.token as string | undefined;
-            if (!token) return client.disconnect();
+            if (!token) {
+                client.disconnect();
+                return;
+            }
             const payload = await this.jwt.verifyAsync<JwtPayload>(token);
-            if (!payload.sub) return client.disconnect();
+            if (!payload.sub) {
+                client.disconnect();
+                return;
+            }
             client.data.userId = payload.sub;
             client.data.role = payload.role;
             await client.join(`user:${payload.sub}`);
@@ -100,7 +106,7 @@ export class BiddingGateway implements OnGatewayInit, OnGatewayConnection {
         });
     }
 
-    emitAuctionEvent(type: string, payload: object) {
+    emitAuctionEvent(type: string, payload: Record<string, unknown>) {
         const auctionId =
             typeof payload.auctionId === 'string'
                 ? payload.auctionId

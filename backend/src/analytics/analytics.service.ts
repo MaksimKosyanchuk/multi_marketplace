@@ -172,7 +172,9 @@ export class AnalyticsService {
         });
         const revenue = sellerOrders.reduce(
             (sum, order) =>
-                sum + Number(order.sellerEarnings) - Number(order.refundedAmount),
+                sum +
+                Number(order.sellerEarnings) -
+                Number(order.refundedAmount),
             0,
         );
         const commission = sellerOrders.reduce(
@@ -188,7 +190,12 @@ export class AnalyticsService {
         ).length;
         const topProducts = new Map<
             string,
-            { productId: string; productName: string; quantity: number; revenue: number }
+            {
+                productId: string;
+                productName: string;
+                quantity: number;
+                revenue: number;
+            }
         >();
         for (const order of sellerOrders) {
             for (const item of order.items) {
@@ -203,11 +210,21 @@ export class AnalyticsService {
                 topProducts.set(item.productId, current);
             }
         }
+        const cartCreatedAt: Prisma.DateTimeFilter = {};
+        if (dto.from) cartCreatedAt.gte = new Date(`${dto.from}T00:00:00.000Z`);
+        if (dto.to) cartCreatedAt.lte = new Date(`${dto.to}T23:59:59.999Z`);
         const cartCount = await this.prisma.cartItem.count({
-            where: { product: { sellerId }, cart: { updatedAt: orderFilter.createdAt } },
+            where: {
+                product: { sellerId },
+                ...(Object.keys(cartCreatedAt).length > 0 && {
+                    cart: { updatedAt: cartCreatedAt },
+                }),
+            },
         });
         const conversion =
-            cartCount > 0 ? Number((sellerOrders.length / cartCount).toFixed(4)) : 0;
+            cartCount > 0
+                ? Number((sellerOrders.length / cartCount).toFixed(4))
+                : 0;
         return {
             sellerId,
             revenue,
@@ -235,7 +252,12 @@ export class AnalyticsService {
         });
         const ranking = new Map<
             string,
-            { sellerId: string; revenue: number; orders: number; completedOrders: number }
+            {
+                sellerId: string;
+                revenue: number;
+                orders: number;
+                completedOrders: number;
+            }
         >();
         for (const order of sellerOrders) {
             const current = ranking.get(order.sellerId) ?? {
@@ -266,7 +288,9 @@ export class AnalyticsService {
         const to = new Date(`${dto.to}T23:59:59.999Z`);
         const duration = to.getTime() - from.getTime();
         const previous = await this.getSellerAnalytics(sellerId, {
-            from: new Date(from.getTime() - duration - 1).toISOString().slice(0, 10),
+            from: new Date(from.getTime() - duration - 1)
+                .toISOString()
+                .slice(0, 10),
             to: new Date(from.getTime() - 1).toISOString().slice(0, 10),
         });
         return {

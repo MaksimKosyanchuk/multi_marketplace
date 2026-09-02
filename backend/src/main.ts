@@ -25,6 +25,7 @@ async function bootstrap() {
             'Authorization',
             'Accept',
             'Idempotency-Key',
+            'X-Correlation-ID',
         ],
     });
     app.use(cookieParser());

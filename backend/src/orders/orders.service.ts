@@ -529,7 +529,6 @@ export class OrdersService {
                                     productId: item.productId,
                                     quantity: item.quantity,
                                     correlationId: getCorrelationId(),
-                                    correlationId: getCorrelationId(),
                                 },
                                 idempotencyKey: `${eventKey}:stock:${item.productId}`,
                             },

@@ -28,22 +28,23 @@ export class OrdersProcessor extends WorkerHost {
     }
 
     async process(job: Job<OrderJobData>): Promise<void> {
-        const correlationId = (job.data as unknown as OutboxJobData).correlationId;
+        const correlationId = (job.data as unknown as OutboxJobData)
+            .correlationId;
         if (correlationId) {
-            return runWithCorrelationId(correlationId, () => this.processJob(job));
+            return runWithCorrelationId(correlationId, () =>
+                this.processJob(job),
+            );
         }
         return this.processJob(job);
     }
 
     private async processJob(job: Job<OrderJobData>): Promise<void> {
         if (job.name === 'deliver-outbox-event') {
+            const outboxJob = job.data as unknown as OutboxJobData;
             this.logger.debug(
-                `Delivering outbox event ${job.data.outboxEventId} correlation=${job.data.correlationId ?? 'unknown'}`,
+                `Delivering outbox event ${outboxJob.outboxEventId} correlation=${outboxJob.correlationId ?? 'unknown'}`,
             );
-            await this.processOutboxEvent(
-                job,
-                (job.data as unknown as OutboxJobData).outboxEventId,
-            );
+            await this.processOutboxEvent(job, outboxJob.outboxEventId);
             return;
         }
         const { orderId } = job.data;

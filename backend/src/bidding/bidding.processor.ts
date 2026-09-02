@@ -73,6 +73,8 @@ export class BiddingProcessor extends WorkerHost {
         }
         if (job.name === 'deliver-auction-event') {
             void job.data.correlationId;
+            if (!job.data.outboxEventId)
+                throw new Error('Auction outbox event id is required');
             await this.deliverEvent(job.data.outboxEventId);
         }
     }
@@ -132,7 +134,11 @@ export class BiddingProcessor extends WorkerHost {
                         payload.bidderId ?? '',
                     );
                 }
-                this.gateway.emitAuctionEvent(event.type, event.payload);
+                const eventPayload =
+                    typeof event.payload === 'object' && event.payload !== null
+                        ? (event.payload as Record<string, unknown>)
+                        : {};
+                this.gateway.emitAuctionEvent(event.type, eventPayload);
             }
             await this.prisma.eventConsumerReceipt.create({
                 data: { eventId: event.id, consumerName: 'auction-websocket' },

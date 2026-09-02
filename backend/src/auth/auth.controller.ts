@@ -92,6 +92,7 @@ export class AuthController {
         @Res({ passthrough: true }) res: Response,
     ) {
         const tokens = await this.authService.loginWithGoogle(dto);
+        if (!('accessToken' in tokens)) return tokens;
         this.setRefreshTokenCookie(res, tokens.refreshToken);
         return { accessToken: tokens.accessToken };
     }
@@ -103,8 +104,7 @@ export class AuthController {
         @Body() dto: GoogleRegisterCompleteDto,
         @Res({ passthrough: true }) res: Response,
     ) {
-        const tokens =
-            await this.authService.completeGoogleRegistration(dto);
+        const tokens = await this.authService.completeGoogleRegistration(dto);
         this.setRefreshTokenCookie(res, tokens.refreshToken);
         return { accessToken: tokens.accessToken };
     }

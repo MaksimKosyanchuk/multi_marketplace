@@ -111,16 +111,17 @@ export class DisputesService {
                 },
             });
             if (!dispute) throw new NotFoundException('Dispute not found');
-            if (![DisputeStatus.OPEN, DisputeStatus.UNDER_REVIEW].includes(dispute.status))
+            if (dispute.status !== DisputeStatus.OPEN && dispute.status !== DisputeStatus.UNDER_REVIEW)
                 throw new ConflictException('Dispute is already resolved');
             if (
                 ![
                     DisputeStatus.RESOLVED_FOR_CUSTOMER,
                     DisputeStatus.RESOLVED_FOR_SELLER,
                     DisputeStatus.CLOSED,
-                ].includes(dto.status)
-            )
+                ].some((status) => status === dto.status)
+            ) {
                 throw new ConflictException('Invalid dispute resolution status');
+            }
             const shouldRefund =
                 dto.status === DisputeStatus.RESOLVED_FOR_CUSTOMER &&
                 dispute.sellerOrder.status === SellerOrderStatus.COMPLETED;

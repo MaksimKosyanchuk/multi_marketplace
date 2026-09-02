@@ -1,6 +1,14 @@
-import { Controller, Get, Param, Patch, Query, UseGuards } from '@nestjs/common';
+import {
+    Controller,
+    Get,
+    Param,
+    Patch,
+    Query,
+    UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CurrentUser, AuthUser } from '../common/decorators/current-user.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import type { AuthUser } from '../common/decorators/current-user.decorator';
 import { NotificationsService } from './notifications.service';
 
 @Controller('notifications')
@@ -9,7 +17,10 @@ export class NotificationsController {
     constructor(private readonly notifications: NotificationsService) {}
 
     @Get()
-    list(@CurrentUser() user: AuthUser, @Query('unreadOnly') unreadOnly?: string) {
+    list(
+        @CurrentUser() user: AuthUser,
+        @Query('unreadOnly') unreadOnly?: string,
+    ) {
         return this.notifications.listForUser(user.id, unreadOnly === 'true');
     }
 
