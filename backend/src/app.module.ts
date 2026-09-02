@@ -13,6 +13,7 @@ import { OrdersModule } from './orders/orders.module';
 import { QueueModule } from './queue/queue.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { LoggerModule } from './logger/logger.module';
+import { SellersModule } from './sellers/sellers.module';
 
 @Module({
     imports: [
@@ -38,6 +39,8 @@ import { LoggerModule } from './logger/logger.module';
         AnalyticsModule,
 
         LoggerModule,
+
+        SellersModule,
     ],
 
     controllers: [AppController],

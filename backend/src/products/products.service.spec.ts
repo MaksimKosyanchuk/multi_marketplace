@@ -42,6 +42,7 @@ describe('ProductsService', () => {
 
     const mockProduct = {
         id: 'prod-1',
+        sellerId: 'seller-1',
         name: 'Smartphone',
         description: 'Latest model',
         price: 999,
@@ -199,20 +200,22 @@ describe('ProductsService', () => {
             prisma.category.findUnique.mockResolvedValue(mockCategory);
             prisma.product.create.mockResolvedValue(mockProduct);
 
-            const result = await service.create(dto, '/uploads/phone.jpg');
+            const result = await service.create(dto, 'seller-1', '/uploads/phone.jpg');
 
             expect(prisma.category.findUnique).toHaveBeenCalledWith({
                 where: { id: 'cat-1' },
             });
             expect(prisma.product.create).toHaveBeenCalledWith({
-                data: {
+                data: expect.objectContaining({
                     name: 'Smartphone',
                     price: 999,
                     stock: 10,
                     categoryId: 'cat-1',
                     description: 'Latest model',
                     imageUrl: '/uploads/phone.jpg',
-                },
+                    sellerId: 'seller-1',
+                    slug: expect.stringMatching(/^smartphone-/),
+                }),
             });
             expect(redis.delByPattern).toHaveBeenCalledWith('products:list:*');
             expect(result).toEqual(mockProduct);
@@ -222,7 +225,7 @@ describe('ProductsService', () => {
             prisma.category.findUnique.mockResolvedValue(null);
 
             await expect(
-                service.create(dto, '/uploads/temp.jpg'),
+                service.create(dto, 'seller-1', '/uploads/temp.jpg'),
             ).rejects.toThrow(BadRequestException);
 
             expect(fileUtils.deleteFile).toHaveBeenCalledWith(
@@ -245,7 +248,7 @@ describe('ProductsService', () => {
                 ...dto,
             });
 
-            const result = await service.update('prod-1', dto);
+            const result = await service.update('prod-1', dto, 'seller-1');
 
             expect(prisma.product.update).toHaveBeenCalled();
             expect(fileUtils.deleteFile).toHaveBeenCalledWith(
@@ -263,7 +266,7 @@ describe('ProductsService', () => {
             );
 
             await expect(
-                service.update('prod-1', dto, '/uploads/temp.jpg'),
+                service.update('prod-1', dto, 'seller-1', '/uploads/temp.jpg'),
             ).rejects.toThrow('DB Error');
 
             expect(fileUtils.deleteFile).toHaveBeenCalledWith(
@@ -277,7 +280,7 @@ describe('ProductsService', () => {
             prisma.product.findUnique.mockResolvedValue(mockProduct);
             prisma.$transaction.mockResolvedValue([{}, {}]);
 
-            const result = await service.remove('prod-1');
+            const result = await service.remove('prod-1', 'seller-1');
 
             expect(prisma.$transaction).toHaveBeenCalled();
             expect(redis.delByPattern).toHaveBeenCalledWith('products:list:*');
@@ -294,7 +297,7 @@ describe('ProductsService', () => {
             });
             prisma.product.update.mockResolvedValue(mockProduct);
 
-            const result = await service.restore('prod-1');
+            const result = await service.restore('prod-1', 'seller-1');
 
             expect(prisma.product.update).toHaveBeenCalledWith({
                 where: { id: 'prod-1' },

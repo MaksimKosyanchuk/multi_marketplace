@@ -23,7 +23,9 @@ export class CategoriesService {
             throw new ConflictException(
                 'Category with this name already exists',
             );
-        return this.prisma.category.create({ data: dto });
+        return this.prisma.category.create({
+            data: { ...dto, slug: await this.createUniqueSlug(dto.name) },
+        });
     }
 
     findAll() {
@@ -40,9 +42,12 @@ export class CategoriesService {
 
     async update(id: string, dto: UpdateCategoryDto) {
         await this.findOne(id);
+        const slug = dto.name
+            ? await this.createUniqueSlug(dto.name, id)
+            : undefined;
         const updatedCategory = await this.prisma.category.update({
             where: { id },
-            data: dto,
+            data: { ...dto, ...(slug && { slug }) },
         });
         await this.redis.delByPattern(`products:list:*`);
         return updatedCategory;
@@ -59,5 +64,26 @@ export class CategoriesService {
             );
         }
         return this.prisma.category.delete({ where: { id } });
+    }
+
+    private async createUniqueSlug(name: string, categoryId?: string) {
+        const base = name
+            .normalize('NFKD')
+            .toLowerCase()
+            .trim()
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^\p{L}\p{N}]+/gu, '-')
+            .replace(/^-+|-+$/g, '')
+            .slice(0, 80);
+        const normalizedBase = base || 'category';
+
+        for (let suffix = 1; ; suffix += 1) {
+            const slug =
+                suffix === 1 ? normalizedBase : `${normalizedBase}-${suffix}`;
+            const existing = await this.prisma.category.findUnique({
+                where: { slug },
+            });
+            if (!existing || existing.id === categoryId) return slug;
+        }
     }
 }

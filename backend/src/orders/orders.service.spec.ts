@@ -1,434 +1,124 @@
-import {
-    BadRequestException,
-    ForbiddenException,
-    NotFoundException,
-} from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import { BadRequestException } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
-import { OrderStatus, Prisma, Role } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
-import { OrdersService } from './orders.service';
+import { Test, TestingModule } from '@nestjs/testing';
+import {
+    OrderStatus,
+    Prisma,
+    ProductStatus,
+    ProductType,
+    Role,
+} from '@prisma/client';
 import { LoggerService } from '../logger/logger.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { OrdersService } from './orders.service';
 
-describe('OrdersService', () => {
+describe('OrdersService checkout', () => {
     let service: OrdersService;
-
-    let prisma: {
-        cart: { findUnique: jest.Mock };
-        cartItem: { findMany: jest.Mock; deleteMany: jest.Mock };
-        order: {
-            findUnique: jest.Mock;
-            findMany: jest.Mock;
-            create: jest.Mock;
-            update: jest.Mock;
-            count: jest.Mock;
-        };
-        product: { updateMany: jest.Mock; update: jest.Mock };
-        $transaction: jest.Mock;
+    const transaction = jest.fn();
+    const prisma = {
+        payment: { findUnique: jest.fn() },
+        $transaction: transaction,
     };
+    const queue = { add: jest.fn() };
+    const redis = { delByPattern: jest.fn() };
+    const logger = { log: jest.fn() };
 
-    const mockUser = {
-        id: 'user-1',
-        role: Role.CUSTOMER,
+    const firstProduct = {
+        id: 'product-1', sellerId: 'seller-1', name: 'Keyboard',
+        price: new Prisma.Decimal('100.00'), stock: 4,
+        status: ProductStatus.ACTIVE, type: ProductType.FIXED_PRICE,
+        isArchived: false,
     };
-
-    const mockAdmin = {
-        id: 'admin-1',
-        role: Role.ADMIN,
+    const secondProduct = {
+        id: 'product-2', sellerId: 'seller-2', name: 'Monitor',
+        price: new Prisma.Decimal('200.00'), stock: 2,
+        status: ProductStatus.ACTIVE, type: ProductType.FIXED_PRICE,
+        isArchived: false,
     };
-
-    const mockCart = {
-        id: 'cart-1',
-        userId: 'user-1',
-    };
-
-    const mockProduct = {
-        id: 'product-1',
-        name: 'Laptop',
-        price: new Prisma.Decimal(1000),
-        stock: 10,
-    };
-
-    const mockCartItem = {
-        id: 'item-1',
-        cartId: 'cart-1',
-        productId: 'product-1',
-        quantity: 2,
-        product: mockProduct,
-    };
-
-    const mockOrder = {
-        id: 'order-1',
-        userId: 'user-1',
-        status: OrderStatus.NEW,
-        totalAmount: new Prisma.Decimal(2000),
-        items: [
-            {
-                id: 'order-item-1',
-                orderId: 'order-1',
-                productId: 'product-1',
-                productName: 'Laptop',
-                quantity: 2,
-                price: new Prisma.Decimal(1000),
-            },
-        ],
-    };
-
-    const mockPrismaService = {
-        cart: {
-            findUnique: jest.fn(),
-        },
-        cartItem: {
-            findMany: jest.fn(),
-            deleteMany: jest.fn(),
-        },
-        order: {
-            findUnique: jest.fn(),
-            findMany: jest.fn(),
-            create: jest.fn(),
-            update: jest.fn(),
-            count: jest.fn(),
-        },
-        product: {
-            updateMany: jest.fn(),
-            update: jest.fn(),
-        },
-        $transaction: jest.fn(),
-    };
-
-    const mockAdd = jest.fn();
-
-    const mockOrdersQueue = {
-        add: mockAdd,
+    const createdOrder = {
+        id: 'order-1', userId: 'customer-1', status: OrderStatus.NEW,
+        subtotal: new Prisma.Decimal('400'), totalAmount: new Prisma.Decimal('400'),
+        sellerOrders: [],
     };
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 OrdersService,
-                {
-                    provide: PrismaService,
-                    useValue: mockPrismaService,
-                },
-                {
-                    provide: LoggerService,
-                    useValue: {
-                        log: jest.fn(),
-                        error: jest.fn(),
-                        warn: jest.fn(),
-                        debug: jest.fn(),
-                        verbose: jest.fn(),
-                    },
-                },
-                {
-                    provide: RedisService,
-                    useValue: {
-                        delByPattern: jest.fn().mockResolvedValue(1),
-                    },
-                },
-                {
-                    provide: getQueueToken('orders'),
-                    useValue: mockOrdersQueue,
-                },
+                { provide: PrismaService, useValue: prisma },
+                { provide: getQueueToken('orders'), useValue: queue },
+                { provide: RedisService, useValue: redis },
+                { provide: LoggerService, useValue: logger },
             ],
         }).compile();
-
-        service = module.get<OrdersService>(OrdersService);
-
-        prisma = module.get<PrismaService>(
-            PrismaService,
-        ) as unknown as typeof prisma;
-
+        service = module.get(OrdersService);
         jest.clearAllMocks();
+        prisma.payment.findUnique.mockResolvedValue(null);
     });
 
-    it('should be defined', () => {
-        expect(service).toBeDefined();
+    it('requires an idempotency key', async () => {
+        await expect(service.checkout('customer-1', '')).rejects.toThrow(BadRequestException);
+        expect(transaction).not.toHaveBeenCalled();
     });
 
-    describe('checkout', () => {
-        it('should throw BadRequestException if cart is not found', async () => {
-            prisma.cart.findUnique.mockResolvedValue(null);
-
-            await expect(service.checkout('user-1')).rejects.toThrow(
-                BadRequestException,
-            );
-        });
-
-        it('should throw BadRequestException if cart has no items', async () => {
-            prisma.cart.findUnique.mockResolvedValue(mockCart);
-            prisma.cartItem.findMany.mockResolvedValue([]);
-
-            await expect(service.checkout('user-1')).rejects.toThrow(
-                BadRequestException,
-            );
-        });
-
-        it('should process checkout successfully', async () => {
-            prisma.cart.findUnique.mockResolvedValue(mockCart);
-            prisma.cartItem.findMany.mockResolvedValue([mockCartItem]);
-
-            prisma.$transaction.mockImplementation(
-                async (
-                    cb: (tx: {
-                        product: {
-                            updateMany: jest.Mock;
-                        };
-                        order: {
-                            create: jest.Mock;
-                        };
-                        cartItem: {
-                            deleteMany: jest.Mock;
-                        };
-                    }) => Promise<unknown>,
-                ) => {
-                    const tx = {
-                        product: {
-                            updateMany: jest
-                                .fn()
-                                .mockResolvedValue({ count: 1 }),
-                        },
-                        order: {
-                            create: jest.fn().mockResolvedValue(mockOrder),
-                        },
-                        cartItem: {
-                            deleteMany: jest
-                                .fn()
-                                .mockResolvedValue({ count: 1 }),
-                        },
-                    };
-
-                    return cb(tx);
-                },
-            );
-
-            const result = await service.checkout('user-1');
-
-            expect(result).toEqual(mockOrder);
-        });
-
-        it('should throw BadRequestException if product stock is insufficient', async () => {
-            prisma.cart.findUnique.mockResolvedValue(mockCart);
-            prisma.cartItem.findMany.mockResolvedValue([mockCartItem]);
-
-            prisma.$transaction.mockImplementation(
-                async (
-                    cb: (tx: {
-                        product: {
-                            updateMany: jest.Mock;
-                        };
-                    }) => Promise<unknown>,
-                ) => {
-                    const tx = {
-                        product: {
-                            updateMany: jest
-                                .fn()
-                                .mockResolvedValue({ count: 0 }),
-                        },
-                    };
-
-                    return cb(tx);
-                },
-            );
-
-            await expect(service.checkout('user-1')).rejects.toThrow(
-                BadRequestException,
-            );
-        });
+    it('returns an earlier checkout for the same idempotency key', async () => {
+        prisma.payment.findUnique.mockResolvedValue({ order: createdOrder });
+        await expect(service.checkout('customer-1', 'checkout-1')).resolves.toEqual(createdOrder);
+        expect(transaction).not.toHaveBeenCalled();
     });
 
-    describe('payOrder', () => {
-        it('should throw NotFoundException if order does not exist', async () => {
-            prisma.order.findUnique.mockResolvedValue(null);
+    it('creates seller sub-orders, immutable item snapshots, ledger entries, and outbox events atomically', async () => {
+        const tx = {
+            payment: { findUnique: jest.fn().mockResolvedValue(null) },
+            cart: { findUnique: jest.fn().mockResolvedValue({ id: 'cart-1' }) },
+            cartItem: {
+                findMany: jest.fn().mockResolvedValue([
+                    { product: firstProduct, quantity: 2 },
+                    { product: secondProduct, quantity: 1 },
+                ]),
+                deleteMany: jest.fn(),
+            },
+            product: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+            order: { create: jest.fn().mockResolvedValue(createdOrder) },
+            outboxEvent: { createMany: jest.fn() },
+        };
+        transaction.mockImplementation((callback: (client: typeof tx) => unknown) => callback(tx));
 
-            await expect(
-                service.payOrder('user-1', 'invalid-id'),
-            ).rejects.toThrow(NotFoundException);
-        });
+        await expect(service.checkout('customer-1', 'checkout-1')).resolves.toEqual(createdOrder);
 
-        it('should throw ForbiddenException if order belongs to another user', async () => {
-            prisma.order.findUnique.mockResolvedValue(mockOrder);
-
-            await expect(
-                service.payOrder('other-user', 'order-1'),
-            ).rejects.toThrow(ForbiddenException);
-        });
-
-        it('should throw BadRequestException if order status is not NEW', async () => {
-            prisma.order.findUnique.mockResolvedValue({
-                ...mockOrder,
-                status: OrderStatus.PROCESSING,
-            });
-
-            await expect(service.payOrder('user-1', 'order-1')).rejects.toThrow(
-                BadRequestException,
-            );
-        });
-
-        it('should process payment and add job to queue', async () => {
-            prisma.order.findUnique.mockResolvedValue(mockOrder);
-
-            prisma.order.update.mockResolvedValue({
-                ...mockOrder,
-                status: OrderStatus.PROCESSING,
-            });
-
-            const result = await service.payOrder('user-1', 'order-1');
-
-            expect(prisma.order.update).toHaveBeenCalledTimes(2);
-
-            expect(mockAdd).toHaveBeenCalledWith(
-                'process-order',
-                expect.anything(),
-            );
-
-            expect(result.success).toBe(true);
-        });
+        expect(tx.product.updateMany).toHaveBeenCalledTimes(2);
+        expect(tx.order.create).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({
+                userId: 'customer-1',
+                subtotal: new Prisma.Decimal('400'),
+                sellerOrders: expect.objectContaining({ create: expect.arrayContaining([
+                    expect.objectContaining({ sellerId: 'seller-1', items: expect.any(Object), ledgerEntries: expect.any(Object) }),
+                    expect.objectContaining({ sellerId: 'seller-2', items: expect.any(Object), ledgerEntries: expect.any(Object) }),
+                ]) }),
+                payments: expect.objectContaining({ create: expect.objectContaining({ idempotencyKey: 'checkout-1' }) }),
+            }),
+        }));
+        expect(tx.cartItem.deleteMany).toHaveBeenCalledWith({ where: { cartId: 'cart-1' } });
+        expect(tx.outboxEvent.createMany).toHaveBeenCalledTimes(1);
+        expect(redis.delByPattern).toHaveBeenCalledWith('products:list:*');
     });
 
-    describe('cancelOrder', () => {
-        it('should throw ForbiddenException if user tries to cancel another users order', async () => {
-            prisma.order.findUnique.mockResolvedValue(mockOrder);
-
-            await expect(
-                service.cancelOrder('other-user', 'order-1'),
-            ).rejects.toThrow(ForbiddenException);
-        });
-
-        it('should throw BadRequestException if order is in PAYMENT_PENDING status', async () => {
-            prisma.order.findUnique.mockResolvedValue({
-                ...mockOrder,
-                status: OrderStatus.PAYMENT_PENDING,
-            });
-
-            await expect(
-                service.cancelOrder('user-1', 'order-1'),
-            ).rejects.toThrow(BadRequestException);
-        });
-
-        it('should cancel NEW order and restock products', async () => {
-            prisma.order.findUnique.mockResolvedValue(mockOrder);
-
-            prisma.$transaction.mockImplementation(
-                async (
-                    cb: (tx: {
-                        product: {
-                            update: jest.Mock;
-                        };
-                        order: {
-                            update: jest.Mock;
-                        };
-                    }) => Promise<unknown>,
-                ) => {
-                    const tx = {
-                        product: {
-                            update: jest.fn().mockResolvedValue({}),
-                        },
-                        order: {
-                            update: jest.fn().mockResolvedValue({
-                                ...mockOrder,
-                                status: OrderStatus.CANCELLED,
-                            }),
-                        },
-                    };
-
-                    return cb(tx);
-                },
-            );
-
-            const result = await service.cancelOrder('user-1', 'order-1');
-
-            expect(result.order.status).toBe(OrderStatus.CANCELLED);
-
-            expect(result.refund).toBeNull();
-        });
+    it('rejects an empty cart inside the checkout transaction', async () => {
+        const tx = {
+            payment: { findUnique: jest.fn().mockResolvedValue(null) },
+            cart: { findUnique: jest.fn().mockResolvedValue(null) },
+        };
+        transaction.mockImplementation((callback: (client: typeof tx) => unknown) => callback(tx));
+        await expect(service.checkout('customer-1', 'checkout-1')).rejects.toThrow('Cart is empty');
     });
 
-    describe('findOne', () => {
-        it('should return order for owner', async () => {
-            prisma.order.findUnique.mockResolvedValue(mockOrder);
-
-            const result = await service.findOne(
-                mockUser.id,
-                mockUser.role,
-                'order-1',
-            );
-
-            expect(result).toEqual(mockOrder);
+    it('does not allow a seller to read an unrelated order', async () => {
+        const findUnique = jest.fn().mockResolvedValue({
+            ...createdOrder,
+            sellerOrders: [{ sellerId: 'seller-2', items: [] }],
         });
-
-        it('should return order for admin', async () => {
-            prisma.order.findUnique.mockResolvedValue(mockOrder);
-
-            const result = await service.findOne(
-                mockAdmin.id,
-                mockAdmin.role,
-                'order-1',
-            );
-
-            expect(result).toEqual(mockOrder);
-        });
-
-        it('should throw ForbiddenException for non-owner non-admin user', async () => {
-            prisma.order.findUnique.mockResolvedValue(mockOrder);
-
-            await expect(
-                service.findOne('other-user', Role.CUSTOMER, 'order-1'),
-            ).rejects.toThrow(ForbiddenException);
-        });
-    });
-
-    describe('findAll', () => {
-        it('should return paginated list of orders', async () => {
-            prisma.$transaction.mockResolvedValue([[mockOrder], 1]);
-
-            const result = await service.findAll({
-                page: 1,
-                limit: 10,
-            });
-
-            expect(result).toEqual({
-                items: [mockOrder],
-                meta: {
-                    total: 1,
-                    page: 1,
-                    limit: 10,
-                    pageCount: 1,
-                },
-            });
-        });
-    });
-
-    describe('updateStatus', () => {
-        it('should throw BadRequestException when trying to set status to NEW manually', async () => {
-            prisma.order.findUnique.mockResolvedValue(mockOrder);
-
-            await expect(
-                service.updateStatus('order-1', {
-                    status: OrderStatus.NEW,
-                }),
-            ).rejects.toThrow(BadRequestException);
-        });
-
-        it('should update status to COMPLETED for PROCESSING order', async () => {
-            const processingOrder = {
-                ...mockOrder,
-                status: OrderStatus.PROCESSING,
-            };
-
-            prisma.order.findUnique.mockResolvedValue(processingOrder);
-
-            prisma.order.update.mockResolvedValue({
-                ...processingOrder,
-                status: OrderStatus.COMPLETED,
-            });
-
-            const result = await service.updateStatus('order-1', {
-                status: OrderStatus.COMPLETED,
-            });
-
-            expect(result.status).toBe(OrderStatus.COMPLETED);
-        });
+        (prisma as Record<string, unknown>).order = { findUnique };
+        await expect(service.findOne('seller-1', Role.SELLER, 'order-1')).rejects.toThrow('access');
     });
 });

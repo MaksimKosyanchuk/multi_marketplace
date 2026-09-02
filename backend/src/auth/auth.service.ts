@@ -14,7 +14,7 @@ import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { JwtPayload } from './types/jwt-payload';
-import { Role } from '@prisma/client/edge';
+import { Role } from '@prisma/client';
 
 const SALT_ROUNDS = 10;
 
@@ -61,7 +61,9 @@ export class AuthService {
             throw new UnauthorizedException('Invalid credentials');
         }
 
-        const matches = await bcrypt.compare(dto.password, user.passwordHash);
+        const matches =
+            user.passwordHash !== null &&
+            (await bcrypt.compare(dto.password, user.passwordHash));
 
         if (!matches) {
             throw new UnauthorizedException('Invalid credentials');

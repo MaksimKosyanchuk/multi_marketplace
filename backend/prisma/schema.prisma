@@ -9,45 +9,161 @@ datasource db {
 
 enum Role {
   CUSTOMER
+  SELLER
   ADMIN
+}
+
+enum SellerStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum ProductType {
+  FIXED_PRICE
+  AUCTION
+}
+
+enum ProductStatus {
+  DRAFT
+  PENDING_APPROVAL
+  ACTIVE
+  REJECTED
+  ARCHIVED
+  SOLD
 }
 
 enum OrderStatus {
   NEW
-  PROCESSING
   PAYMENT_PENDING
+  PROCESSING
+  PARTIALLY_SHIPPED
+  SHIPPED
+  PARTIALLY_COMPLETED
+  COMPLETED
+  PARTIALLY_CANCELLED
+  CANCELLED
+}
+
+enum SellerOrderStatus {
+  NEW
+  PAYMENT_PENDING
+  PROCESSING
   SHIPPED
   COMPLETED
   CANCELLED
 }
 
-model Log {
-  id        String   @id @default(uuid())
-  level     String
-  context   String
-  message   String
-  meta      Json?
-  createdAt DateTime @default(now())
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  PAID
+  PARTIALLY_REFUNDED
+  REFUNDED
+  FAILED
+  CANCELLED
+}
 
-  @@index([createdAt])
-  @@index([level])
+enum RefundStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PROCESSED
+  FAILED
+}
+
+enum AuctionStatus {
+  DRAFT
+  ACTIVE
+  ENDED
+  SOLD
+  EXPIRED
+  CANCELLED
+}
+
+enum BidStatus {
+  ACTIVE
+  OUTBID
+  WON
+  CANCELLED
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED_FOR_CUSTOMER
+  RESOLVED_FOR_SELLER
+  CLOSED
+}
+
+enum LedgerEntryType {
+  CUSTOMER_CHARGE
+  PLATFORM_COMMISSION
+  SELLER_EARNING
+  REFUND
+  PAYOUT
+  ADJUSTMENT
+}
+
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+  CANCELLED
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
 }
 
 model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
-  passwordHash  String
-  nickName      String
-  role          Role           @default(CUSTOMER)
+  id                     String          @id @default(uuid())
+  email                  String          @unique
+  passwordHash           String?
+  nickName               String
+  role                   Role            @default(CUSTOMER)
+  googleId               String?         @unique
+  cart                   Cart?
+  orders                 Order[]
+  refreshTokens          RefreshToken[]
+  sellerProfile          SellerProfile?
+  reviewedSellerProfiles SellerProfile[] @relation("SellerProfileReviewer")
+  products               Product[]       @relation("ProductSeller")
+  sellerOrders           SellerOrder[]   @relation("SellerOrderSeller")
+  bids                   Bid[]
+  reviews                Review[]
+  openedDisputes         Dispute[]       @relation("DisputeOpenedBy")
+  resolvedDisputes       Dispute[]       @relation("DisputeResolvedBy")
+  payouts                Payout[]
+  auctionWins            Auction[]       @relation("AuctionWinner")
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
 
-  cart          Cart?
-  orders        Order[]
-  refreshTokens RefreshToken[]
+  @@index([role])
+  @@index([createdAt])
+}
 
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+model SellerProfile {
+  id              String       @id @default(uuid())
+  userId          String       @unique
+  displayName     String
+  description     String?
+  status          SellerStatus @default(PENDING)
+  rejectionReason String?
+  reviewedAt      DateTime?
+  reviewedById    String?
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy      User?        @relation("SellerProfileReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
-  @@index([email])
+  @@index([status, createdAt])
+  @@index([reviewedById])
 }
 
 model RefreshToken {
@@ -55,56 +171,95 @@ model RefreshToken {
   tokenHash String   @unique
   userId    String
   expiresAt DateTime
-
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   createdAt DateTime @default(now())
 
   @@index([userId])
+  @@index([expiresAt])
 }
 
 model Category {
   id        String    @id @default(uuid())
   name      String    @unique
+  slug      String    @unique
   products  Product[]
-
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 }
 
 model Product {
-  id          String      @id @default(uuid())
+  id          String        @id @default(uuid())
+  sellerId    String
+  categoryId  String
   name        String
+  slug        String        @unique
   description String
-  price       Decimal     @db.Decimal(10, 2)
+  type        ProductType   @default(FIXED_PRICE)
+  status      ProductStatus @default(DRAFT)
+  price       Decimal       @db.Decimal(12, 2)
   stock       Int
   imageUrl    String?
-  categoryId  String
-
-  isArchived  Boolean  @default(false)
-
-  category    Category    @relation(fields: [categoryId], references: [id])
-
+  version     Int           @default(0)
+  isArchived  Boolean       @default(false)
+  seller      User          @relation("ProductSeller", fields: [sellerId], references: [id], onDelete: Restrict)
+  category    Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   cartItems   CartItem[]
   orderItems  OrderItem[]
+  auction     Auction?
+  reviews     Review[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-
-  @@index([name])
-  @@index([categoryId])
+  @@index([sellerId, status])
+  @@index([categoryId, status])
+  @@index([type, status])
+  @@index([status, createdAt])
   @@index([price])
-  @@index([createdAt])
+  @@index([stock])
+}
+
+model Auction {
+  id                String        @id @default(uuid())
+  productId         String        @unique
+  startingPrice     Decimal       @db.Decimal(12, 2)
+  currentPrice      Decimal       @db.Decimal(12, 2)
+  minBidIncrement   Decimal       @db.Decimal(12, 2)
+  startsAt          DateTime
+  endsAt            DateTime
+  status            AuctionStatus @default(DRAFT)
+  version           Int           @default(0)
+  winnerId          String?
+  checkoutExpiresAt DateTime?
+  product           Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  winner            User?         @relation("AuctionWinner", fields: [winnerId], references: [id], onDelete: SetNull)
+  bids              Bid[]
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([status, endsAt])
+  @@index([winnerId])
+}
+
+model Bid {
+  id        String    @id @default(uuid())
+  auctionId String
+  bidderId  String
+  amount    Decimal   @db.Decimal(12, 2)
+  status    BidStatus @default(ACTIVE)
+  auction   Auction   @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidder    User      @relation(fields: [bidderId], references: [id], onDelete: Restrict)
+  createdAt DateTime  @default(now())
+
+  @@index([auctionId, amount(sort: Desc)])
+  @@index([auctionId, createdAt])
+  @@index([bidderId, createdAt])
 }
 
 model Cart {
   id        String     @id @default(uuid())
   userId    String     @unique
-
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   items     CartItem[]
-
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 }
@@ -114,10 +269,8 @@ model CartItem {
   cartId    String
   productId String
   quantity  Int
-
   cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -126,35 +279,227 @@ model CartItem {
 }
 
 model Order {
-  id          String       @id @default(uuid())
-  userId      String
-  status      OrderStatus  @default(NEW)
-  totalAmount Decimal      @db.Decimal(10, 2)
+  id           String        @id @default(uuid())
+  userId       String
+  status       OrderStatus   @default(NEW)
+  subtotal     Decimal       @db.Decimal(12, 2)
+  totalAmount  Decimal       @db.Decimal(12, 2)
+  currency     String        @default("UAH") @db.VarChar(3)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  sellerOrders SellerOrder[]
+  payments     Payment[]
+  outboxEvents OutboxEvent[] @relation("OrderOutboxEvents")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 
-  user        User         @relation(fields: [userId], references: [id])
-  items       OrderItem[]
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
 
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+model SellerOrder {
+  id                 String            @id @default(uuid())
+  orderId            String
+  sellerId           String
+  status             SellerOrderStatus @default(NEW)
+  subtotal           Decimal           @db.Decimal(12, 2)
+  commissionRate     Decimal           @default(0.10) @db.Decimal(5, 4)
+  commissionAmount   Decimal           @db.Decimal(12, 2)
+  sellerEarnings     Decimal           @db.Decimal(12, 2)
+  refundedAmount     Decimal           @default(0) @db.Decimal(12, 2)
+  currency           String            @default("UAH") @db.VarChar(3)
+  trackingNumber     String?
+  shippedAt          DateTime?
+  completedAt        DateTime?
+  cancelledAt        DateTime?
+  cancellationReason String?
+  order              Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  seller             User              @relation("SellerOrderSeller", fields: [sellerId], references: [id], onDelete: Restrict)
+  items              OrderItem[]
+  refunds            Refund[]
+  disputes           Dispute[]
+  ledgerEntries      LedgerEntry[]
+  payouts            Payout[]
+  outboxEvents       OutboxEvent[]     @relation("SellerOrderOutboxEvents")
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
 
-  @@index([userId])
-  @@index([status])
-  @@index([createdAt])
+  @@unique([orderId, sellerId])
+  @@index([sellerId, status, createdAt])
+  @@index([orderId])
 }
 
 model OrderItem {
-  id          String   @id @default(uuid())
-  orderId     String
-  productId   String
-  productName String
-  quantity    Int
-  price       Decimal  @db.Decimal(10, 2)
+  id            String      @id @default(uuid())
+  sellerOrderId String
+  productId     String
+  productName   String
+  quantity      Int
+  unitPrice     Decimal     @db.Decimal(12, 2)
+  totalAmount   Decimal     @db.Decimal(12, 2)
+  sellerOrder   SellerOrder @relation(fields: [sellerOrderId], references: [id], onDelete: Cascade)
+  product       Product     @relation(fields: [productId], references: [id], onDelete: Restrict)
+  refunds       Refund[]
+  review        Review?
+  createdAt     DateTime    @default(now())
 
-  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product     Product  @relation(fields: [productId], references: [id])
-
-  createdAt   DateTime @default(now())
-
-  @@index([orderId])
+  @@index([sellerOrderId])
   @@index([productId])
+}
+
+model Payment {
+  id             String        @id @default(uuid())
+  orderId        String
+  provider       String
+  providerRef    String?       @unique
+  status         PaymentStatus @default(PENDING)
+  amount         Decimal       @db.Decimal(12, 2)
+  currency       String        @default("UAH") @db.VarChar(3)
+  idempotencyKey String        @unique
+  paidAt         DateTime?
+  failureReason  String?
+  order          Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  refunds        Refund[]
+  ledgerEntries  LedgerEntry[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([orderId, status])
+}
+
+model Refund {
+  id             String        @id @default(uuid())
+  sellerOrderId  String
+  orderItemId    String
+  paymentId      String?
+  amount         Decimal       @db.Decimal(12, 2)
+  quantity       Int
+  reason         String
+  status         RefundStatus  @default(PENDING)
+  providerRef    String?       @unique
+  idempotencyKey String        @unique
+  processedAt    DateTime?
+  sellerOrder    SellerOrder   @relation(fields: [sellerOrderId], references: [id], onDelete: Restrict)
+  orderItem      OrderItem     @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  payment        Payment?      @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  ledgerEntries  LedgerEntry[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([sellerOrderId, status])
+  @@index([orderItemId])
+}
+
+model LedgerEntry {
+  id             String          @id @default(uuid())
+  sellerOrderId  String?
+  paymentId      String?
+  refundId       String?
+  type           LedgerEntryType
+  amount         Decimal         @db.Decimal(12, 2)
+  currency       String          @default("UAH") @db.VarChar(3)
+  idempotencyKey String          @unique
+  metadata       Json?
+  sellerOrder    SellerOrder?    @relation(fields: [sellerOrderId], references: [id], onDelete: SetNull)
+  payment        Payment?        @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  refund         Refund?         @relation(fields: [refundId], references: [id], onDelete: SetNull)
+  createdAt      DateTime        @default(now())
+
+  @@index([sellerOrderId, type])
+  @@index([paymentId])
+  @@index([refundId])
+  @@index([createdAt])
+}
+
+model Payout {
+  id             String       @id @default(uuid())
+  sellerId       String
+  sellerOrderId  String?
+  amount         Decimal      @db.Decimal(12, 2)
+  currency       String       @default("UAH") @db.VarChar(3)
+  status         PayoutStatus @default(PENDING)
+  providerRef    String?      @unique
+  idempotencyKey String       @unique
+  paidAt         DateTime?
+  failureReason  String?
+  seller         User         @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+  sellerOrder    SellerOrder? @relation(fields: [sellerOrderId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([sellerId, status, createdAt])
+  @@index([sellerOrderId])
+}
+
+model Review {
+  id          String    @id @default(uuid())
+  productId   String
+  authorId    String
+  orderItemId String    @unique
+  rating      Int
+  comment     String?
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  author      User      @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([productId, authorId])
+  @@index([productId, rating])
+}
+
+model Dispute {
+  id            String        @id @default(uuid())
+  sellerOrderId String
+  openedById    String
+  resolvedById  String?
+  status        DisputeStatus @default(OPEN)
+  subject       String
+  description   String
+  resolution    String?
+  resolvedAt    DateTime?
+  sellerOrder   SellerOrder   @relation(fields: [sellerOrderId], references: [id], onDelete: Restrict)
+  openedBy      User          @relation("DisputeOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
+  resolvedBy    User?         @relation("DisputeResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([sellerOrderId, status])
+  @@index([openedById, status])
+}
+
+model OutboxEvent {
+  id             String       @id @default(uuid())
+  orderId        String?
+  sellerOrderId  String?
+  aggregateType  String
+  aggregateId    String
+  type           String
+  payload        Json
+  status         OutboxStatus @default(PENDING)
+  idempotencyKey String       @unique
+  attempts       Int          @default(0)
+  availableAt    DateTime     @default(now())
+  processedAt    DateTime?
+  lastError      String?
+  order          Order?       @relation("OrderOutboxEvents", fields: [orderId], references: [id], onDelete: Cascade)
+  sellerOrder    SellerOrder? @relation("SellerOrderOutboxEvents", fields: [sellerOrderId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@index([status, availableAt])
+  @@index([aggregateType, aggregateId])
+  @@index([type, createdAt])
+}
+
+model Log {
+  id            String   @id @default(uuid())
+  level         String
+  context       String
+  message       String
+  correlationId String?
+  meta          Json?
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([level])
+  @@index([correlationId])
 }

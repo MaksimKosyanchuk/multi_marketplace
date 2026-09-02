@@ -33,6 +33,8 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '@prisma/client';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import type { AuthUser } from '../common/decorators/current-user.decorator';
 import { productMulterOptions } from './config/multer.config';
 
 @ApiTags('Products')
@@ -74,11 +76,11 @@ export class ProductsController {
     }
 
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(Role.ADMIN)
+    @Roles(Role.SELLER)
     @Post()
     @ApiBearerAuth('JWT-auth')
     @UseInterceptors(FileInterceptor('image', productMulterOptions))
-    @ApiOperation({ summary: 'Создать новый товар (Только ADMIN)' })
+    @ApiOperation({ summary: 'Создать новый товар (только approved Seller)' })
     @ApiConsumes('multipart/form-data', 'application/json')
     @ApiBody({ type: CreateProductDto })
     @ApiResponse({
@@ -97,6 +99,7 @@ export class ProductsController {
     })
     create(
         @Body() dto: CreateProductDto,
+        @CurrentUser() seller: AuthUser,
         @UploadedFile() file?: Express.Multer.File,
     ): Promise<ProductResponseDto> {
         const uploadedFilePath = file
@@ -104,12 +107,13 @@ export class ProductsController {
             : undefined;
         return this.productsService.create(
             dto,
+            seller.id,
             uploadedFilePath,
         ) as unknown as Promise<ProductResponseDto>;
     }
 
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(Role.ADMIN)
+    @Roles(Role.SELLER)
     @Patch(':id')
     @ApiBearerAuth('JWT-auth')
     @UseInterceptors(FileInterceptor('image', productMulterOptions))
@@ -129,6 +133,7 @@ export class ProductsController {
     update(
         @Param('id') id: string,
         @Body() dto: UpdateProductDto,
+        @CurrentUser() seller: AuthUser,
         @UploadedFile() file?: Express.Multer.File,
     ): Promise<ProductResponseDto> {
         const uploadedFilePath = file
@@ -137,12 +142,13 @@ export class ProductsController {
         return this.productsService.update(
             id,
             dto,
+            seller.id,
             uploadedFilePath,
         ) as unknown as Promise<ProductResponseDto>;
     }
 
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(Role.ADMIN)
+    @Roles(Role.SELLER)
     @Delete(':id')
     @ApiBearerAuth('JWT-auth')
     @ApiOperation({
@@ -156,12 +162,12 @@ export class ProductsController {
     @ApiResponse({ status: 401, description: 'Неавторизован' })
     @ApiResponse({ status: 403, description: 'Доступ запрещен' })
     @ApiResponse({ status: 404, description: 'Товар не найден' })
-    remove(@Param('id') id: string) {
-        return this.productsService.remove(id);
+    remove(@Param('id') id: string, @CurrentUser() seller: AuthUser) {
+        return this.productsService.remove(id, seller.id);
     }
 
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(Role.ADMIN)
+    @Roles(Role.SELLER)
     @Patch(':id/restore')
     @ApiBearerAuth('JWT-auth')
     @ApiOperation({ summary: 'Восстановить товар из архива (Только ADMIN)' })
@@ -174,9 +180,13 @@ export class ProductsController {
     @ApiResponse({ status: 401, description: 'Неавторизован' })
     @ApiResponse({ status: 403, description: 'Доступ запрещен' })
     @ApiResponse({ status: 404, description: 'Товар не найден' })
-    async restore(@Param('id') id: string): Promise<ProductResponseDto> {
+    async restore(
+        @Param('id') id: string,
+        @CurrentUser() seller: AuthUser,
+    ): Promise<ProductResponseDto> {
         return (await this.productsService.restore(
             id,
+            seller.id,
         )) as unknown as ProductResponseDto;
     }
 }

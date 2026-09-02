@@ -1,235 +1,56 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { AnalyticsService } from './analytics.service';
+import { LedgerEntryType, OrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { OrderStatus, Prisma } from '@prisma/client';
+import { AnalyticsService } from './analytics.service';
 
 describe('AnalyticsService', () => {
     let service: AnalyticsService;
-    let prismaService: PrismaService;
-
-    const mockPrismaService = {
-        order: {
-            aggregate: jest.fn(),
-            findMany: jest.fn(),
-        },
-        orderItem: {
-            groupBy: jest.fn(),
-        },
+    const prisma = {
+        order: { aggregate: jest.fn(), findMany: jest.fn() },
+        orderItem: { groupBy: jest.fn() },
+        ledgerEntry: { aggregate: jest.fn(), findMany: jest.fn() },
     };
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
-            providers: [
-                AnalyticsService,
-                {
-                    provide: PrismaService,
-                    useValue: mockPrismaService,
-                },
-            ],
+            providers: [AnalyticsService, { provide: PrismaService, useValue: prisma }],
         }).compile();
-
-        service = module.get<AnalyticsService>(AnalyticsService);
-        prismaService = module.get<PrismaService>(PrismaService);
-
+        service = module.get(AnalyticsService);
         jest.clearAllMocks();
     });
 
-    it('should be defined', () => {
-        expect(service).toBeDefined();
+    it('returns empty analytics when there are no revenue entries', async () => {
+        prisma.order.aggregate.mockResolvedValue({ _count: { id: 0 } });
+        prisma.ledgerEntry.aggregate.mockResolvedValue({ _sum: { amount: null } });
+        prisma.orderItem.groupBy.mockResolvedValue([]);
+        prisma.ledgerEntry.findMany.mockResolvedValue([]);
+
+        await expect(service.getDashboardData({})).resolves.toEqual({
+            summary: { totalRevenue: 0, totalOrders: 0, averageOrderValue: 0 },
+            topProducts: [], salesTimeline: [],
+        });
+        expect(prisma.ledgerEntry.aggregate).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({ type: LedgerEntryType.PLATFORM_COMMISSION }),
+        }));
     });
 
-    describe('getDashboardData', () => {
-        it('should return default summary, empty top products, and empty timeline when no data is returned', async () => {
-            mockPrismaService.order.aggregate.mockResolvedValue({
-                _sum: { totalAmount: null },
-                _count: { id: 0 },
-            });
-            mockPrismaService.orderItem.groupBy.mockResolvedValue([]);
-            mockPrismaService.order.findMany.mockResolvedValue([]);
+    it('uses commission ledger entries and immutable item totals', async () => {
+        prisma.order.aggregate.mockResolvedValue({ _count: { id: 2 } });
+        prisma.ledgerEntry.aggregate.mockResolvedValue({ _sum: { amount: new Prisma.Decimal(30) } });
+        prisma.orderItem.groupBy.mockResolvedValue([{ productId: 'product-1', productName: 'Keyboard', _sum: { quantity: 3, totalAmount: new Prisma.Decimal(300) } }]);
+        prisma.ledgerEntry.findMany.mockResolvedValue([
+            { amount: new Prisma.Decimal(10), sellerOrder: { order: { createdAt: new Date('2026-07-10T10:00:00.000Z') } } },
+            { amount: new Prisma.Decimal(20), sellerOrder: { order: { createdAt: new Date('2026-07-10T14:00:00.000Z') } } },
+        ]);
 
-            const result = await service.getDashboardData({});
-
-            expect(result).toEqual({
-                summary: {
-                    totalRevenue: 0,
-                    totalOrders: 0,
-                    averageOrderValue: 0,
-                },
-                topProducts: [],
-                salesTimeline: [],
-            });
-
-            // eslint-disable-next-line @typescript-eslint/unbound-method
-            expect(prismaService.order.aggregate).toHaveBeenCalledWith({
-                where: {
-                    status: {
-                        in: [
-                            OrderStatus.NEW,
-                            OrderStatus.PROCESSING,
-                            OrderStatus.SHIPPED,
-                            OrderStatus.COMPLETED,
-                        ],
-                    },
-                },
-                _sum: { totalAmount: true },
-                _count: { id: true },
-            });
-        });
-
-        it('should calculate summary metrics, top products, and group sales timeline correctly', async () => {
-            mockPrismaService.order.aggregate.mockResolvedValue({
-                _sum: { totalAmount: new Prisma.Decimal(300) },
-                _count: { id: 2 },
-            });
-
-            mockPrismaService.orderItem.groupBy.mockResolvedValue([
-                {
-                    productId: 'prod-1',
-                    productName: 'Keyboard',
-                    _sum: {
-                        quantity: 5,
-                        price: new Prisma.Decimal(250),
-                    },
-                },
-                {
-                    productId: 'prod-2',
-                    productName: 'Mouse',
-                    _sum: {
-                        quantity: 2,
-                        price: new Prisma.Decimal(50),
-                    },
-                },
-            ]);
-
-            const date1 = new Date('2026-07-10T10:00:00.000Z');
-            const date2 = new Date('2026-07-10T14:30:00.000Z');
-
-            mockPrismaService.order.findMany.mockResolvedValue([
-                {
-                    createdAt: date1,
-                    totalAmount: new Prisma.Decimal(100),
-                },
-                {
-                    createdAt: date2,
-                    totalAmount: new Prisma.Decimal(200),
-                },
-            ]);
-
-            const result = await service.getDashboardData({
-                from: '2026-07-01',
-                to: '2026-07-31',
-            });
-
-            expect(result.summary).toEqual({
-                totalRevenue: 300,
-                totalOrders: 2,
-                averageOrderValue: 150,
-            });
-
-            expect(result.topProducts).toEqual([
-                {
-                    productId: 'prod-1',
-                    productName: 'Keyboard',
-                    totalSold: 5,
-                    totalRevenue: 250,
-                },
-                {
-                    productId: 'prod-2',
-                    productName: 'Mouse',
-                    totalSold: 2,
-                    totalRevenue: 50,
-                },
-            ]);
-
-            expect(result.salesTimeline).toEqual([
-                {
-                    date: '2026-07-10',
-                    revenue: 300,
-                    orders: 2,
-                },
-            ]);
-
-            // eslint-disable-next-line @typescript-eslint/unbound-method
-            expect(prismaService.order.aggregate).toHaveBeenCalledWith({
-                where: {
-                    createdAt: {
-                        gte: new Date('2026-07-01T00:00:00.000Z'),
-                        lte: new Date('2026-07-31T23:59:59.999Z'),
-                    },
-                    status: {
-                        in: [
-                            OrderStatus.NEW,
-                            OrderStatus.PROCESSING,
-                            OrderStatus.SHIPPED,
-                            OrderStatus.COMPLETED,
-                        ],
-                    },
-                },
-                _sum: { totalAmount: true },
-                _count: { id: true },
-            });
-        });
+        const result = await service.getDashboardData({ from: '2026-07-01', to: '2026-07-31' });
+        expect(result.summary).toEqual({ totalRevenue: 30, totalOrders: 2, averageOrderValue: 15 });
+        expect(result.topProducts).toEqual([{ productId: 'product-1', productName: 'Keyboard', totalSold: 3, totalRevenue: 300 }]);
+        expect(result.salesTimeline).toEqual([{ date: '2026-07-10', revenue: 30, orders: 2 }]);
     });
 
-    describe('generateOrdersCsv', () => {
-        it('should generate CSV content with correct headers and rows', async () => {
-            const createdAtDate = new Date('2026-08-15T12:34:56.000Z');
-
-            mockPrismaService.order.findMany.mockResolvedValue([
-                {
-                    id: 'order-123',
-                    createdAt: createdAtDate,
-                    status: OrderStatus.COMPLETED,
-                    totalAmount: new Prisma.Decimal(129.99),
-                    user: { email: 'john@example.com' },
-                },
-                {
-                    id: 'order-456',
-                    createdAt: createdAtDate,
-                    status: OrderStatus.NEW,
-                    totalAmount: new Prisma.Decimal(45.0),
-                    user: null,
-                },
-            ]);
-
-            const csvResult = await service.generateOrdersCsv({
-                from: '2026-08-01',
-            });
-
-            const expectedHeader =
-                'Order ID,Date,Customer,Status,Total Amount ($)\n';
-            expect(csvResult.startsWith(expectedHeader)).toBe(true);
-
-            expect(csvResult).toContain('"order-123"');
-            expect(csvResult).toContain('"john@example.com"');
-            expect(csvResult).toContain('"COMPLETED",129.99');
-
-            expect(csvResult).toContain('"order-456"');
-            expect(csvResult).toContain('"N/A"');
-            expect(csvResult).toContain('"NEW",45.00');
-
-            // eslint-disable-next-line @typescript-eslint/unbound-method
-            expect(prismaService.order.findMany).toHaveBeenCalledWith({
-                where: {
-                    createdAt: {
-                        gte: new Date('2026-08-01T00:00:00.000Z'),
-                    },
-                },
-                include: {
-                    user: { select: { email: true } },
-                },
-                orderBy: { createdAt: 'desc' },
-            });
-        });
-
-        it('should generate empty CSV table with headers when no orders are found', async () => {
-            mockPrismaService.order.findMany.mockResolvedValue([]);
-
-            const csvResult = await service.generateOrdersCsv({});
-
-            expect(csvResult).toBe(
-                'Order ID,Date,Customer,Status,Total Amount ($)\n',
-            );
-        });
+    it('exports orders, retaining rows without a customer relation', async () => {
+        prisma.order.findMany.mockResolvedValue([{ id: 'order-1', createdAt: new Date('2026-08-15T12:34:56.000Z'), status: OrderStatus.NEW, totalAmount: new Prisma.Decimal(45), user: null }]);
+        await expect(service.generateOrdersCsv({})).resolves.toContain('"N/A","NEW",45.00');
     });
 });

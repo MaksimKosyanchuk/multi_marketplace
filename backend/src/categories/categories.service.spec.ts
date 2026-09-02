@@ -70,7 +70,7 @@ describe('CategoriesService', () => {
             });
 
             expect(mockPrismaService.category.create).toHaveBeenCalledWith({
-                data: dto,
+                data: { ...dto, slug: 'electronics' },
             });
 
             expect(result).toEqual(mockCategory);
@@ -154,7 +154,7 @@ describe('CategoriesService', () => {
 
             expect(mockPrismaService.category.update).toHaveBeenCalledWith({
                 where: { id: 'cat-1' },
-                data: dto,
+                data: { ...dto, slug: 'tech-gadgets' },
             });
 
             expect(mockRedisService.delByPattern).toHaveBeenCalledWith(

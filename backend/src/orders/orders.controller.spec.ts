@@ -91,10 +91,10 @@ describe('OrdersController', () => {
     });
 
     describe('checkout', () => {
-        it('should call ordersService.checkout with user id', async () => {
-            await controller.checkout(mockUserReq);
+        it('should pass the idempotency key through to checkout', async () => {
+            await controller.checkout(mockUserReq, 'checkout-1');
 
-            expect(checkoutMock).toHaveBeenCalledWith('user-1');
+            expect(checkoutMock).toHaveBeenCalledWith('user-1', 'checkout-1');
             expect(checkoutMock).toHaveBeenCalledTimes(1);
         });
     });

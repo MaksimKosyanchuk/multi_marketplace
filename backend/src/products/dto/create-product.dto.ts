@@ -9,10 +9,16 @@ import {
     IsUUID,
     IsOptional,
     IsUrl,
+    IsEnum,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { ProductType } from '@prisma/client';
 
 export class CreateProductDto {
+    @ApiPropertyOptional({ enum: ProductType, default: ProductType.FIXED_PRICE })
+    @IsOptional()
+    @IsEnum(ProductType)
+    type?: ProductType;
     @ApiProperty({
         example: 'Беспроводные наушники Sony WH-1000XM5',
         description: 'Название товара (макс. 150 символов)',

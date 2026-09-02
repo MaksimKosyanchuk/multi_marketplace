@@ -1,5 +1,6 @@
 import {
     BadRequestException,
+    ForbiddenException,
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
@@ -14,6 +15,7 @@ import { LoggerService } from '../logger/logger.service';
 
 interface ProductWithCategory {
     id: string;
+    sellerId: string;
     name: string;
     description: string;
     price: any;
@@ -119,7 +121,11 @@ export class ProductsService {
         return product;
     }
 
-    async create(dto: CreateProductDto, uploadedFilePath?: string) {
+    async create(
+        dto: CreateProductDto,
+        sellerId: string,
+        uploadedFilePath?: string,
+    ) {
         try {
             await this.ensureCategoryExists(dto.categoryId);
 
@@ -131,6 +137,8 @@ export class ProductsService {
             const product = await this.prisma.product.create({
                 data: {
                     ...productData,
+                    sellerId,
+                    slug: this.createSlug(dto.name),
                     description: dto.description ?? '',
                     imageUrl,
                 },
@@ -152,8 +160,13 @@ export class ProductsService {
         }
     }
 
-    async update(id: string, dto: UpdateProductDto, uploadedFilePath?: string) {
-        const existingProduct = await this.findOne(id);
+    async update(
+        id: string,
+        dto: UpdateProductDto,
+        sellerId: string,
+        uploadedFilePath?: string,
+    ) {
+        const existingProduct = await this.findOwnedProduct(id, sellerId);
 
         if (dto.categoryId) {
             await this.ensureCategoryExists(dto.categoryId);
@@ -205,8 +218,8 @@ export class ProductsService {
         }
     }
 
-    async remove(id: string) {
-        await this.findOne(id);
+    async remove(id: string, sellerId: string) {
+        await this.findOwnedProduct(id, sellerId);
 
         await this.prisma.$transaction([
             this.prisma.product.update({
@@ -234,8 +247,8 @@ export class ProductsService {
         if (!category) throw new BadRequestException('Category not found');
     }
 
-    async restore(id: string) {
-        await this.findOne(id);
+    async restore(id: string, sellerId: string) {
+        await this.findOwnedProduct(id, sellerId);
 
         const product = await this.prisma.product.update({
             where: { id },
@@ -249,5 +262,22 @@ export class ProductsService {
             `Product restored: ${product.id}`,
         );
         return product;
+    }
+
+    private async findOwnedProduct(id: string, sellerId: string) {
+        const product = await this.findOne(id);
+        if (product.sellerId !== sellerId) {
+            throw new ForbiddenException('You do not own this product');
+        }
+        return product;
+    }
+
+    private createSlug(name: string): string {
+        const normalized = name
+            .toLowerCase()
+            .trim()
+            .replace(/[^a-z0-9а-яіїє]+/gi, '-')
+            .replace(/^-+|-+$/g, '');
+        return `${normalized || 'product'}-${crypto.randomUUID().slice(0, 8)}`;
     }
 }

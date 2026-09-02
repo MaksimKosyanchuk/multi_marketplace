@@ -20,7 +20,7 @@ export class UsersService {
 
     create(data: {
         email: string;
-        passwordHash: string;
+        passwordHash?: string | null;
         nickName: string;
         role?: Role;
     }): Promise<User> {

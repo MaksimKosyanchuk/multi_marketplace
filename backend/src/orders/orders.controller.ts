@@ -2,6 +2,7 @@ import {
     Body,
     Controller,
     Get,
+    Headers,
     Param,
     Patch,
     Post,
@@ -55,8 +56,9 @@ export class OrdersController {
     })
     checkout(
         @Req() req: Request & { user: { id: string } },
+        @Headers('idempotency-key') idempotencyKey: string | undefined,
     ): ReturnType<OrdersService['checkout']> {
-        return this.ordersService.checkout(req.user.id);
+        return this.ordersService.checkout(req.user.id, idempotencyKey ?? '');
     }
 
     @Post(':id/pay')

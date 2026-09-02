@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { User } from '@prisma/client';
+import { Role, User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -16,8 +16,9 @@ export class UsersRepository {
 
     create(data: {
         email: string;
-        passwordHash: string;
+        passwordHash?: string | null;
         nickName: string;
+        role?: Role;
     }): Promise<User> {
         return this.prisma.user.create({
             data: {
