@@ -25,6 +25,7 @@ import {
     UserProfileResponseDto,
 } from './dto/auth-response.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { GoogleLoginDto } from './dto/google-login.dto';
 
 interface RequestWithCookies extends Request {
     cookies: {
@@ -76,6 +77,17 @@ export class AuthController {
         @Res({ passthrough: true }) res: Response,
     ) {
         const tokens = await this.authService.login(dto);
+        this.setRefreshTokenCookie(res, tokens.refreshToken);
+        return { accessToken: tokens.accessToken };
+    }
+
+    @Post('google')
+    @ApiOperation({ summary: 'Вход через Google OAuth2 access token' })
+    async googleLogin(
+        @Body() dto: GoogleLoginDto,
+        @Res({ passthrough: true }) res: Response,
+    ) {
+        const tokens = await this.authService.loginWithGoogle(dto);
         this.setRefreshTokenCookie(res, tokens.refreshToken);
         return { accessToken: tokens.accessToken };
     }

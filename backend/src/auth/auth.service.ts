@@ -16,6 +16,7 @@ import { RegisterDto } from './dto/register.dto';
 import { JwtPayload } from './types/jwt-payload';
 import { Role } from '@prisma/client';
 import { Prisma } from '@prisma/client';
+import { GoogleLoginDto } from './dto/google-login.dto';
 
 const SALT_ROUNDS = 10;
 
@@ -78,6 +79,50 @@ export class AuthService {
 
         if (!user) {
             throw new UnauthorizedException('Invalid credentials');
+        }
+
+        async loginWithGoogle(dto: GoogleLoginDto) {
+            const response = await fetch(
+                'https://openidconnect.googleapis.com/v1/userinfo',
+                { headers: { Authorization: `Bearer ${dto.accessToken}` } },
+            );
+            if (!response.ok) {
+                throw new UnauthorizedException('Invalid Google access token');
+            }
+            const profile = (await response.json()) as {
+                sub?: string;
+                email?: string;
+                email_verified?: boolean;
+                name?: string;
+            };
+            if (!profile.sub || !profile.email || profile.email_verified !== true) {
+                throw new UnauthorizedException('Google account email is not verified');
+            }
+
+            const email = profile.email.toLowerCase();
+            let user = await this.usersService.findByEmail(email);
+            if (user) {
+                if (user.googleId && user.googleId !== profile.sub) {
+                    throw new ConflictException('Email is linked to another Google account');
+                }
+                if (!user.googleId) {
+                    user = await this.prisma.user.update({
+                        where: { id: user.id },
+                        data: { googleId: profile.sub },
+                    });
+                }
+            } else {
+                user = await this.prisma.user.create({
+                    data: {
+                        email,
+                        googleId: profile.sub,
+                        nickName: profile.name?.trim() || email.split('@')[0],
+                        role: Role.CUSTOMER,
+                        cart: { create: {} },
+                    },
+                });
+            }
+            return this.issueTokens(user.id, user.email, user.role);
         }
 
         const matches =

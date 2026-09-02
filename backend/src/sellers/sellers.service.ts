@@ -62,6 +62,17 @@ export class SellersService {
                 throw new ConflictException('Only pending applications can be approved');
             }
 
+            const claimed = await tx.sellerProfile.updateMany({
+                where: { id: profileId, status: SellerStatus.PENDING },
+                data: {
+                    status: SellerStatus.APPROVED,
+                    reviewedById: adminId,
+                    reviewedAt: new Date(),
+                    rejectionReason: null,
+                },
+            });
+            if (!claimed.count)
+                throw new ConflictException('Application was already processed');
             await tx.user.update({
                 where: { id: profile.userId },
                 data: { role: Role.SELLER },
@@ -71,9 +82,6 @@ export class SellersService {
                 where: { id: profileId },
                 data: {
                     status: SellerStatus.APPROVED,
-                    reviewedById: adminId,
-                    reviewedAt: new Date(),
-                    rejectionReason: null,
                 },
             });
         });
@@ -88,8 +96,8 @@ export class SellersService {
             throw new ConflictException('Only pending applications can be rejected');
         }
 
-        return this.prisma.sellerProfile.update({
-            where: { id: profileId },
+        const updated = await this.prisma.sellerProfile.updateMany({
+            where: { id: profileId, status: SellerStatus.PENDING },
             data: {
                 status: SellerStatus.REJECTED,
                 reviewedById: adminId,
@@ -97,5 +105,8 @@ export class SellersService {
                 rejectionReason: reason,
             },
         });
+        if (!updated.count)
+            throw new ConflictException('Application was already processed');
+        return this.prisma.sellerProfile.findUniqueOrThrow({ where: { id: profileId } });
     }
 }

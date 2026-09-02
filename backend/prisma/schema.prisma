@@ -139,6 +139,7 @@ model User {
   reviews                Review[]
   openedDisputes         Dispute[]       @relation("DisputeOpenedBy")
   resolvedDisputes       Dispute[]       @relation("DisputeResolvedBy")
+  disputeHistory         DisputeHistory[] @relation("DisputeHistoryActor")
   payouts                Payout[]
   auctionWins            Auction[]       @relation("AuctionWinner")
   notifications          Notification[]
@@ -464,9 +465,23 @@ model Dispute {
   resolvedBy    User?         @relation("DisputeResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+  history        DisputeHistory[]
 
   @@index([sellerOrderId, status])
   @@index([openedById, status])
+}
+
+model DisputeHistory {
+  id         String        @id @default(uuid())
+  disputeId  String
+  actorId    String
+  status     DisputeStatus
+  note       String?
+  createdAt  DateTime      @default(now())
+  dispute    Dispute       @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  actor      User          @relation("DisputeHistoryActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([disputeId, createdAt])
 }
 
 model OutboxEvent {

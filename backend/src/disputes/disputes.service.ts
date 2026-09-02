@@ -56,6 +56,14 @@ export class DisputesService {
                     description: dto.description.trim(),
                 },
             });
+            await tx.disputeHistory.create({
+                data: {
+                    disputeId: dispute.id,
+                    actorId: customerId,
+                    status: DisputeStatus.OPEN,
+                    note: 'Dispute opened',
+                },
+            });
             await tx.outboxEvent.create({
                 data: {
                     sellerOrderId: dto.sellerOrderId,
@@ -195,6 +203,14 @@ export class DisputesService {
                     resolution: dto.resolution?.trim(),
                     resolvedById: adminId,
                     resolvedAt: new Date(),
+                },
+            });
+            await tx.disputeHistory.create({
+                data: {
+                    disputeId,
+                    actorId: adminId,
+                    status: dto.status,
+                    note: dto.resolution?.trim(),
                 },
             });
             await tx.outboxEvent.create({

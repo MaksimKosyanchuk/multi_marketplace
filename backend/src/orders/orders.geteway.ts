@@ -56,6 +56,7 @@ export class OrdersGateway
                 return;
             }
 
+            client.data.userId = userId;
             await client.join(`user:${userId}`);
             const role = typeof payload.role === 'string' ? payload.role : undefined;
             if (role) await client.join(`role:${role}`);

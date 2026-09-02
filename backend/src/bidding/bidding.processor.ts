@@ -6,7 +6,10 @@ import { BiddingService } from './bidding.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { BiddingGateway } from './bidding.gateway';
-import { runWithCorrelationId } from '../common/correlation/correlation.context';
+import {
+    getCorrelationId,
+    runWithCorrelationId,
+} from '../common/correlation/correlation.context';
 
 interface AuctionJobData {
     auctionId: string;
@@ -47,7 +50,10 @@ export class BiddingProcessor extends WorkerHost {
             if (auction?.status === 'SOLD' && auction.checkoutExpiresAt) {
                 await this.auctionsQueue.add(
                     'expire-auction-checkout',
-                    { auctionId: auction.id },
+                    {
+                        auctionId: auction.id,
+                        correlationId: getCorrelationId(),
+                    },
                     {
                         delay: Math.max(
                             0,
