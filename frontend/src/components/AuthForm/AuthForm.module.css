@@ -94,6 +94,24 @@
     cursor: not-allowed;
 }
 
+.googleBtn {
+    width: 100%;
+    margin-top: 0.75rem;
+    padding: 0.55rem;
+    background: #ffffff;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.googleBtn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .error {
     padding: 0.5rem 0.75rem;
     margin-bottom: 1rem;

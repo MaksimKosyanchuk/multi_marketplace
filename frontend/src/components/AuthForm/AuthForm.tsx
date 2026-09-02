@@ -11,6 +11,7 @@ interface AuthFormProps {
     }) => Promise<void>;
     error: string | null;
     isSubmitting: boolean;
+    onGoogleLogin?: () => Promise<void>;
 }
 
 interface FormErrors {
@@ -24,6 +25,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({
     onSubmit,
     error,
     isSubmitting,
+    onGoogleLogin,
 }) => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -43,15 +45,16 @@ export const AuthForm: React.FC<AuthFormProps> = ({
 
         if (!password) {
             errors.password = 'Пароль обов’язковий';
-        } else if (password.length < 6) {
-            errors.password = 'Пароль повинен бути не менше 6 символів';
+        } else if (password.length < 8 || password.length > 72) {
+            errors.password = 'Пароль повинен містити від 8 до 72 символів';
         }
 
         if (!isLogin) {
             if (!nickName.trim()) {
                 errors.nickName = 'Нікнейм обов’язковий';
-            } else if (nickName.length < 3) {
-                errors.nickName = 'Нікнейм повинен бути не менше 3 символів';
+            } else if (nickName.length < 2 || nickName.length > 40) {
+                errors.nickName =
+                    'Нікнейм повинен містити від 2 до 40 символів';
             }
         }
 
@@ -92,7 +95,9 @@ export const AuthForm: React.FC<AuthFormProps> = ({
                             onChange={(e) => setNickName(e.target.value)}
                         />
                         {fieldErrors.nickName && (
-                            <span className={styles.errorMessage}>{fieldErrors.nickName}</span>
+                            <span className={styles.errorMessage}>
+                                {fieldErrors.nickName}
+                            </span>
                         )}
                     </div>
                 )}
@@ -106,7 +111,9 @@ export const AuthForm: React.FC<AuthFormProps> = ({
                         onChange={(e) => setEmail(e.target.value)}
                     />
                     {fieldErrors.email && (
-                        <span className={styles.errorMessage}>{fieldErrors.email}</span>
+                        <span className={styles.errorMessage}>
+                            {fieldErrors.email}
+                        </span>
                     )}
                 </div>
 
@@ -119,7 +126,9 @@ export const AuthForm: React.FC<AuthFormProps> = ({
                         onChange={(e) => setPassword(e.target.value)}
                     />
                     {fieldErrors.password && (
-                        <span className={styles.errorMessage}>{fieldErrors.password}</span>
+                        <span className={styles.errorMessage}>
+                            {fieldErrors.password}
+                        </span>
                     )}
                 </div>
 
@@ -131,15 +140,33 @@ export const AuthForm: React.FC<AuthFormProps> = ({
                     {isSubmitting
                         ? 'Завантаження...'
                         : isLogin
-                            ? 'Увійти'
-                            : 'Зареєструватися'}
+                          ? 'Увійти'
+                          : 'Зареєструватися'}
                 </button>
             </form>
 
-            <div style={{ marginTop: '1rem', textAlign: 'center', fontSize: '0.9rem' }}>
+            {onGoogleLogin && (
+                <button
+                    type="button"
+                    disabled={isSubmitting}
+                    className={styles.googleBtn}
+                    onClick={() => void onGoogleLogin()}
+                >
+                    Продовжити через Google
+                </button>
+            )}
+
+            <div
+                style={{
+                    marginTop: '1rem',
+                    textAlign: 'center',
+                    fontSize: '0.9rem',
+                }}
+            >
                 {isLogin ? (
                     <p>
-                        Ще не маєте акаунта? <Link to="/register">Зареєструватися</Link>
+                        Ще не маєте акаунта?{' '}
+                        <Link to="/register">Зареєструватися</Link>
                     </p>
                 ) : (
                     <p>

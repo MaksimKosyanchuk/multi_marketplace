@@ -14,6 +14,7 @@ import CatalogPage from './pages/CatalogPage/CatalogPage';
 import ProductPage from './pages/ProductPage/ProductPage';
 import LoginPage from './pages/LoginPage/LoginPage';
 import RegisterPage from './pages/RegisterPage/RegisterPage';
+import GoogleRegisterPage from './pages/GoogleRegisterPage/GoogleRegisterPage';
 import CartPage from './pages/CartPage/CartPage';
 import ProfilePage from './pages/ProfilePage/ProfilePage';
 
@@ -35,6 +36,10 @@ export function App() {
                         <Route path="product/:id" element={<ProductPage />} />
                         <Route path="login" element={<LoginPage />} />
                         <Route path="register" element={<RegisterPage />} />
+                        <Route
+                            path="register/google"
+                            element={<GoogleRegisterPage />}
+                        />
 
                         <Route element={<ProtectedRoute />}>
                             <Route path="cart" element={<CartPage />} />
@@ -44,10 +49,19 @@ export function App() {
 
                     <Route element={<AdminRoute />}>
                         <Route path="/admin" element={<AdminLayout />}>
-                            <Route index element={<Navigate to="dashboard" replace />} />
+                            <Route
+                                index
+                                element={<Navigate to="dashboard" replace />}
+                            />
                             <Route path="products" element={<ProductsPage />} />
-                            <Route path="categories" element={<CategoriesPage />} />
-                            <Route path="dashboard" element={<DashboardPage />} />
+                            <Route
+                                path="categories"
+                                element={<CategoriesPage />}
+                            />
+                            <Route
+                                path="dashboard"
+                                element={<DashboardPage />}
+                            />
                             <Route path="orders" element={<OrdersPage />} />
                         </Route>
                     </Route>
