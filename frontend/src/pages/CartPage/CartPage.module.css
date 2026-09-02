@@ -1,0 +1,235 @@
+.container {
+    max-width: 1100px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+    font-family:
+        -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #171717;
+    margin-bottom: 2rem;
+}
+
+.emptyContainer {
+    text-align: center;
+    padding: 4rem 1rem;
+}
+
+.emptyContainer h2 {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.emptyContainer p {
+    color: #666;
+    margin-bottom: 1.5rem;
+}
+
+.layout {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 2rem;
+    align-items: start;
+}
+
+@media (max-width: 868px) {
+    .layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Список товарів */
+.itemsList {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.cartItem {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: #ffffff;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+}
+
+.imageWrapper {
+    width: 70px;
+    height: 70px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #f5f5f5;
+    flex-shrink: 0;
+}
+
+.imageWrapper img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    color: #888;
+}
+
+.itemInfo {
+    flex: 1;
+}
+
+.productName {
+    font-weight: 600;
+    color: #171717;
+    text-decoration: none;
+    font-size: 0.95rem;
+}
+
+.productName:hover {
+    text-decoration: underline;
+}
+
+.productPrice {
+    font-size: 0.85rem;
+    color: #666;
+    margin-top: 0.25rem;
+}
+
+/* Кнопки зміни кількості */
+.quantityControls {
+    display: flex;
+    align-items: center;
+    border: 1px solid #e5e5e5;
+    border-radius: 6px;
+}
+
+.qtyBtn {
+    width: 30px;
+    height: 30px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.qtyBtn:hover:not(:disabled) {
+    background-color: #f5f5f5;
+}
+
+.qtyBtn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.quantity {
+    width: 32px;
+    text-align: center;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.itemTotal {
+    font-weight: 600;
+    font-size: 1rem;
+    min-width: 70px;
+    text-align: right;
+}
+
+.removeBtn {
+    background: none;
+    border: none;
+    color: #a3a3a3;
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0.25rem;
+}
+
+.removeBtn:hover {
+    color: #dc2626;
+}
+
+/* Картка підсумку */
+.summaryCard {
+    background: #ffffff;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+    padding: 1.5rem;
+}
+
+.summaryTitle {
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin-bottom: 1.25rem;
+}
+
+.statusRow,
+.summaryRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+    color: #444;
+}
+
+.statusBadge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.statusUnpaid {
+    background-color: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+}
+
+.statusPaid {
+    background-color: #f0fdf4;
+    color: #16a34a;
+    border: 1px solid #bbf7d0;
+}
+
+.totalRow {
+    border-top: 1px solid #e5e5e5;
+    padding-top: 1rem;
+    margin-top: 1rem;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #171717;
+}
+
+.totalPrice {
+    font-size: 1.25rem;
+}
+
+.actionWrapper {
+    margin-top: 1.5rem;
+}
+
+.checkoutBtn {
+    width: 100%;
+}
+
+.paidNotice {
+    text-align: center;
+    padding: 0.75rem;
+    background-color: #f0fdf4;
+    color: #16a34a;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}

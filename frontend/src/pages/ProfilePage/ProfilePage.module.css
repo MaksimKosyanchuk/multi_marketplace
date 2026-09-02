@@ -1,0 +1,73 @@
+.container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 32px 16px;
+}
+
+.title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 24px;
+}
+
+/* Вкладки (Tabs) */
+.tabs {
+    display: flex;
+    gap: 8px;
+    border-bottom: 2px solid #e2e8f0;
+    margin-bottom: 24px;
+}
+
+.tabBtn {
+    background: transparent;
+    border: none;
+    padding: 12px 20px;
+    font-size: 1rem;
+    font-weight: 500;
+    color: #64748b;
+    cursor: pointer;
+    position: relative;
+    transition: color 0.2s ease;
+}
+
+.tabBtn:hover {
+    color: #0f172a;
+}
+
+/* Активна вкладка з синьою смужкою знизу */
+.activeTab {
+    color: #2563eb;
+    font-weight: 600;
+}
+
+.activeTab::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background-color: #2563eb;
+    border-radius: 2px 2px 0 0;
+}
+
+/* Секція контенту вкладки */
+.section {
+    background-color: #ffffff;
+    border-radius: 12px;
+}
+
+.section h2 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 20px;
+}
+
+/* Список замовлень */
+.ordersList {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}

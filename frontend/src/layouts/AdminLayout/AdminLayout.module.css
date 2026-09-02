@@ -1,0 +1,66 @@
+.layout {
+    display: flex;
+    min-height: 100vh;
+    background-color: var(--bg-primary);
+}
+
+.sidebar {
+    width: 240px;
+    background-color: var(--bg-secondary);
+    border-right: 1px solid var(--border-color);
+    padding: 1.25rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebarTitle {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    padding: 0 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    flex: 1;
+}
+
+.navLink {
+    color: var(--text-secondary);
+    padding: 0.45rem 0.6rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 0.15s ease;
+}
+
+.navLink:hover {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.backLink {
+    margin-top: auto;
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    padding: 0.45rem 0.6rem;
+    border-radius: var(--radius-sm);
+    transition: all 0.15s ease;
+}
+
+.backLink:hover {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.mainContent {
+    flex: 1;
+    padding: 2.5rem;
+    background-color: var(--bg-primary);
+    overflow-y: auto;
+}

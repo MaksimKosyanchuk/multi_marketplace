@@ -1,0 +1,195 @@
+.container {
+    padding: 32px 24px;
+    max-width: 1200px;
+    margin: 0 auto;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #0f172a;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+}
+
+.header h1 {
+    font-size: 1.875rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+    line-height: 1.25;
+}
+
+/* Сетка основного контента с надежными вертикальными отступами */
+.contentGrid {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+}
+
+/* Фильтры */
+.filters {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background-color: #ffffff;
+    padding: 18px 24px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+    flex-wrap: wrap;
+}
+
+.filterGroup {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #475569;
+}
+
+.filterGroup input[type="date"] {
+    padding: 8px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    outline: none;
+    background-color: #ffffff;
+    color: #0f172a;
+    font-size: 0.875rem;
+    font-family: inherit;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.filterGroup input[type="date"]:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+/* KPI Cards */
+.kpiGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 24px;
+}
+
+.kpiCard {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.kpiCard:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.08);
+}
+
+.kpiLabel {
+    font-size: 0.875rem;
+    color: #64748b;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+.kpiValue {
+    font-size: 2rem;
+    color: #0f172a;
+    font-weight: 700;
+    line-height: 1;
+}
+
+/* Секции (График и Таблица) */
+.chartSection,
+.topSection {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+}
+
+.chartSection h3,
+.topSection h3 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    color: #0f172a;
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.chartWrapper {
+    width: 100%;
+    min-height: 320px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: 12px;
+}
+
+.emptyText {
+    color: #94a3b8;
+    font-size: 0.95rem;
+}
+
+/* Таблица */
+.tableWrapper {
+    overflow-x: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+    font-size: 0.925rem;
+}
+
+.table th {
+    background-color: #f8fafc;
+    color: #475569;
+    padding: 14px 18px;
+    border-bottom: 1px solid #e2e8f0;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.table td {
+    padding: 14px 18px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #334155;
+}
+
+.table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.table tbody tr:hover {
+    background-color: #f8fafc;
+}
+
+.emptyTableCell {
+    text-align: center;
+    color: #94a3b8;
+    padding: 24px !important;
+}
+
+.loader {
+    text-align: center;
+    padding: 60px 20px;
+    color: #64748b;
+    font-size: 1.1rem;
+    font-weight: 500;
+}

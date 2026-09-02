@@ -1,0 +1,65 @@
+.overlay {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: fadeIn 0.15s ease-out;
+}
+
+.modal {
+    position: relative;
+    background-color: #ffffff;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 400px;
+    padding: 1.5rem;
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.12);
+}
+
+.actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 20px;
+}
+
+.closeBtn {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: none;
+    border: none;
+    font-size: 1rem;
+    color: #888888;
+    cursor: pointer;
+}
+
+.closeBtn:hover {
+    color: #171717;
+}
+
+.title {
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: #171717;
+    margin: 0 0 1rem 0;
+    text-align: center;
+}
+
+.content {
+    width: 100%;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}

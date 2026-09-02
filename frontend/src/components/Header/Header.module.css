@@ -1,0 +1,96 @@
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 2rem;
+    background-color: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.logo {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.logo::before {
+    content: '';
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    background-color: var(--accent-black);
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%); /* Триклик Vercel */
+}
+
+.nav {
+    display: flex;
+    gap: 1.25rem;
+    align-items: center;
+}
+
+.link {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: color 0.15s ease;
+}
+
+.link:hover {
+    color: var(--text-primary);
+}
+
+.adminBtn {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    padding: 0.35rem 0.75rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    transition: all 0.15s ease;
+}
+
+.adminBtn:hover {
+    background-color: #eee;
+    border-color: var(--border-hover);
+}
+
+.authBtn {
+    background-color: var(--accent-black);
+    color: #ffffff;
+    padding: 0.35rem 0.85rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    transition: background-color 0.15s ease;
+}
+
+.authBtn:hover {
+    background-color: var(--accent-hover);
+}
+
+.logoutBtn {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 0.35rem 0.75rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.logoutBtn:hover {
+    color: #ef4444;
+    border-color: #fca5a5;
+    background-color: #fef2f2;
+}

@@ -1,0 +1,213 @@
+.card {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+    background-color: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    border-color: #cbd5e1;
+}
+
+.cardError {
+    border: 1px solid #fca5a5;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+    background-color: #fef2f2;
+    color: #991b1b;
+    font-size: 0.9rem;
+}
+
+.errorAlert {
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    background-color: #fef2f2;
+    border: 1px solid #fca5a5;
+    color: #991b1b;
+    border-radius: 6px;
+    font-size: 0.85rem;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #f1f5f9;
+    padding-bottom: 14px;
+    margin-bottom: 16px;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.orderId {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin-right: 12px;
+}
+
+.date {
+    font-size: 0.85rem;
+    color: #64748b;
+}
+
+.statusSection {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.statusBadge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.825rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+}
+
+.statusNew {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+.statusProcessing {
+    background-color: #e0f2fe;
+    color: #0369a1;
+}
+
+.statusShipped {
+    background-color: #f3e8ff;
+    color: #6b21a8;
+}
+
+.statusCompleted {
+    background-color: #dcfce7;
+    color: #15803d;
+}
+
+.statusCancelled {
+    background-color: #fee2e2;
+    color: #b91c1c;
+}
+.statusPending {
+    background-color: #fef3c7;
+    color: #d97706;
+}
+
+.statusSelect {
+    appearance: none;
+    background-color: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 6px 32px 6px 12px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #334155;
+    cursor: pointer;
+    outline: none;
+    transition: all 0.2s ease;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    background-size: 14px;
+}
+
+.statusSelect:hover:not(:disabled) {
+    background-color: #f1f5f9;
+    border-color: #94a3b8;
+}
+
+.statusSelect:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.statusSelect:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.itemsList {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.itemRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.95rem;
+    color: #334155;
+    padding: 2px 0;
+}
+
+.itemName {
+    font-weight: 500;
+}
+
+.itemDetails {
+    color: #64748b;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid #f1f5f9;
+    padding-top: 14px;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.total {
+    font-size: 0.95rem;
+    color: #475569;
+}
+
+.total strong {
+    font-size: 1.15rem;
+    margin-left: 8px;
+    color: #0f172a;
+    font-weight: 700;
+}
+
+.actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+@media (max-width: 576px) {
+    .header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .statusSection {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .footer {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+}

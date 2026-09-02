@@ -1,0 +1,23 @@
+.footer {
+    background-color: var(--bg-primary);
+    border-top: 1px solid var(--border-color);
+    padding: 2rem;
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    margin-top: auto;
+}
+
+.content {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.copyright {
+    color: var(--text-primary);
+    font-weight: 500;
+}

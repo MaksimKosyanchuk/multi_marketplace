@@ -1,0 +1,280 @@
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.header h2 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.headerActions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.createBtn {
+    background: var(--text-primary);
+    color: var(--bg-primary);
+    border: none;
+    padding: 0.4rem 0.8rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.createBtn:hover {
+    opacity: 0.9;
+}
+
+.refreshBtn {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.4rem 0.8rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.refreshBtn:hover {
+    background: var(--bg-tertiary);
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 1rem;
+}
+
+/* Modal styles */
+.modalOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modalContent {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md, 8px);
+    width: 100%;
+    max-width: 500px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.modalHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.modalHeader h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--text-primary);
+}
+
+.closeBtn {
+    background: transparent;
+    border: none;
+    font-size: 1.1rem;
+    cursor: pointer;
+    color: var(--text-muted);
+}
+
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+.label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.825rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.label input,
+.label textarea,
+.label select {
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+}
+
+.row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.8rem;
+}
+
+/* File Upload & DropZone styles */
+.hiddenFileInput {
+    display: none;
+}
+
+.dropZone {
+    border: 2px dashed var(--border-color);
+    border-radius: var(--radius-sm, 6px);
+    padding: 1rem;
+    text-align: center;
+    background-color: var(--bg-primary);
+    cursor: pointer;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 140px;
+    position: relative;
+    overflow: hidden;
+}
+
+.dropZone:hover {
+    border-color: var(--text-primary);
+    background-color: var(--bg-tertiary);
+}
+
+.dropText p {
+    margin: 0 0 0.25rem 0;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+}
+
+.dropText p span {
+    text-decoration: underline;
+    font-weight: 500;
+}
+
+.dropText small {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+
+.previewContainer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+}
+
+.previewImage {
+    width: 100%;
+    max-height: 180px;
+    object-fit: contain;
+    border-radius: var(--radius-sm, 4px);
+    background-color: var(--bg-secondary);
+}
+
+.removeImageBtn {
+    background-color: #ef4444;
+    color: #ffffff;
+    border: none;
+    padding: 0.35rem 0.75rem;
+    border-radius: var(--radius-sm, 4px);
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 500;
+    transition: background-color 0.15s ease;
+}
+
+.removeImageBtn:hover {
+    background-color: #dc2626;
+}
+
+.fieldError {
+    color: #ef4444;
+    font-size: 0.75rem;
+    margin-top: 0.25rem;
+}
+
+.modalActions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.rightActions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.deleteBtn {
+    background-color: #ef4444;
+    color: #ffffff;
+    border: none;
+    padding: 0.45rem 0.8rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.deleteBtn:hover {
+    background-color: #dc2626;
+}
+
+.cancelBtn {
+    background-color: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.45rem 0.8rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.saveBtn {
+    background-color: #000000;
+    color: #ffffff;
+    border: none;
+    padding: 0.45rem 0.8rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.saveBtn:hover {
+    opacity: 0.9;
+}
+
+.loading,
+.empty,
+.error {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-muted);
+}
