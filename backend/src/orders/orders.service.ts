@@ -22,6 +22,7 @@ import { RedisService } from '../redis/redis.service';
 import { QueryOrderDto } from './dto/query-order.dto';
 import { UpdateSellerOrderStatusDto } from './dto/update-seller-order-status.dto';
 import { MockPaymentService } from '../payments/mock-payment.service';
+import { getCorrelationId } from '../common/correlation/correlation.context';
 
 const orderDetails = {
     sellerOrders: {
@@ -384,7 +385,11 @@ export class OrdersService {
                         aggregateType: 'Payment',
                         aggregateId: payment.id,
                         type: 'payment.paid',
-                        payload: { orderId, amount: charge.amount.toString() },
+                        payload: {
+                            orderId,
+                            amount: charge.amount.toString(),
+                            correlationId: getCorrelationId(),
+                        },
                         idempotencyKey: eventKey,
                     },
                 });
@@ -786,7 +791,11 @@ export class OrdersService {
                         aggregateType: 'Order',
                         aggregateId: orderId,
                         type: 'order.cancelled',
-                        payload: { userId, status: result.status },
+                        payload: {
+                            userId,
+                            status: result.status,
+                            correlationId: getCorrelationId(),
+                        },
                         idempotencyKey: `customer-cancel:${orderId}`,
                     },
                 ],
@@ -1009,7 +1018,10 @@ export class OrdersService {
                             aggregateType: 'Order',
                             aggregateId: order.id,
                             type: 'order.status-changed',
-                            payload: { status: order.status },
+                            payload: {
+                                status: order.status,
+                                correlationId: getCorrelationId(),
+                            },
                             idempotencyKey: `${eventKey}:order-status`,
                         },
                     ],

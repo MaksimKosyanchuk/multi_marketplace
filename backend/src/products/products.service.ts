@@ -12,6 +12,7 @@ import { ProductSort, QueryProductDto } from './dto/query-product.dto';
 import { Prisma, ProductStatus } from '@prisma/client';
 import { deleteFile } from '../common/utils/file';
 import { LoggerService } from '../logger/logger.service';
+import { getCorrelationId } from '../common/correlation/correlation.context';
 
 interface ProductWithCategory {
     id: string;
@@ -150,7 +151,7 @@ export class ProductsService {
                         aggregateType: 'Product',
                         aggregateId: created.id,
                         type: 'product.created',
-                        payload: { productId: created.id },
+                        payload: { productId: created.id, correlationId: getCorrelationId() },
                         idempotencyKey: `product-created:${created.id}:${created.version}`,
                     },
                 });
@@ -214,7 +215,7 @@ export class ProductsService {
                             aggregateType: 'Product',
                             aggregateId: updated.id,
                             type: 'product.updated',
-                            payload: { productId: updated.id },
+                            payload: { productId: updated.id, correlationId: getCorrelationId() },
                             idempotencyKey: `product-updated:${updated.id}:${updated.version}`,
                         },
                     });
@@ -259,7 +260,7 @@ export class ProductsService {
                     aggregateType: 'Product',
                     aggregateId: id,
                     type: 'product.archived',
-                    payload: { productId: id },
+                    payload: { productId: id, correlationId: getCorrelationId() },
                     idempotencyKey: `product-archived:${archived.id}:${archived.version}`,
                 },
             });
@@ -293,7 +294,7 @@ export class ProductsService {
                     aggregateType: 'Product',
                     aggregateId: id,
                     type: 'product.updated',
-                    payload: { productId: id },
+                    payload: { productId: id, correlationId: getCorrelationId() },
                     idempotencyKey: `product-restored:${restored.id}:${restored.version}`,
                 },
             });

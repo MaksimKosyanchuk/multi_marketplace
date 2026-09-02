@@ -26,6 +26,7 @@ import {
 } from './dto/auth-response.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { GoogleLoginDto } from './dto/google-login.dto';
+import { Throttle } from '@nestjs/throttler';
 
 interface RequestWithCookies extends Request {
     cookies: {
@@ -64,6 +65,7 @@ export class AuthController {
     }
 
     @Post('login')
+    @Throttle({ default: { limit: 10, ttl: 60_000 } })
     @ApiOperation({ summary: 'Авторизация пользователя' })
     @ApiResponse({
         status: 200,
@@ -82,6 +84,7 @@ export class AuthController {
     }
 
     @Post('google')
+    @Throttle({ default: { limit: 10, ttl: 60_000 } })
     @ApiOperation({ summary: 'Вход через Google OAuth2 access token' })
     async googleLogin(
         @Body() dto: GoogleLoginDto,

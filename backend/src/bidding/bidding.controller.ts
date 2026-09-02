@@ -17,6 +17,7 @@ import { PlaceBidDto } from './dto/place-bid.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('Auctions')
 @Controller('auctions')
@@ -45,6 +46,7 @@ export class BiddingController {
 
     @UseGuards(JwtAuthGuard)
     @Post(':auctionId/bids')
+    @Throttle({ default: { limit: 30, ttl: 60_000 } })
     @ApiBearerAuth('JWT-auth')
     @ApiOperation({ summary: 'Сделать ставку с idempotency key' })
     placeBid(

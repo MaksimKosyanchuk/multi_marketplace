@@ -18,6 +18,7 @@ import {
     SellerOrderStatus,
 } from '@prisma/client';
 import { Queue } from 'bullmq';
+import { getCorrelationId } from '../common/correlation/correlation.context';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAuctionDto } from './dto/create-auction.dto';
 
@@ -144,7 +145,7 @@ export class BiddingService {
                     aggregateType: 'Auction',
                     aggregateId: auctionId,
                     type: 'auction.started',
-                    payload: { auctionId },
+                    payload: { auctionId, correlationId: getCorrelationId() },
                     idempotencyKey: `auction-started:${auctionId}`,
                 },
             });
@@ -363,7 +364,7 @@ export class BiddingService {
                     aggregateType: 'Auction',
                     aggregateId: auctionId,
                     type: 'auction.checkout-expired',
-                    payload: { auctionId },
+                    payload: { auctionId, correlationId: getCorrelationId() },
                     idempotencyKey: `auction-checkout-expired:${auctionId}`,
                 },
             });
@@ -499,7 +500,11 @@ export class BiddingService {
                             aggregateType: 'Order',
                             aggregateId: order.id,
                             type: 'order.created',
-                            payload: { userId: winnerId, auctionId },
+                            payload: {
+                                userId: winnerId,
+                                auctionId,
+                                correlationId: getCorrelationId(),
+                            },
                             idempotencyKey: `${idempotencyKey}:order-created`,
                         },
                         {
@@ -508,7 +513,12 @@ export class BiddingService {
                             aggregateType: 'Auction',
                             aggregateId: auctionId,
                             type: 'auction.checkout-created',
-                            payload: { auctionId, orderId: order.id, winnerId },
+                            payload: {
+                                auctionId,
+                                orderId: order.id,
+                                winnerId,
+                                correlationId: getCorrelationId(),
+                            },
                             idempotencyKey: `${idempotencyKey}:auction-checkout`,
                         },
                     ],
