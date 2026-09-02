@@ -20,6 +20,11 @@ import { SearchModule } from './search/search.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { DisputesModule } from './disputes/disputes.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { ReviewsModule } from './reviews/reviews.module';
+import { MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { CorrelationMiddleware } from './common/correlation/correlation.middleware';
 
 @Module({
     imports: [
@@ -54,10 +59,17 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
         SearchModule,
         MetricsModule,
+        DisputesModule,
+        NotificationsModule,
+        ReviewsModule,
         ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]),
     ],
 
     controllers: [AppController],
     providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+    configure(consumer: MiddlewareConsumer): void {
+        consumer.apply(CorrelationMiddleware).forRoutes('*');
+    }
+}

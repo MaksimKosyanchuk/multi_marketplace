@@ -4,6 +4,7 @@ import { Job } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrdersGateway } from './orders.geteway';
 import { RedisService } from '../redis/redis.service';
+import { runWithCorrelationId } from '../common/correlation/correlation.context';
 
 export interface OrderJobData {
     orderId: string;
@@ -11,6 +12,7 @@ export interface OrderJobData {
 
 export interface OutboxJobData {
     outboxEventId: string;
+    correlationId?: string;
 }
 
 @Processor('orders')
@@ -26,7 +28,18 @@ export class OrdersProcessor extends WorkerHost {
     }
 
     async process(job: Job<OrderJobData>): Promise<void> {
+        const correlationId = (job.data as unknown as OutboxJobData).correlationId;
+        if (correlationId) {
+            return runWithCorrelationId(correlationId, () => this.processJob(job));
+        }
+        return this.processJob(job);
+    }
+
+    private async processJob(job: Job<OrderJobData>): Promise<void> {
         if (job.name === 'deliver-outbox-event') {
+            this.logger.debug(
+                `Delivering outbox event ${job.data.outboxEventId} correlation=${job.data.correlationId ?? 'unknown'}`,
+            );
             await this.processOutboxEvent(
                 job,
                 (job.data as unknown as OutboxJobData).outboxEventId,

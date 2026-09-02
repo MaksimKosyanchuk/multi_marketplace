@@ -43,7 +43,7 @@ export class OrdersDispatcher implements OnModuleInit, OnModuleDestroy {
                     availableAt: { lte: new Date() },
                     attempts: { lt: 5 },
                 },
-                select: { id: true },
+                select: { id: true, payload: true },
                 orderBy: { createdAt: 'asc' },
                 take: 50,
             });
@@ -51,7 +51,15 @@ export class OrdersDispatcher implements OnModuleInit, OnModuleDestroy {
                 events.map((event) =>
                     this.ordersQueue.add(
                         'deliver-outbox-event',
-                        { outboxEventId: event.id },
+                        {
+                            outboxEventId: event.id,
+                            correlationId:
+                                typeof event.payload === 'object' &&
+                                event.payload !== null &&
+                                'correlationId' in event.payload
+                                    ? String(event.payload.correlationId)
+                                    : undefined,
+                        },
                         {
                             jobId: `outbox:${event.id}`,
                             attempts: 5,

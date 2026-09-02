@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { BullModule } from '@nestjs/bullmq';
 import { AuthModule } from '../auth/auth.module';
 import { BiddingController } from './bidding.controller';
@@ -8,7 +9,11 @@ import { BiddingService } from './bidding.service';
 import { BiddingDispatcher } from './bidding.dispatcher';
 
 @Module({
-    imports: [AuthModule, BullModule.registerQueue({ name: 'auctions' })],
+    imports: [
+        AuthModule,
+        NotificationsModule,
+        BullModule.registerQueue({ name: 'auctions' }),
+    ],
     controllers: [BiddingController],
     providers: [
         BiddingService,

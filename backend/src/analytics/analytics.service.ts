@@ -7,6 +7,22 @@ export interface DateFilterDto {
     to?: string;
 }
 
+export interface SellerAnalytics {
+    sellerId: string;
+    revenue: number;
+    commission: number;
+    refunded: number;
+    orders: number;
+    completedOrders: number;
+    conversion: number;
+    topProducts: Array<{
+        productId: string;
+        productName: string;
+        quantity: number;
+        revenue: number;
+    }>;
+}
+
 @Injectable()
 export class AnalyticsService {
     private readonly TIME_ZONE = 'Europe/Kyiv';
@@ -143,5 +159,155 @@ export class AnalyticsService {
             return `"${order.id}","${date} ${time}","${order.user?.email ?? 'N/A'}","${order.status}",${Number(order.totalAmount).toFixed(2)}`;
         });
         return header + rows.join('\n');
+    }
+
+    async getSellerAnalytics(
+        sellerId: string,
+        dto: DateFilterDto,
+    ): Promise<SellerAnalytics> {
+        const orderFilter = this.buildDateFilter(dto.from, dto.to);
+        const sellerOrders = await this.prisma.sellerOrder.findMany({
+            where: { sellerId, order: orderFilter },
+            include: { items: true },
+        });
+        const revenue = sellerOrders.reduce(
+            (sum, order) =>
+                sum + Number(order.sellerEarnings) - Number(order.refundedAmount),
+            0,
+        );
+        const commission = sellerOrders.reduce(
+            (sum, order) => sum + Number(order.commissionAmount),
+            0,
+        );
+        const refunded = sellerOrders.reduce(
+            (sum, order) => sum + Number(order.refundedAmount),
+            0,
+        );
+        const completedOrders = sellerOrders.filter(
+            (order) => order.status === 'COMPLETED',
+        ).length;
+        const topProducts = new Map<
+            string,
+            { productId: string; productName: string; quantity: number; revenue: number }
+        >();
+        for (const order of sellerOrders) {
+            for (const item of order.items) {
+                const current = topProducts.get(item.productId) ?? {
+                    productId: item.productId,
+                    productName: item.productName,
+                    quantity: 0,
+                    revenue: 0,
+                };
+                current.quantity += item.quantity;
+                current.revenue += Number(item.totalAmount);
+                topProducts.set(item.productId, current);
+            }
+        }
+        const cartCount = await this.prisma.cartItem.count({
+            where: { product: { sellerId }, cart: { updatedAt: orderFilter.createdAt } },
+        });
+        const conversion =
+            cartCount > 0 ? Number((sellerOrders.length / cartCount).toFixed(4)) : 0;
+        return {
+            sellerId,
+            revenue,
+            commission,
+            refunded,
+            orders: sellerOrders.length,
+            completedOrders,
+            conversion,
+            topProducts: [...topProducts.values()]
+                .sort((a, b) => b.revenue - a.revenue)
+                .slice(0, 5),
+        };
+    }
+
+    async getSellerRankings(dto: DateFilterDto) {
+        const sellerOrders = await this.prisma.sellerOrder.findMany({
+            where: { order: this.buildDateFilter(dto.from, dto.to) },
+            select: {
+                sellerId: true,
+                sellerEarnings: true,
+                refundedAmount: true,
+                commissionAmount: true,
+                status: true,
+            },
+        });
+        const ranking = new Map<
+            string,
+            { sellerId: string; revenue: number; orders: number; completedOrders: number }
+        >();
+        for (const order of sellerOrders) {
+            const current = ranking.get(order.sellerId) ?? {
+                sellerId: order.sellerId,
+                revenue: 0,
+                orders: 0,
+                completedOrders: 0,
+            };
+            current.revenue +=
+                Number(order.sellerEarnings) - Number(order.refundedAmount);
+            current.orders += 1;
+            if (order.status === 'COMPLETED') current.completedOrders += 1;
+            ranking.set(order.sellerId, current);
+        }
+        return [...ranking.values()]
+            .sort((a, b) => b.revenue - a.revenue)
+            .slice(0, 5);
+    }
+
+    async generateDashboardJson(dto: DateFilterDto): Promise<string> {
+        return JSON.stringify(await this.getDashboardData(dto), null, 2);
+    }
+
+    async getSellerComparison(sellerId: string, dto: DateFilterDto) {
+        const current = await this.getSellerAnalytics(sellerId, dto);
+        if (!dto.from || !dto.to) return { current, previous: null };
+        const from = new Date(`${dto.from}T00:00:00.000Z`);
+        const to = new Date(`${dto.to}T23:59:59.999Z`);
+        const duration = to.getTime() - from.getTime();
+        const previous = await this.getSellerAnalytics(sellerId, {
+            from: new Date(from.getTime() - duration - 1).toISOString().slice(0, 10),
+            to: new Date(from.getTime() - 1).toISOString().slice(0, 10),
+        });
+        return {
+            current,
+            previous,
+            revenueChange:
+                previous.revenue === 0
+                    ? null
+                    : (current.revenue - previous.revenue) / previous.revenue,
+            ordersChange:
+                previous.orders === 0
+                    ? null
+                    : (current.orders - previous.orders) / previous.orders,
+        };
+    }
+
+    async getSellerTimeline(sellerId: string, dto: DateFilterDto) {
+        const orders = await this.prisma.sellerOrder.findMany({
+            where: { sellerId, order: this.buildDateFilter(dto.from, dto.to) },
+            select: {
+                createdAt: true,
+                sellerEarnings: true,
+                refundedAmount: true,
+            },
+            orderBy: { createdAt: 'asc' },
+        });
+        const timeline = new Map<string, { revenue: number; orders: number }>();
+        for (const order of orders) {
+            const date = this.formatDateToLocal(order.createdAt);
+            const current = timeline.get(date) ?? { revenue: 0, orders: 0 };
+            timeline.set(date, {
+                revenue:
+                    current.revenue +
+                    Number(order.sellerEarnings) -
+                    Number(order.refundedAmount),
+                orders: current.orders + 1,
+            });
+        }
+        return [...timeline.entries()].map(([date, values]) => ({
+            date,
+            ...values,
+        }));
     }
 }

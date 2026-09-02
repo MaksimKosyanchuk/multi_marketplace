@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, Req, Res, UseGuards } from '@nestjs/common';
 import {
     ApiTags,
     ApiOperation,
@@ -13,6 +13,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { DateFilterDto } from './dto/date-filter.dto';
 import { DashboardResponseDto } from './dto/dashboard-response.dto';
+import type { Request } from 'express';
 
 @ApiTags('Analytics')
 @ApiBearerAuth('JWT-auth')
@@ -73,5 +74,50 @@ export class AnalyticsController {
             `attachment; filename="${filename}"`,
         );
         return res.send(csvData);
+    }
+
+    @Get('seller')
+    @Roles('SELLER')
+    async sellerAnalytics(
+        @Req() req: Request & { user: { id: string } },
+        @Query() query: DateFilterDto,
+    ) {
+        return this.analyticsService.getSellerAnalytics(req.user.id, query);
+    }
+
+    @Get('seller/comparison')
+    @Roles('SELLER')
+    async sellerComparison(
+        @Req() req: Request & { user: { id: string } },
+        @Query() query: DateFilterDto,
+    ) {
+        return this.analyticsService.getSellerComparison(req.user.id, query);
+    }
+
+    @Get('seller/timeline')
+    @Roles('SELLER')
+    async sellerTimeline(
+        @Req() req: Request & { user: { id: string } },
+        @Query() query: DateFilterDto,
+    ) {
+        return this.analyticsService.getSellerTimeline(req.user.id, query);
+    }
+
+    @Get('rankings')
+    @Roles('ADMIN')
+    async sellerRankings(@Query() query: DateFilterDto) {
+        return this.analyticsService.getSellerRankings(query);
+    }
+
+    @Get('export/json')
+    @Roles('ADMIN')
+    @ApiProduces('application/json')
+    async exportJson(@Res() res: Response, @Query() query: DateFilterDto) {
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.setHeader(
+            'Content-Disposition',
+            `attachment; filename="analytics_${new Date().toISOString().slice(0, 10)}.json"`,
+        );
+        return res.send(await this.analyticsService.generateDashboardJson(query));
     }
 }

@@ -7,6 +7,8 @@ import {
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { Injectable, Logger } from '@nestjs/common';
+import { NotificationsService } from '../notifications/notifications.service';
+import { OnGatewayInit } from '@nestjs/websockets';
 
 interface JwtPayload {
     sub?: string;
@@ -20,13 +22,22 @@ interface JwtPayload {
         origin: '*',
     },
 })
-export class OrdersGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class OrdersGateway
+    implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit
+{
     @WebSocketServer()
     server: Server;
 
     private readonly logger = new Logger(OrdersGateway.name);
 
-    constructor(private readonly jwtService: JwtService) {}
+    constructor(
+        private readonly jwtService: JwtService,
+        private readonly notifications: NotificationsService,
+    ) {}
+
+    afterInit(server: Server): void {
+        this.notifications.registerServer(server);
+    }
 
     async handleConnection(client: Socket) {
         try {
@@ -45,7 +56,10 @@ export class OrdersGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 return;
             }
 
-            await client.join(`user_${userId}`);
+            await client.join(`user:${userId}`);
+            const role = typeof payload.role === 'string' ? payload.role : undefined;
+            if (role) await client.join(`role:${role}`);
+            if (role === 'SELLER') await client.join(`seller:${userId}`);
             this.logger.log(`Client connected: ${client.id} (User: ${userId})`);
         } catch (err: unknown) {
             const errorMessage =
@@ -60,7 +74,7 @@ export class OrdersGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     emitOrderStatusUpdate(userId: string, orderId: string, status: string) {
-        this.server.to(`user_${userId}`).emit('order_status_updated', {
+        this.server.to(`user:${userId}`).emit('order_status_updated', {
             orderId,
             status,
         });

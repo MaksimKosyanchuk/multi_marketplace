@@ -6,9 +6,12 @@ import { BiddingService } from './bidding.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { BiddingGateway } from './bidding.gateway';
+import { runWithCorrelationId } from '../common/correlation/correlation.context';
 
 interface AuctionJobData {
     auctionId: string;
+    correlationId?: string;
+    outboxEventId?: string;
 }
 
 @Processor('auctions')
@@ -24,6 +27,15 @@ export class BiddingProcessor extends WorkerHost {
     }
 
     async process(job: Job<AuctionJobData>): Promise<void> {
+        if (job.data.correlationId) {
+            return runWithCorrelationId(job.data.correlationId, () =>
+                this.processJob(job),
+            );
+        }
+        return this.processJob(job);
+    }
+
+    private async processJob(job: Job<AuctionJobData>): Promise<void> {
         if (job.name === 'start-auction') {
             await this.biddingService.startAuction(job.data.auctionId);
             return;
@@ -54,6 +66,7 @@ export class BiddingProcessor extends WorkerHost {
             return;
         }
         if (job.name === 'deliver-auction-event') {
+            void job.data.correlationId;
             await this.deliverEvent(job.data.outboxEventId);
         }
     }

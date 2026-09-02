@@ -40,7 +40,7 @@ export class SearchDispatcher implements OnModuleInit, OnModuleDestroy {
                     availableAt: { lte: now },
                     attempts: { lt: 5 },
                 },
-                select: { id: true, aggregateId: true, type: true },
+                select: { id: true, aggregateId: true, type: true, payload: true },
                 take: 50,
                 orderBy: { createdAt: 'asc' },
             });
@@ -54,6 +54,12 @@ export class SearchDispatcher implements OnModuleInit, OnModuleDestroy {
                                 event.type === 'product.archived'
                                     ? 'delete'
                                     : 'index',
+                            correlationId:
+                                typeof event.payload === 'object' &&
+                                event.payload !== null &&
+                                'correlationId' in event.payload
+                                    ? String(event.payload.correlationId)
+                                    : undefined,
                         },
                         {
                             jobId: `search:${event.id}`,

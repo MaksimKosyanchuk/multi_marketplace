@@ -141,6 +141,7 @@ model User {
   resolvedDisputes       Dispute[]       @relation("DisputeResolvedBy")
   payouts                Payout[]
   auctionWins            Auction[]       @relation("AuctionWinner")
+  notifications          Notification[]
   createdAt              DateTime        @default(now())
   updatedAt              DateTime        @updatedAt
 
@@ -485,6 +486,7 @@ model OutboxEvent {
   order          Order?       @relation("OrderOutboxEvents", fields: [orderId], references: [id], onDelete: Cascade)
   sellerOrder    SellerOrder? @relation("SellerOrderOutboxEvents", fields: [sellerOrderId], references: [id], onDelete: Cascade)
   createdAt      DateTime     @default(now())
+  consumerReceipts EventConsumerReceipt[]
 
   @@index([status, availableAt])
   @@index([aggregateType, aggregateId])
@@ -497,9 +499,25 @@ model EventConsumerReceipt {
   eventId       String
   consumerName  String
   processedAt   DateTime @default(now())
+  event         OutboxEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@unique([eventId, consumerName])
   @@index([consumerName, processedAt])
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  eventId     String
+  type        String
+  payload     Json
+  readAt      DateTime?
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, eventId])
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
 }
 
 model Log {

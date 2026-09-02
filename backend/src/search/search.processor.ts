@@ -4,10 +4,12 @@ import { RedisService } from '../redis/redis.service';
 import { SearchService } from './search.service';
 import { OutboxStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { runWithCorrelationId } from '../common/correlation/correlation.context';
 
 interface SearchJob {
     productId: string;
     action: 'index' | 'delete';
+    correlationId?: string;
 }
 
 @Processor('search')
@@ -21,6 +23,15 @@ export class SearchProcessor extends WorkerHost {
     }
 
     async process(job: Job<SearchJob>): Promise<void> {
+        if (job.data.correlationId) {
+            return runWithCorrelationId(job.data.correlationId, () =>
+                this.processJob(job),
+            );
+        }
+        return this.processJob(job);
+    }
+
+    private async processJob(job: Job<SearchJob>): Promise<void> {
         const eventId = String(job.id).replace('search:', '');
         const claimed = await this.prisma.outboxEvent.updateMany({
             where: {
