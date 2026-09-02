@@ -1,23 +1,53 @@
 import {
     ConnectedSocket,
+    OnGatewayConnection,
     OnGatewayInit,
     SubscribeMessage,
     WebSocketGateway,
     WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { JwtService } from '@nestjs/jwt';
+import { Logger } from '@nestjs/common';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 
-@WebSocketGateway({ cors: { origin: '*' } })
-export class BiddingGateway implements OnGatewayInit {
+interface JwtPayload {
+    sub?: string;
+    role?: string;
+}
+
+@WebSocketGateway({ cors: { origin: process.env.CLIENT_URL ?? false } })
+export class BiddingGateway implements OnGatewayInit, OnGatewayConnection {
     @WebSocketServer()
     server: Server;
 
     constructor(
         private readonly notifications: NotificationsService,
         private readonly prisma: PrismaService,
+        private readonly jwt: JwtService,
     ) {}
+
+    private readonly logger = new Logger(BiddingGateway.name);
+
+    async handleConnection(client: Socket): Promise<void> {
+        try {
+            const token = client.handshake.auth?.token as string | undefined;
+            if (!token) return client.disconnect();
+            const payload = await this.jwt.verifyAsync<JwtPayload>(token);
+            if (!payload.sub) return client.disconnect();
+            client.data.userId = payload.sub;
+            client.data.role = payload.role;
+            await client.join(`user:${payload.sub}`);
+            if (payload.role === 'SELLER')
+                await client.join(`seller:${payload.sub}`);
+        } catch (error: unknown) {
+            this.logger.warn(
+                `Rejected auction socket: ${error instanceof Error ? error.message : 'invalid token'}`,
+            );
+            client.disconnect();
+        }
+    }
 
     @SubscribeMessage('auction_subscribe')
     async subscribe(
@@ -28,9 +58,22 @@ export class BiddingGateway implements OnGatewayInit {
         if (!client.data.userId || !auctionId) return { subscribed: false };
         const auction = await this.prisma.auction.findUnique({
             where: { id: auctionId },
-            select: { id: true },
+            select: {
+                id: true,
+                status: true,
+                product: { select: { sellerId: true, isArchived: true } },
+            },
         });
-        if (!auction) return { subscribed: false };
+        if (
+            !auction ||
+            auction.product.isArchived ||
+            auction.status === 'CANCELLED'
+        )
+            return { subscribed: false };
+        if (auction.product.sellerId === client.data.userId) {
+            await client.join(`auction:${auctionId}`);
+            return { subscribed: true };
+        }
         await client.join(`auction:${auctionId}`);
         return { subscribed: true };
     }
@@ -40,7 +83,8 @@ export class BiddingGateway implements OnGatewayInit {
         @ConnectedSocket() client: Socket,
         payload: { auctionId?: string },
     ): Promise<{ subscribed: boolean }> {
-        if (payload?.auctionId) await client.leave(`auction:${payload.auctionId}`);
+        if (payload?.auctionId)
+            await client.leave(`auction:${payload.auctionId}`);
         return { subscribed: false };
     }
 
@@ -58,7 +102,9 @@ export class BiddingGateway implements OnGatewayInit {
 
     emitAuctionEvent(type: string, payload: object) {
         const auctionId =
-            typeof payload.auctionId === 'string' ? payload.auctionId : undefined;
+            typeof payload.auctionId === 'string'
+                ? payload.auctionId
+                : undefined;
         (auctionId ? this.server.to(`auction:${auctionId}`) : this.server).emit(
             'auction_event',
             { type, payload },

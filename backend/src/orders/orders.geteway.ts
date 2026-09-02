@@ -19,7 +19,7 @@ interface JwtPayload {
 @Injectable()
 @WebSocketGateway({
     cors: {
-        origin: '*',
+        origin: process.env.CLIENT_URL ?? false,
     },
 })
 export class OrdersGateway
@@ -58,7 +58,8 @@ export class OrdersGateway
 
             client.data.userId = userId;
             await client.join(`user:${userId}`);
-            const role = typeof payload.role === 'string' ? payload.role : undefined;
+            const role =
+                typeof payload.role === 'string' ? payload.role : undefined;
             if (role) await client.join(`role:${role}`);
             if (role === 'SELLER') await client.join(`seller:${userId}`);
             this.logger.log(`Client connected: ${client.id} (User: ${userId})`);

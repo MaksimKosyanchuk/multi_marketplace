@@ -2,6 +2,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from './notifications.service';
+import { runWithCorrelationId } from '../common/correlation/correlation.context';
 
 interface NotificationJob {
     outboxEventId: string;
@@ -18,6 +19,18 @@ export class NotificationsProcessor extends WorkerHost {
     }
 
     async process(job: Job<NotificationJob>): Promise<void> {
+        const correlationId = job.data.correlationId;
+        if (correlationId) {
+            return runWithCorrelationId(correlationId, () =>
+                this.processNotification(job),
+            );
+        }
+        return this.processNotification(job);
+    }
+
+    private async processNotification(
+        job: Job<NotificationJob>,
+    ): Promise<void> {
         const event = await this.prisma.outboxEvent.findUnique({
             where: { id: job.data.outboxEventId },
             include: {
@@ -25,7 +38,8 @@ export class NotificationsProcessor extends WorkerHost {
                 sellerOrder: { select: { sellerId: true } },
             },
         });
-        if (!event) throw new Error(`Outbox event ${job.data.outboxEventId} not found`);
+        if (!event)
+            throw new Error(`Outbox event ${job.data.outboxEventId} not found`);
         const receipt = await this.prisma.eventConsumerReceipt.findUnique({
             where: {
                 eventId_consumerName: {
@@ -72,27 +86,31 @@ export class NotificationsProcessor extends WorkerHost {
                 : {};
         const targets = new Set<string>();
         if (event.order?.userId) targets.add(event.order.userId);
-        if (event.sellerOrder?.sellerId) targets.add(event.sellerOrder.sellerId);
+        if (event.sellerOrder?.sellerId)
+            targets.add(event.sellerOrder.sellerId);
         for (const key of ['userId', 'customerId', 'sellerId']) {
             if (typeof payload[key] === 'string') targets.add(payload[key]);
         }
         try {
             for (const userId of targets) {
-            await this.prisma.notification.upsert({
-                where: { userId_eventId: { userId, eventId: event.id } },
-                create: {
-                    userId,
+                await this.prisma.notification.upsert({
+                    where: { userId_eventId: { userId, eventId: event.id } },
+                    create: {
+                        userId,
+                        eventId: event.id,
+                        type: event.type,
+                        payload: {
+                            ...payload,
+                            correlationId: job.data.correlationId,
+                        },
+                    },
+                    update: {},
+                });
+                this.notifications.notifyUser(userId, event.type, {
                     eventId: event.id,
-                    type: event.type,
-                    payload: { ...payload, correlationId: job.data.correlationId },
-                },
-                update: {},
-            });
-            this.notifications.notifyUser(userId, event.type, {
-                eventId: event.id,
-                ...payload,
-                correlationId: job.data.correlationId,
-            });
+                    ...payload,
+                    correlationId: job.data.correlationId,
+                });
             }
             await this.prisma.eventConsumerReceipt.update({
                 where: { id: claimed.id },
