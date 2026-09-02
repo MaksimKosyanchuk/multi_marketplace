@@ -6,6 +6,7 @@ import { OrdersProcessor } from './orders.processor';
 import { OrdersDispatcher } from './orders.dispatcher';
 import { OrdersGateway } from './orders.geteway';
 import { AuthModule } from 'src/auth/auth.module';
+import { PaymentsModule } from '../payments/payments.module';
 
 @Module({
     imports: [
@@ -13,6 +14,7 @@ import { AuthModule } from 'src/auth/auth.module';
             name: 'orders',
         }),
         AuthModule,
+        PaymentsModule,
     ],
     controllers: [OrdersController],
     providers: [

@@ -92,8 +92,27 @@ export class OrdersController {
     payOrder(
         @Req() req: Request & { user: { id: string } },
         @Param('id') id: string,
+        @Headers('idempotency-key') idempotencyKey: string | undefined,
     ): ReturnType<OrdersService['payOrder']> {
-        return this.ordersService.payOrder(req.user.id, id);
+        return this.ordersService.payOrder(
+            req.user.id,
+            id,
+            idempotencyKey ?? '',
+        );
+    }
+
+    @Post(':id/payment/cancel')
+    @ApiOperation({ summary: 'Отменить pending mock-платеж и заказ' })
+    cancelPayment(
+        @Req() req: Request & { user: { id: string } },
+        @Param('id') id: string,
+        @Headers('idempotency-key') idempotencyKey: string | undefined,
+    ): ReturnType<OrdersService['cancelPayment']> {
+        return this.ordersService.cancelPayment(
+            req.user.id,
+            id,
+            idempotencyKey ?? '',
+        );
     }
 
     @Post(':id/cancel')

@@ -21,6 +21,7 @@ import { LoggerService } from '../logger/logger.service';
 import { RedisService } from '../redis/redis.service';
 import { QueryOrderDto } from './dto/query-order.dto';
 import { UpdateSellerOrderStatusDto } from './dto/update-seller-order-status.dto';
+import { MockPaymentService } from '../payments/mock-payment.service';
 
 const orderDetails = {
     sellerOrders: {
@@ -50,6 +51,11 @@ export function deriveOrderStatus(statuses: SellerOrderStatus[]): OrderStatus {
     if (statuses.some((status) => status === SellerOrderStatus.CANCELLED)) {
         return OrderStatus.PARTIALLY_CANCELLED;
     }
+    if (
+        statuses.every((status) => status === SellerOrderStatus.PAYMENT_PENDING)
+    ) {
+        return OrderStatus.PAYMENT_PENDING;
+    }
     if (statuses.every((status) => status === SellerOrderStatus.COMPLETED)) {
         return OrderStatus.COMPLETED;
     }
@@ -75,6 +81,7 @@ export class OrdersService {
         @InjectQueue('orders') private readonly ordersQueue: Queue,
         private readonly logger: LoggerService,
         private readonly redis: RedisService,
+        private readonly mockPayment: MockPaymentService,
     ) {}
 
     /** Creates all seller sub-orders, stock mutations, ledger entries, and outbox events atomically. */
@@ -171,7 +178,7 @@ export class OrdersService {
                 const order = await tx.order.create({
                     data: {
                         userId,
-                        status: OrderStatus.NEW,
+                        status: OrderStatus.PAYMENT_PENDING,
                         subtotal: totalAmount,
                         totalAmount,
                         payments: {
@@ -194,7 +201,7 @@ export class OrdersService {
                                         group.subtotal.sub(commissionAmount);
                                     return {
                                         sellerId,
-                                        status: SellerOrderStatus.NEW,
+                                        status: SellerOrderStatus.PAYMENT_PENDING,
                                         subtotal: group.subtotal,
                                         commissionRate,
                                         commissionAmount,
@@ -279,38 +286,215 @@ export class OrdersService {
         }
     }
 
-    async payOrder(userId: string, orderId: string) {
-        const order = await this.prisma.order.findUnique({
-            where: { id: orderId },
+    async payOrder(userId: string, orderId: string, idempotencyKey: string) {
+        if (!idempotencyKey?.trim()) {
+            throw new BadRequestException('Idempotency-Key header is required');
+        }
+        const eventKey = `payment-paid:${idempotencyKey}`;
+        const existing = await this.prisma.outboxEvent.findUnique({
+            where: { idempotencyKey: eventKey },
+            include: { order: { include: orderDetails } },
         });
-        if (!order) throw new NotFoundException('Order not found');
-        if (order.userId !== userId)
-            throw new ForbiddenException(
-                'You do not have access to this order',
-            );
-        if (order.status !== OrderStatus.NEW) {
-            throw new BadRequestException(
-                `Order cannot be paid in status ${order.status}`,
-            );
+        if (existing?.order) {
+            if (existing.order.userId !== userId) {
+                throw new ForbiddenException(
+                    'Idempotency key belongs to another user',
+                );
+            }
+            return existing.order;
         }
 
-        const updated = await this.prisma.$transaction(async (tx) => {
-            await tx.payment.updateMany({
-                where: { orderId, status: PaymentStatus.PENDING },
-                data: { status: PaymentStatus.PAID, paidAt: new Date() },
+        try {
+            const updated = await this.prisma.$transaction(async (tx) => {
+                const order = await tx.order.findUnique({
+                    where: { id: orderId },
+                    include: { payments: true },
+                });
+                if (!order) throw new NotFoundException('Order not found');
+                if (order.userId !== userId) {
+                    throw new ForbiddenException(
+                        'You do not have access to this order',
+                    );
+                }
+                if (
+                    order.status !== OrderStatus.PAYMENT_PENDING &&
+                    order.status !== OrderStatus.NEW
+                ) {
+                    throw new BadRequestException(
+                        `Order cannot be paid in status ${order.status}`,
+                    );
+                }
+                const payment = order.payments.find(
+                    ({ status }) => status === PaymentStatus.PENDING,
+                );
+                if (!payment)
+                    throw new BadRequestException('Payment is not pending');
+                const charge = this.mockPayment.charge(
+                    payment.id,
+                    payment.amount,
+                );
+                await tx.payment.update({
+                    where: { id: payment.id },
+                    data: {
+                        status: PaymentStatus.PAID,
+                        providerRef: charge.providerRef,
+                        paidAt: new Date(),
+                    },
+                });
+                await tx.ledgerEntry.create({
+                    data: {
+                        paymentId: payment.id,
+                        type: LedgerEntryType.CUSTOMER_CHARGE,
+                        amount: charge.amount,
+                        idempotencyKey: `${idempotencyKey}:charge-ledger`,
+                    },
+                });
+                await tx.sellerOrder.updateMany({
+                    where: {
+                        orderId,
+                        status: {
+                            in: [
+                                SellerOrderStatus.PAYMENT_PENDING,
+                                SellerOrderStatus.NEW,
+                            ],
+                        },
+                    },
+                    data: { status: SellerOrderStatus.PROCESSING },
+                });
+                const result = await tx.order.update({
+                    where: { id: orderId },
+                    data: { status: OrderStatus.PROCESSING },
+                    include: orderDetails,
+                });
+                await tx.outboxEvent.create({
+                    data: {
+                        orderId,
+                        aggregateType: 'Payment',
+                        aggregateId: payment.id,
+                        type: 'payment.paid',
+                        payload: { orderId, amount: charge.amount.toString() },
+                        idempotencyKey: eventKey,
+                    },
+                });
+                return result;
             });
-            await tx.sellerOrder.updateMany({
-                where: { orderId, status: SellerOrderStatus.NEW },
-                data: { status: SellerOrderStatus.PROCESSING },
-            });
-            return tx.order.update({
-                where: { id: orderId },
-                data: { status: OrderStatus.PROCESSING },
-                include: orderDetails,
-            });
+            await this.ordersQueue.add('process-order', { orderId });
+            return updated;
+        } catch (error: unknown) {
+            if (
+                error instanceof Prisma.PrismaClientKnownRequestError &&
+                error.code === 'P2002'
+            ) {
+                const retry = await this.prisma.outboxEvent.findUnique({
+                    where: { idempotencyKey: eventKey },
+                    include: { order: { include: orderDetails } },
+                });
+                if (retry?.order) return retry.order;
+            }
+            throw error;
+        }
+    }
+
+    async cancelPayment(
+        userId: string,
+        orderId: string,
+        idempotencyKey: string,
+    ) {
+        if (!idempotencyKey?.trim()) {
+            throw new BadRequestException('Idempotency-Key header is required');
+        }
+        const eventKey = `payment-cancelled:${idempotencyKey}`;
+        const existing = await this.prisma.outboxEvent.findUnique({
+            where: { idempotencyKey: eventKey },
+            include: { order: { include: orderDetails } },
         });
-        await this.ordersQueue.add('process-order', { orderId });
-        return updated;
+        if (existing?.order) return existing.order;
+
+        try {
+            const result = await this.prisma.$transaction(async (tx) => {
+                const order = await tx.order.findUnique({
+                    where: { id: orderId },
+                    include: {
+                        payments: true,
+                        sellerOrders: { include: { items: true } },
+                    },
+                });
+                if (!order) throw new NotFoundException('Order not found');
+                if (order.userId !== userId) {
+                    throw new ForbiddenException(
+                        'You do not have access to this order',
+                    );
+                }
+                const payment = order.payments.find(
+                    ({ status }) => status === PaymentStatus.PENDING,
+                );
+                if (!payment)
+                    throw new BadRequestException(
+                        'Only pending payments can be cancelled',
+                    );
+                const cancellation = this.mockPayment.cancel(payment.id);
+                await tx.payment.update({
+                    where: { id: payment.id },
+                    data: {
+                        status: PaymentStatus.CANCELLED,
+                        providerRef: cancellation.providerRef,
+                    },
+                });
+                for (const sellerOrder of order.sellerOrders) {
+                    if (sellerOrder.status === SellerOrderStatus.CANCELLED)
+                        continue;
+                    await tx.sellerOrder.update({
+                        where: { id: sellerOrder.id },
+                        data: {
+                            status: SellerOrderStatus.CANCELLED,
+                            cancelledAt: new Date(),
+                            cancellationReason: 'Payment cancelled',
+                        },
+                    });
+                    for (const item of sellerOrder.items) {
+                        await tx.product.update({
+                            where: { id: item.productId },
+                            data: {
+                                stock: { increment: item.quantity },
+                                version: { increment: 1 },
+                            },
+                        });
+                    }
+                }
+                const result = await tx.order.update({
+                    where: { id: orderId },
+                    data: { status: OrderStatus.CANCELLED },
+                    include: orderDetails,
+                });
+                await tx.outboxEvent.create({
+                    data: {
+                        orderId,
+                        aggregateType: 'Payment',
+                        aggregateId: payment.id,
+                        type: 'payment.cancelled',
+                        payload: {
+                            orderId,
+                            providerRef: cancellation.providerRef,
+                        },
+                        idempotencyKey: eventKey,
+                    },
+                });
+                return result;
+            });
+            return result;
+        } catch (error: unknown) {
+            if (
+                error instanceof Prisma.PrismaClientKnownRequestError &&
+                error.code === 'P2002'
+            ) {
+                const retry = await this.prisma.outboxEvent.findUnique({
+                    where: { idempotencyKey: eventKey },
+                    include: { order: { include: orderDetails } },
+                });
+                if (retry?.order) return retry.order;
+            }
+            throw error;
+        }
     }
 
     async cancelOrder(userId: string, orderId: string) {
@@ -322,16 +506,6 @@ export class OrdersService {
             throw new ForbiddenException(
                 'You do not have access to this order',
             );
-        if (
-            order.status === OrderStatus.PAYMENT_PENDING ||
-            order.status === OrderStatus.COMPLETED ||
-            order.status === OrderStatus.CANCELLED
-        ) {
-            throw new BadRequestException(
-                `Order cannot be cancelled in status ${order.status}`,
-            );
-        }
-
         const updated = await this.prisma.$transaction(async (tx) => {
             const currentOrder = await tx.order.findUnique({
                 where: { id: orderId },
@@ -347,7 +521,6 @@ export class OrdersService {
                 );
             }
             if (
-                currentOrder.status === OrderStatus.PAYMENT_PENDING ||
                 currentOrder.status === OrderStatus.COMPLETED ||
                 currentOrder.status === OrderStatus.CANCELLED
             ) {
@@ -361,11 +534,16 @@ export class OrdersService {
                     status === PaymentStatus.PAID ||
                     status === PaymentStatus.PARTIALLY_REFUNDED,
             );
+            const pendingPayment = currentOrder.payments.find(
+                ({ status }) => status === PaymentStatus.PENDING,
+            );
             const now = new Date();
             for (const sellerOrder of currentOrder.sellerOrders) {
                 if (sellerOrder.status === SellerOrderStatus.CANCELLED)
                     continue;
                 if (
+                    sellerOrder.status !== SellerOrderStatus.PAYMENT_PENDING &&
+                    sellerOrder.status !== SellerOrderStatus.PAYMENT_PENDING &&
                     sellerOrder.status !== SellerOrderStatus.NEW &&
                     sellerOrder.status !== SellerOrderStatus.PROCESSING
                 ) {
@@ -379,6 +557,7 @@ export class OrdersService {
                         id: sellerOrder.id,
                         status: {
                             in: [
+                                SellerOrderStatus.PAYMENT_PENDING,
                                 SellerOrderStatus.NEW,
                                 SellerOrderStatus.PROCESSING,
                             ],
@@ -479,6 +658,16 @@ export class OrdersService {
                     },
                 });
             }
+            if (pendingPayment) {
+                const cancellation = this.mockPayment.cancel(pendingPayment.id);
+                await tx.payment.update({
+                    where: { id: pendingPayment.id },
+                    data: {
+                        status: PaymentStatus.CANCELLED,
+                        providerRef: cancellation.providerRef,
+                    },
+                });
+            }
             const statuses = await tx.sellerOrder.findMany({
                 where: { orderId },
                 select: { status: true },
@@ -571,6 +760,7 @@ export class OrdersService {
                         id: sellerOrderId,
                         status: {
                             in: [
+                                SellerOrderStatus.PAYMENT_PENDING,
                                 SellerOrderStatus.NEW,
                                 SellerOrderStatus.PROCESSING,
                             ],
@@ -605,26 +795,28 @@ export class OrdersService {
                     const earnings = refundAmount.sub(commission);
                     refundTotal = refundTotal.add(refundAmount);
                     commissionReduction = commissionReduction.add(commission);
-                    await tx.refund.create({
-                        data: {
-                            sellerOrderId,
-                            orderItemId: item.id,
-                            paymentId: payment?.id,
-                            amount: refundAmount,
-                            quantity: item.quantity,
-                            reason: reason.trim() || 'Cancelled by seller',
-                            status: 'PROCESSED' as const,
-                            idempotencyKey: `${idempotencyKey}:refund:${item.id}`,
-                            processedAt: now,
-                            ledgerEntries: {
-                                create: {
-                                    type: LedgerEntryType.REFUND,
-                                    amount: refundAmount.neg(),
-                                    idempotencyKey: `${idempotencyKey}:refund-ledger:${item.id}`,
+                    if (payment) {
+                        await tx.refund.create({
+                            data: {
+                                sellerOrderId,
+                                orderItemId: item.id,
+                                paymentId: payment.id,
+                                amount: refundAmount,
+                                quantity: item.quantity,
+                                reason: reason.trim() || 'Cancelled by seller',
+                                status: 'PROCESSED' as const,
+                                idempotencyKey: `${idempotencyKey}:refund:${item.id}`,
+                                processedAt: now,
+                                ledgerEntries: {
+                                    create: {
+                                        type: LedgerEntryType.REFUND,
+                                        amount: refundAmount.neg(),
+                                        idempotencyKey: `${idempotencyKey}:refund-ledger:${item.id}`,
+                                    },
                                 },
                             },
-                        },
-                    });
+                        });
+                    }
                     await tx.product.update({
                         where: { id: item.productId },
                         data: {
@@ -641,7 +833,9 @@ export class OrdersService {
                         cancelledAt: now,
                         cancellationReason:
                             reason.trim() || 'Cancelled by seller',
-                        refundedAmount: { increment: refundTotal },
+                        refundedAmount: {
+                            increment: payment ? refundTotal : 0,
+                        },
                         commissionAmount: { decrement: commissionReduction },
                         sellerEarnings: {
                             decrement: refundTotal.sub(commissionReduction),

@@ -14,6 +14,7 @@ import { QueueModule } from './queue/queue.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { LoggerModule } from './logger/logger.module';
 import { SellersModule } from './sellers/sellers.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
     imports: [
@@ -41,6 +42,8 @@ import { SellersModule } from './sellers/sellers.module';
         LoggerModule,
 
         SellersModule,
+
+        PaymentsModule,
     ],
 
     controllers: [AppController],
