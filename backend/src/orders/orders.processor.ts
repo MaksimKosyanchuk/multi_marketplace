@@ -2,7 +2,6 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
-import { OrderStatus } from '@prisma/client';
 import { OrdersGateway } from './orders.geteway';
 
 export interface OrderJobData {
@@ -24,19 +23,19 @@ export class OrdersProcessor extends WorkerHost {
         const { orderId } = job.data;
         this.logger.log(`Processing order ${orderId}...`);
 
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-
-        const updatedOrder = await this.prisma.order.update({
+        const order = await this.prisma.order.findUnique({
             where: { id: orderId },
-            data: { status: OrderStatus.PROCESSING },
         });
+        if (!order) {
+            throw new Error(`Order ${orderId} was not found`);
+        }
 
-        this.logger.log(`Order ${orderId} moved to PROCESSING`);
+        this.logger.log(`Publishing current status for order ${orderId}`);
 
         this.ordersGateway.emitOrderStatusUpdate(
-            updatedOrder.userId,
-            updatedOrder.id,
-            updatedOrder.status,
+            order.userId,
+            order.id,
+            order.status,
         );
     }
 }

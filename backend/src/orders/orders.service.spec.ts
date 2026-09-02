@@ -7,17 +7,19 @@ import {
     ProductStatus,
     ProductType,
     Role,
+    SellerOrderStatus,
 } from '@prisma/client';
 import { LoggerService } from '../logger/logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
-import { OrdersService } from './orders.service';
+import { deriveOrderStatus, OrdersService } from './orders.service';
 
 describe('OrdersService checkout', () => {
     let service: OrdersService;
     const transaction = jest.fn();
     const prisma = {
         payment: { findUnique: jest.fn() },
+        sellerOrder: { findUnique: jest.fn(), findMany: jest.fn() },
         $transaction: transaction,
     };
     const queue = { add: jest.fn() };
@@ -120,5 +122,67 @@ describe('OrdersService checkout', () => {
         });
         (prisma as Record<string, unknown>).order = { findUnique };
         await expect(service.findOne('seller-1', Role.SELLER, 'order-1')).rejects.toThrow('access');
+    });
+
+    it.each([
+        [[SellerOrderStatus.NEW], OrderStatus.NEW],
+        [[SellerOrderStatus.PROCESSING, SellerOrderStatus.PROCESSING], OrderStatus.PROCESSING],
+        [[SellerOrderStatus.SHIPPED, SellerOrderStatus.PROCESSING], OrderStatus.PARTIALLY_SHIPPED],
+        [[SellerOrderStatus.COMPLETED, SellerOrderStatus.SHIPPED], OrderStatus.PARTIALLY_COMPLETED],
+        [[SellerOrderStatus.CANCELLED, SellerOrderStatus.PROCESSING], OrderStatus.PARTIALLY_CANCELLED],
+        [[SellerOrderStatus.CANCELLED], OrderStatus.CANCELLED],
+    ])('derives parent status from seller-order statuses', (statuses, expected) => {
+        expect(deriveOrderStatus(statuses)).toBe(expected);
+    });
+
+    it('updates an owned seller order, derives parent status, and records outbox events', async () => {
+        const tx = {
+            sellerOrder: {
+                findUnique: jest.fn().mockResolvedValue({
+                    id: 'seller-order-1', sellerId: 'seller-1', orderId: 'order-1',
+                    status: SellerOrderStatus.PROCESSING,
+                    order: { id: 'order-1', status: OrderStatus.PROCESSING },
+                }),
+                update: jest.fn().mockResolvedValue({
+                    id: 'seller-order-1', sellerId: 'seller-1',
+                    status: SellerOrderStatus.SHIPPED, items: [], order: {}, seller: {},
+                }),
+                findMany: jest.fn().mockResolvedValue([
+                    { status: SellerOrderStatus.SHIPPED },
+                    { status: SellerOrderStatus.PROCESSING },
+                ]),
+            },
+            order: { update: jest.fn().mockResolvedValue({ id: 'order-1', status: OrderStatus.PARTIALLY_SHIPPED }) },
+            outboxEvent: { createMany: jest.fn() },
+        };
+        transaction.mockImplementation((callback: (client: typeof tx) => unknown) => callback(tx));
+
+        const result = await service.updateSellerOrderStatus('seller-1', 'seller-order-1', {
+            status: SellerOrderStatus.SHIPPED,
+            trackingNumber: 'UA123',
+        });
+
+        expect(result.order.status).toBe(OrderStatus.PARTIALLY_SHIPPED);
+        expect(tx.sellerOrder.update).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({ status: SellerOrderStatus.SHIPPED, trackingNumber: 'UA123' }),
+        }));
+        expect(tx.outboxEvent.createMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects an illegal seller-order transition before writing changes', async () => {
+        const tx = {
+            sellerOrder: {
+                findUnique: jest.fn().mockResolvedValue({
+                    id: 'seller-order-1', sellerId: 'seller-1', orderId: 'order-1',
+                    status: SellerOrderStatus.NEW,
+                    order: { id: 'order-1', status: OrderStatus.NEW },
+                }),
+            },
+        };
+        transaction.mockImplementation((callback: (client: typeof tx) => unknown) => callback(tx));
+
+        await expect(service.updateSellerOrderStatus('seller-1', 'seller-order-1', {
+            status: SellerOrderStatus.COMPLETED,
+        })).rejects.toThrow('Cannot change seller order');
     });
 });

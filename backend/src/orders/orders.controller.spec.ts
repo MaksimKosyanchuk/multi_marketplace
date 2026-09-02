@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { OrderStatus, Role } from '@prisma/client';
+import { Role, SellerOrderStatus } from '@prisma/client';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 import { QueryOrderDto } from './dto/query-order.dto';
-import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { UpdateSellerOrderStatusDto } from './dto/update-seller-order-status.dto';
 
 interface RequestWithUser {
     user: {
@@ -39,9 +39,17 @@ describe('OrdersController', () => {
         ReturnType<OrdersService['findAll']>,
         Parameters<OrdersService['findAll']>
     >();
-    const updateStatusMock = jest.fn<
-        ReturnType<OrdersService['updateStatus']>,
-        Parameters<OrdersService['updateStatus']>
+    const findMySellerOrdersMock = jest.fn<
+        ReturnType<OrdersService['findMySellerOrders']>,
+        Parameters<OrdersService['findMySellerOrders']>
+    >();
+    const findSellerOrderMock = jest.fn<
+        ReturnType<OrdersService['findSellerOrder']>,
+        Parameters<OrdersService['findSellerOrder']>
+    >();
+    const updateSellerOrderStatusMock = jest.fn<
+        ReturnType<OrdersService['updateSellerOrderStatus']>,
+        Parameters<OrdersService['updateSellerOrderStatus']>
     >();
 
     const mockOrdersService: Pick<
@@ -52,7 +60,9 @@ describe('OrdersController', () => {
         | 'findMyOrders'
         | 'findOne'
         | 'findAll'
-        | 'updateStatus'
+        | 'findMySellerOrders'
+        | 'findSellerOrder'
+        | 'updateSellerOrderStatus'
     > = {
         checkout: checkoutMock,
         payOrder: payOrderMock,
@@ -60,7 +70,9 @@ describe('OrdersController', () => {
         findMyOrders: findMyOrdersMock,
         findOne: findOneMock,
         findAll: findAllMock,
-        updateStatus: updateStatusMock,
+        findMySellerOrders: findMySellerOrdersMock,
+        findSellerOrder: findSellerOrderMock,
+        updateSellerOrderStatus: updateSellerOrderStatusMock,
     };
 
     const mockUserReq: RequestWithUser = {
@@ -153,16 +165,27 @@ describe('OrdersController', () => {
         });
     });
 
-    describe('updateStatus', () => {
-        it('should call ordersService.updateStatus with order id and dto', async () => {
-            const dto: UpdateOrderStatusDto = {
-                status: OrderStatus.PROCESSING,
+    describe('seller orders', () => {
+        const sellerReq: RequestWithUser = {
+            user: { id: 'seller-1', role: Role.SELLER },
+        };
+
+        it('scopes seller order listing to the authenticated seller', async () => {
+            await controller.findMySellerOrders(sellerReq);
+            expect(findMySellerOrdersMock).toHaveBeenCalledWith('seller-1');
+        });
+
+        it('passes the authenticated seller and transition command to the service', async () => {
+            const dto: UpdateSellerOrderStatusDto = {
+                status: SellerOrderStatus.SHIPPED,
+                trackingNumber: 'UA123',
             };
-
-            await controller.updateStatus('order-1', dto);
-
-            expect(updateStatusMock).toHaveBeenCalledWith('order-1', dto);
-            expect(updateStatusMock).toHaveBeenCalledTimes(1);
+            await controller.updateSellerOrderStatus(sellerReq, 'seller-order-1', dto);
+            expect(updateSellerOrderStatusMock).toHaveBeenCalledWith(
+                'seller-1',
+                'seller-order-1',
+                dto,
+            );
         });
     });
 });

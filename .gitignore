@@ -3,5 +3,10 @@
 
 # Graphify
 graphify-out/
+graphify-out.backup/
 
+.graphifyignore
 AGENTS.md
+PROJECT_HANDOFF.md
+
+TECHNICAL_SPECIFICATION.md

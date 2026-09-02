@@ -20,7 +20,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { LoggerService } from '../logger/logger.service';
 import { RedisService } from '../redis/redis.service';
 import { QueryOrderDto } from './dto/query-order.dto';
-import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { UpdateSellerOrderStatusDto } from './dto/update-seller-order-status.dto';
 
 const orderDetails = {
     sellerOrders: {
@@ -30,6 +30,40 @@ const orderDetails = {
         },
     },
 } satisfies Prisma.OrderInclude;
+
+const sellerOrderDetails = {
+    order: true,
+    items: true,
+    seller: { select: { id: true, email: true, nickName: true } },
+} satisfies Prisma.SellerOrderInclude;
+
+export function deriveOrderStatus(statuses: SellerOrderStatus[]): OrderStatus {
+    if (!statuses.length || statuses.every((status) => status === SellerOrderStatus.NEW)) {
+        return OrderStatus.NEW;
+    }
+    if (statuses.every((status) => status === SellerOrderStatus.CANCELLED)) {
+        return OrderStatus.CANCELLED;
+    }
+    if (statuses.some((status) => status === SellerOrderStatus.CANCELLED)) {
+        return OrderStatus.PARTIALLY_CANCELLED;
+    }
+    if (statuses.every((status) => status === SellerOrderStatus.COMPLETED)) {
+        return OrderStatus.COMPLETED;
+    }
+    if (statuses.some((status) => status === SellerOrderStatus.COMPLETED)) {
+        return OrderStatus.PARTIALLY_COMPLETED;
+    }
+    if (statuses.every((status) => status === SellerOrderStatus.SHIPPED)) {
+        return OrderStatus.SHIPPED;
+    }
+    if (statuses.some((status) => status === SellerOrderStatus.SHIPPED)) {
+        return OrderStatus.PARTIALLY_SHIPPED;
+    }
+    if (statuses.some((status) => status === SellerOrderStatus.PROCESSING)) {
+        return OrderStatus.PROCESSING;
+    }
+    return OrderStatus.NEW;
+}
 
 @Injectable()
 export class OrdersService {
@@ -298,6 +332,114 @@ export class OrdersService {
         });
     }
 
+    findMySellerOrders(sellerId: string) {
+        return this.prisma.sellerOrder.findMany({
+            where: { sellerId },
+            include: sellerOrderDetails,
+            orderBy: { createdAt: 'desc' },
+        });
+    }
+
+    async findSellerOrder(sellerId: string, sellerOrderId: string) {
+        const sellerOrder = await this.prisma.sellerOrder.findUnique({
+            where: { id: sellerOrderId },
+            include: sellerOrderDetails,
+        });
+        if (!sellerOrder) throw new NotFoundException('Seller order not found');
+        if (sellerOrder.sellerId !== sellerId) {
+            throw new ForbiddenException('You do not have access to this seller order');
+        }
+        return sellerOrder;
+    }
+
+    async updateSellerOrderStatus(
+        sellerId: string,
+        sellerOrderId: string,
+        dto: UpdateSellerOrderStatusDto,
+    ) {
+        const result = await this.prisma.$transaction(async (tx) => {
+            const sellerOrder = await tx.sellerOrder.findUnique({
+                where: { id: sellerOrderId },
+                include: { order: true },
+            });
+            if (!sellerOrder) throw new NotFoundException('Seller order not found');
+            if (sellerOrder.sellerId !== sellerId) {
+                throw new ForbiddenException('You do not have access to this seller order');
+            }
+
+            this.assertSellerOrderTransition(sellerOrder.status, dto.status);
+            if (dto.status === SellerOrderStatus.SHIPPED && !dto.trackingNumber?.trim()) {
+                throw new BadRequestException('Tracking number is required when shipping an order');
+            }
+
+            const now = new Date();
+            const updatedSellerOrder = await tx.sellerOrder.update({
+                where: { id: sellerOrderId },
+                data: {
+                    status: dto.status,
+                    ...(dto.status === SellerOrderStatus.SHIPPED && {
+                        trackingNumber: dto.trackingNumber!.trim(),
+                        shippedAt: now,
+                    }),
+                    ...(dto.status === SellerOrderStatus.COMPLETED && { completedAt: now }),
+                },
+                include: sellerOrderDetails,
+            });
+            const siblingStatuses = await tx.sellerOrder.findMany({
+                where: { orderId: sellerOrder.orderId },
+                select: { status: true },
+            });
+            const nextOrderStatus = deriveOrderStatus(
+                siblingStatuses.map(({ status }) => status),
+            );
+            const parentChanged = sellerOrder.order.status !== nextOrderStatus;
+            const order = parentChanged
+                ? await tx.order.update({
+                      where: { id: sellerOrder.orderId },
+                      data: { status: nextOrderStatus },
+                  })
+                : sellerOrder.order;
+
+            await tx.outboxEvent.createMany({
+                data: [
+                    {
+                        orderId: order.id,
+                        sellerOrderId: updatedSellerOrder.id,
+                        aggregateType: 'SellerOrder',
+                        aggregateId: updatedSellerOrder.id,
+                        type: 'seller-order.status-changed',
+                        payload: {
+                            sellerId,
+                            previousStatus: sellerOrder.status,
+                            status: updatedSellerOrder.status,
+                        },
+                        idempotencyKey: `${updatedSellerOrder.id}:status:${sellerOrder.status}:${updatedSellerOrder.status}`,
+                    },
+                    ...(parentChanged
+                        ? [{
+                              orderId: order.id,
+                              aggregateType: 'Order',
+                              aggregateId: order.id,
+                              type: 'order.status-changed',
+                              payload: {
+                                  previousStatus: sellerOrder.order.status,
+                                  status: order.status,
+                              },
+                              idempotencyKey: `${order.id}:status:${sellerOrder.order.status}:${order.status}`,
+                          }]
+                        : []),
+                ],
+            });
+            return { sellerOrder: updatedSellerOrder, order };
+        });
+
+        await this.logger.log(OrdersService.name, `Seller order status changed: ${sellerOrderId}`, {
+            sellerId,
+            status: result.sellerOrder.status,
+        });
+        return result;
+    }
+
     async findOne(userId: string, userRole: Role, orderId: string) {
         const order = await this.prisma.order.findUnique({ where: { id: orderId }, include: orderDetails });
         if (!order) throw new NotFoundException('Order not found');
@@ -323,10 +465,6 @@ export class OrdersService {
         return { items, meta: { total, page, limit, pageCount: Math.ceil(total / limit) } };
     }
 
-    async updateStatus(_orderId: string, _dto: UpdateOrderStatusDto) {
-        throw new BadRequestException('Parent order status is derived from seller-order statuses and cannot be edited directly');
-    }
-
     private async findCheckoutByIdempotencyKey(userId: string, idempotencyKey: string) {
         const payment = await this.prisma.payment.findUnique({
             where: { idempotencyKey },
@@ -337,5 +475,16 @@ export class OrdersService {
             throw new ForbiddenException('Idempotency key belongs to another user');
         }
         return payment.order;
+    }
+
+    private assertSellerOrderTransition(current: SellerOrderStatus, next: SellerOrderStatus) {
+        const legalNext: Partial<Record<SellerOrderStatus, SellerOrderStatus>> = {
+            [SellerOrderStatus.NEW]: SellerOrderStatus.PROCESSING,
+            [SellerOrderStatus.PROCESSING]: SellerOrderStatus.SHIPPED,
+            [SellerOrderStatus.SHIPPED]: SellerOrderStatus.COMPLETED,
+        };
+        if (legalNext[current] !== next) {
+            throw new BadRequestException(`Cannot change seller order from ${current} to ${next}`);
+        }
     }
 }

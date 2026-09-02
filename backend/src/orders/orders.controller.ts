@@ -19,7 +19,7 @@ import {
 } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { OrdersService } from './orders.service';
-import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { UpdateSellerOrderStatusDto } from './dto/update-seller-order-status.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -146,6 +146,43 @@ export class OrdersController {
         return this.ordersService.findMyOrders(req.user.id);
     }
 
+    @UseGuards(RolesGuard)
+    @Roles(Role.SELLER)
+    @Get('seller/me')
+    @ApiOperation({ summary: 'Получить sub-заказы текущего продавца' })
+    findMySellerOrders(
+        @Req() req: Request & { user: { id: string } },
+    ): ReturnType<OrdersService['findMySellerOrders']> {
+        return this.ordersService.findMySellerOrders(req.user.id);
+    }
+
+    @UseGuards(RolesGuard)
+    @Roles(Role.SELLER)
+    @Get('seller/:sellerOrderId')
+    @ApiOperation({ summary: 'Получить свой sub-заказ продавца' })
+    findSellerOrder(
+        @Req() req: Request & { user: { id: string } },
+        @Param('sellerOrderId') sellerOrderId: string,
+    ): ReturnType<OrdersService['findSellerOrder']> {
+        return this.ordersService.findSellerOrder(req.user.id, sellerOrderId);
+    }
+
+    @UseGuards(RolesGuard)
+    @Roles(Role.SELLER)
+    @Patch('seller/:sellerOrderId/status')
+    @ApiOperation({ summary: 'Изменить статус своего sub-заказа' })
+    updateSellerOrderStatus(
+        @Req() req: Request & { user: { id: string } },
+        @Param('sellerOrderId') sellerOrderId: string,
+        @Body() dto: UpdateSellerOrderStatusDto,
+    ): ReturnType<OrdersService['updateSellerOrderStatus']> {
+        return this.ordersService.updateSellerOrderStatus(
+            req.user.id,
+            sellerOrderId,
+            dto,
+        );
+    }
+
     @Get(':id')
     @ApiOperation({
         summary: 'Получить детальную информацию о заказе',
@@ -207,42 +244,4 @@ export class OrdersController {
         return this.ordersService.findAll(query);
     }
 
-    @UseGuards(RolesGuard)
-    @Roles(Role.ADMIN)
-    @Patch(':id/status')
-    @ApiOperation({
-        summary: 'Изменить статус заказа (Только ADMIN)',
-    })
-    @ApiParam({
-        name: 'id',
-        description: 'ID заказа',
-        example: 'ord_789ghi',
-    })
-    @ApiResponse({
-        status: 200,
-        description: 'Статус заказа обновлен',
-        type: OrderResponseDto,
-    })
-    @ApiResponse({
-        status: 400,
-        description: 'Невалидный статус',
-    })
-    @ApiResponse({
-        status: 401,
-        description: 'Неавторизован',
-    })
-    @ApiResponse({
-        status: 403,
-        description: 'Доступ запрещен',
-    })
-    @ApiResponse({
-        status: 404,
-        description: 'Заказ не найден',
-    })
-    updateStatus(
-        @Param('id') id: string,
-        @Body() dto: UpdateOrderStatusDto,
-    ): ReturnType<OrdersService['updateStatus']> {
-        return this.ordersService.updateStatus(id, dto);
-    }
 }
