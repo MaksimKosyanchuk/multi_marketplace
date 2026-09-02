@@ -1,22 +1,9 @@
-import { io, Socket } from 'socket.io-client';
+import {
+    connectMarketplaceSocket,
+    disconnectMarketplaceSocket,
+    getMarketplaceSocket,
+} from './socketClient';
 
-let socket: Socket | null = null;
-
-export const initSocket = (token: string) => {
-    if (!socket) {
-        socket = io(import.meta.env.VITE_API_URL || 'http://localhost:5000', {
-            auth: { token },
-            transports: ['websocket'],
-        });
-    }
-    return socket;
-};
-
-export const getSocket = () => socket;
-
-export const disconnectSocket = () => {
-    if (socket) {
-        socket.disconnect();
-        socket = null;
-    }
-};
+export const initSocket = connectMarketplaceSocket;
+export const getSocket = getMarketplaceSocket;
+export const disconnectSocket = disconnectMarketplaceSocket;

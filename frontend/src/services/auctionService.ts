@@ -1,0 +1,44 @@
+import { api } from './api';
+import { withIdempotencyKey } from './requestMeta';
+import type { Auction, Bid, Order } from '../types/marketplace.type';
+
+export interface CreateAuctionInput {
+    productId: string;
+    startingPrice: number;
+    minBidIncrement: number;
+    startsAt: string;
+    endsAt: string;
+}
+export const auctionService = {
+    async get(auctionId: string): Promise<Auction> {
+        const { data } = await api.get<Auction>(`/auctions/${auctionId}`);
+        return data;
+    },
+    async create(input: CreateAuctionInput): Promise<Auction> {
+        const { data } = await api.post<Auction>('/auctions', input);
+        return data;
+    },
+    async bid(
+        auctionId: string,
+        amount: number,
+        idempotencyKey?: string,
+    ): Promise<Bid> {
+        const { data } = await api.post<Bid>(
+            `/auctions/${auctionId}/bids`,
+            { amount },
+            { headers: withIdempotencyKey(idempotencyKey) },
+        );
+        return data;
+    },
+    async checkoutWinner(
+        auctionId: string,
+        idempotencyKey?: string,
+    ): Promise<Order> {
+        const { data } = await api.post<Order>(
+            `/auctions/${auctionId}/checkout`,
+            undefined,
+            { headers: withIdempotencyKey(idempotencyKey) },
+        );
+        return data;
+    },
+};

@@ -1,4 +1,5 @@
 import { api } from './api';
+import { withIdempotencyKey } from './requestMeta';
 
 export interface OrderItem {
     id: string;
@@ -27,7 +28,9 @@ export interface Order {
 
 export const orderService = {
     async checkout(): Promise<Order> {
-        const response = await api.post<Order>('/orders/checkout');
+        const response = await api.post<Order>('/orders/checkout', undefined, {
+            headers: withIdempotencyKey(),
+        });
         return response.data;
     },
 
@@ -39,11 +42,12 @@ export const orderService = {
     async payOrder(
         orderId: string,
     ): Promise<{ success: boolean; transactionId: string }> {
-        const response = await api.post<{
-            success: boolean;
-            transactionId: string;
-        }>(`/orders/${orderId}/pay`);
-        return response.data;
+        const response = await api.post<Order>(
+            `/orders/${orderId}/pay`,
+            undefined,
+            { headers: withIdempotencyKey() },
+        );
+        return { success: true, transactionId: response.data.id };
     },
 
     async cancelOrder(orderId: string): Promise<{ order: Order }> {

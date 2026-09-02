@@ -1,10 +1,12 @@
 import { createContext } from 'react';
-import type { Socket } from 'socket.io-client';
 import type { User, LoginDto, RegisterDto } from '../../types';
+import type { getMarketplaceSocket } from '../../services/socketClient';
+
+type MarketplaceSocket = ReturnType<typeof getMarketplaceSocket>;
 
 export interface AuthContextType {
     user: User | null;
-    socket: Socket | null;
+    socket: MarketplaceSocket;
     isAuthenticated: boolean;
     isLoading: boolean;
     login: (dto: LoginDto) => Promise<void>;

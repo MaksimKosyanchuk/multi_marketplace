@@ -11,6 +11,7 @@ export interface Category {
 
 export interface Product {
     id: string;
+    sellerId: string;
     name: string;
     description?: string;
     stock: number;
@@ -21,6 +22,15 @@ export interface Product {
     createdAt: string;
     updatedAt: string;
     isArchived: boolean;
+    type?: 'FIXED_PRICE' | 'AUCTION';
+    status?:
+        | 'DRAFT'
+        | 'PENDING_APPROVAL'
+        | 'ACTIVE'
+        | 'REJECTED'
+        | 'ARCHIVED'
+        | 'SOLD';
+    rating?: number;
 }
 
 export interface QueryProductParams {
@@ -32,6 +42,10 @@ export interface QueryProductParams {
     page?: number;
     limit?: number;
     includeArchived?: boolean;
+    sellerId?: string;
+    minRating?: number;
+    inStock?: boolean;
+    type?: 'FIXED_PRICE' | 'AUCTION';
 }
 
 export interface ProductsResponse {

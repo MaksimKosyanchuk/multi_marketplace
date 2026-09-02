@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type { AuthResponse } from '../types/index';
+import { createIdempotencyKey } from './requestMeta';
 
 export const api = axios.create({
     baseURL: import.meta.env.VITE_API_URL,
@@ -11,6 +12,8 @@ export const api = axios.create({
 
 api.interceptors.request.use(
     (config) => {
+        config.headers ??= {};
+        config.headers['x-correlation-id'] ??= createIdempotencyKey();
         const token = localStorage.getItem('accessToken');
         if (token && config.headers) {
             config.headers.Authorization = `Bearer ${token}`;

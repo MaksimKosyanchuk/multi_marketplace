@@ -1,11 +1,11 @@
-import React, {
-    useEffect,
-    useMemo,
-    useState,
-} from 'react';
-import { io, type Socket } from 'socket.io-client';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { User, LoginDto, RegisterDto } from '../../types';
 import { authService } from '../../services/authService';
+import {
+    connectMarketplaceSocket,
+    disconnectMarketplaceSocket,
+} from '../../services/socketClient';
+import { orderApi } from '../../services/orderApi';
 import { AuthContext } from './AuthContext.context';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
@@ -38,7 +38,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         void initAuth();
     }, []);
 
-    const socket = useMemo<Socket | null>(() => {
+    const socket = useMemo(() => {
         if (!user) {
             return null;
         }
@@ -49,13 +49,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
             return null;
         }
 
-        return io(
-            import.meta.env.VITE_API_URL || 'http://localhost:5000',
-            {
-                auth: { token },
-                transports: ['websocket'],
-            },
-        );
+        return connectMarketplaceSocket(token, async () => {
+            await orderApi.resync();
+        });
     }, [user]);
 
     useEffect(() => {
@@ -72,7 +68,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         });
 
         return () => {
-            socket.disconnect();
+            disconnectMarketplaceSocket();
         };
     }, [socket]);
 
