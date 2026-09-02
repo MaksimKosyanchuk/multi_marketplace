@@ -1,5 +1,6 @@
 export enum Role {
     CUSTOMER = 'CUSTOMER',
+    SELLER = 'SELLER',
     ADMIN = 'ADMIN',
 }
 
@@ -82,7 +83,7 @@ export interface Order {
 
 export interface AuthResponse {
     accessToken: string;
-    user: User;
+    user?: User;
 }
 
 export interface LoginDto {

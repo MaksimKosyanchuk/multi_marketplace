@@ -93,6 +93,34 @@ export function unsubscribeFromAuction(auctionId: string): void {
     activeAuctionRooms.delete(auctionId);
 }
 
+export function onStockUpdate(
+    handler: MarketplaceSocketEvents['product_stock_updated'],
+): () => void {
+    socket?.on('product_stock_updated', handler);
+    return () => socket?.off('product_stock_updated', handler);
+}
+
+export function onOrderStatusUpdate(
+    handler: MarketplaceSocketEvents['order_status_updated'],
+): () => void {
+    socket?.on('order_status_updated', handler);
+    return () => socket?.off('order_status_updated', handler);
+}
+
+export function onBidUpdate(
+    handler: MarketplaceSocketEvents['auction_bid_updated'],
+): () => void {
+    socket?.on('auction_bid_updated', handler);
+    return () => socket?.off('auction_bid_updated', handler);
+}
+
+export function onNotification(
+    handler: MarketplaceSocketEvents['notification_created'],
+): () => void {
+    socket?.on('notification_created', handler);
+    return () => socket?.off('notification_created', handler);
+}
+
 export function getActiveAuctionRooms(): string[] {
     return [...activeAuctionRooms];
 }

@@ -100,6 +100,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         setUser(userData);
     };
 
+    const loginWithGoogle = async (accessToken: string) => {
+        const data = await authService.loginWithGoogle(accessToken);
+        if (data.accessToken) {
+            localStorage.setItem('accessToken', data.accessToken);
+            setUser(await authService.getMe());
+        }
+        return data;
+    };
+
+    const completeGoogleRegistration = async (input: {
+        accessToken: string;
+        registrationToken: string;
+        nickName: string;
+        password: string;
+    }) => {
+        const data = await authService.completeGoogleRegistration(input);
+        localStorage.setItem('accessToken', data.accessToken);
+        setUser(await authService.getMe());
+    };
+
     const logout = async () => {
         try {
             await authService.logout();
@@ -120,6 +140,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
                 isLoading,
                 login,
                 register,
+                loginWithGoogle,
+                completeGoogleRegistration,
                 logout,
             }}
         >

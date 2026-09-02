@@ -52,7 +52,8 @@ api.interceptors.response.use(
 
         const isAuthEndpoint =
             originalRequest?.url?.includes('/auth/login') ||
-            originalRequest?.url?.includes('/auth/register');
+            originalRequest?.url?.includes('/auth/register') ||
+            originalRequest?.url?.includes('/auth/google');
 
         if (error.response?.status === 401 && isAuthEndpoint) {
             return Promise.reject(error);

@@ -18,4 +18,8 @@ export {
     subscribeToAuction,
     unsubscribeFromAuction,
     getActiveAuctionRooms,
+    onStockUpdate,
+    onOrderStatusUpdate,
+    onBidUpdate,
+    onNotification,
 } from './socketClient';
