@@ -32,7 +32,10 @@ export class NotificationsDispatcher implements OnModuleInit, OnModuleDestroy {
                     attempts: { lt: 5 },
                     type: { not: 'product.stock-changed' },
                     consumerReceipts: {
-                        none: { consumerName: 'notifications' },
+                        none: {
+                            consumerName: 'notifications',
+                            completedAt: { not: null },
+                        },
                     },
                 },
                 select: { id: true, payload: true },

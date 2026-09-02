@@ -166,6 +166,7 @@ export class OrdersService {
                             payload: {
                                 productId: product.id,
                                 quantity: -cartItem.quantity,
+                                correlationId: getCorrelationId(),
                             },
                             idempotencyKey: `${idempotencyKey}:stock:${product.id}`,
                         },
@@ -252,6 +253,7 @@ export class OrdersService {
                             payload: {
                                 userId,
                                 sellerCount: order.sellerOrders.length,
+                                correlationId: getCorrelationId(),
                             },
                             idempotencyKey: `${idempotencyKey}:order-created`,
                         },
@@ -264,6 +266,7 @@ export class OrdersService {
                             payload: {
                                 sellerId: sellerOrder.sellerId,
                                 itemCount: sellerOrder.items.length,
+                                correlationId: getCorrelationId(),
                             },
                             idempotencyKey: `${idempotencyKey}:seller-order:${sellerOrder.id}`,
                         })),
@@ -503,6 +506,7 @@ export class OrdersService {
                             payload: {
                                 sellerId: sellerOrder.sellerId,
                                 reason: 'Payment cancelled',
+                                correlationId: getCorrelationId(),
                             },
                             idempotencyKey: `${eventKey}:seller-order:${sellerOrder.id}`,
                         },
@@ -524,6 +528,8 @@ export class OrdersService {
                                 payload: {
                                     productId: item.productId,
                                     quantity: item.quantity,
+                                    correlationId: getCorrelationId(),
+                                    correlationId: getCorrelationId(),
                                 },
                                 idempotencyKey: `${eventKey}:stock:${item.productId}`,
                             },
@@ -544,6 +550,7 @@ export class OrdersService {
                         payload: {
                             orderId,
                             providerRef: cancellation.providerRef,
+                            correlationId: getCorrelationId(),
                         },
                         idempotencyKey: eventKey,
                     },
@@ -783,6 +790,7 @@ export class OrdersService {
                             payload: {
                                 sellerId: sellerOrder.sellerId,
                                 reason: 'Cancelled by customer',
+                                correlationId: getCorrelationId(),
                             },
                             idempotencyKey: `customer-cancel:${orderId}:seller-order:${sellerOrder.id}`,
                         })),
@@ -931,6 +939,7 @@ export class OrdersService {
                             payload: {
                                 productId: item.productId,
                                 quantity: refundableQuantity,
+                                correlationId: getCorrelationId(),
                             },
                             idempotencyKey: `${eventKey}:stock:${item.productId}`,
                         },
@@ -1010,6 +1019,7 @@ export class OrdersService {
                                 sellerId,
                                 reason,
                                 refundAmount: refundTotal.toString(),
+                                correlationId: getCorrelationId(),
                             },
                             idempotencyKey: eventKey,
                         },
@@ -1215,6 +1225,7 @@ export class OrdersService {
                             orderItemId,
                             quantity,
                             amount: amount.toString(),
+                            correlationId: getCorrelationId(),
                         },
                         idempotencyKey: `${idempotencyKey}:refund-event`,
                     },
@@ -1351,6 +1362,7 @@ export class OrdersService {
                             sellerId,
                             previousStatus: sellerOrder.status,
                             status: updatedSellerOrder.status,
+                            correlationId: getCorrelationId(),
                         },
                         idempotencyKey: `${updatedSellerOrder.id}:status:${sellerOrder.status}:${updatedSellerOrder.status}`,
                     },
@@ -1364,6 +1376,7 @@ export class OrdersService {
                                   payload: {
                                       previousStatus: sellerOrder.order.status,
                                       status: order.status,
+                                      correlationId: getCorrelationId(),
                                   },
                                   idempotencyKey: `${order.id}:status:${sellerOrder.order.status}:${order.status}`,
                               },

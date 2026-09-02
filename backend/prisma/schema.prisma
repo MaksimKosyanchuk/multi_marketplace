@@ -513,6 +513,10 @@ model EventConsumerReceipt {
   eventId       String
   consumerName  String
   processedAt   DateTime @default(now())
+  completedAt   DateTime?
+  leaseUntil    DateTime?
+  attempts      Int      @default(0)
+  lastError     String?
   event         OutboxEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@unique([eventId, consumerName])

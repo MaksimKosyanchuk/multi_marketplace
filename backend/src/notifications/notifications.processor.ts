@@ -34,7 +34,37 @@ export class NotificationsProcessor extends WorkerHost {
                 },
             },
         });
-        if (receipt) return;
+        if (receipt?.completedAt) return;
+        const receiptLease = new Date(Date.now() + 30_000);
+        const claimed = await this.prisma.eventConsumerReceipt.upsert({
+            where: {
+                eventId_consumerName: {
+                    eventId: event.id,
+                    consumerName: 'notifications',
+                },
+            },
+            create: {
+                eventId: event.id,
+                consumerName: 'notifications',
+                attempts: 0,
+            },
+            update: {},
+        });
+        if (claimed.completedAt) {
+            return;
+        }
+        const leaseClaimed = await this.prisma.eventConsumerReceipt.updateMany({
+            where: {
+                id: claimed.id,
+                completedAt: null,
+                OR: [{ leaseUntil: null }, { leaseUntil: { lte: new Date() } }],
+            },
+            data: {
+                attempts: { increment: 1 },
+                leaseUntil: receiptLease,
+            },
+        });
+        if (!leaseClaimed.count) return;
 
         const payload =
             typeof event.payload === 'object' && event.payload !== null
@@ -46,7 +76,8 @@ export class NotificationsProcessor extends WorkerHost {
         for (const key of ['userId', 'customerId', 'sellerId']) {
             if (typeof payload[key] === 'string') targets.add(payload[key]);
         }
-        for (const userId of targets) {
+        try {
+            for (const userId of targets) {
             await this.prisma.notification.upsert({
                 where: { userId_eventId: { userId, eventId: event.id } },
                 create: {
@@ -62,16 +93,27 @@ export class NotificationsProcessor extends WorkerHost {
                 ...payload,
                 correlationId: job.data.correlationId,
             });
-        }
-        await this.prisma.eventConsumerReceipt.upsert({
-            where: {
-                eventId_consumerName: {
-                    eventId: event.id,
-                    consumerName: 'notifications',
+            }
+            await this.prisma.eventConsumerReceipt.update({
+                where: { id: claimed.id },
+                data: {
+                    completedAt: new Date(),
+                    leaseUntil: null,
+                    lastError: null,
                 },
-            },
-            create: { eventId: event.id, consumerName: 'notifications' },
-            update: {},
-        });
+            });
+        } catch (error: unknown) {
+            await this.prisma.eventConsumerReceipt.update({
+                where: { id: claimed.id },
+                data: {
+                    leaseUntil: new Date(),
+                    lastError:
+                        error instanceof Error
+                            ? error.message
+                            : 'Notification delivery failed',
+                },
+            });
+            throw error;
+        }
     }
 }
