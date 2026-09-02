@@ -56,6 +56,7 @@ export interface ProductsResponse {
         limit: number;
         pageCount: number;
     };
+    facetDistribution?: Record<string, Record<string, number>>;
 }
 
 export interface CreateProductInput {

@@ -9,6 +9,7 @@ export { reviewService } from './reviewService';
 export { disputeService } from './disputeService';
 export { notificationService } from './notificationService';
 export { sellerService } from './sellerService';
+export { sellerAdminService } from './sellerAdminService';
 export { adminAnalyticsService } from './adminAnalyticsService';
 export {
     connectMarketplaceSocket,
@@ -16,4 +17,5 @@ export {
     getMarketplaceSocket,
     subscribeToAuction,
     unsubscribeFromAuction,
+    getActiveAuctionRooms,
 } from './socketClient';

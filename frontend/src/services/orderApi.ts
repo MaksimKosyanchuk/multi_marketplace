@@ -1,12 +1,19 @@
 import { api } from './api';
-import { withIdempotencyKey } from './requestMeta';
+import {
+    completeOperationKey,
+    createOperationKey,
+    withIdempotencyKey,
+} from './requestMeta';
 import type { Order, SellerOrder } from '../types/marketplace.type';
 
 export const orderApi = {
     async checkout(idempotencyKey?: string): Promise<Order> {
         const { data } = await api.post<Order>('/orders/checkout', undefined, {
-            headers: withIdempotencyKey(idempotencyKey),
+            headers: withIdempotencyKey(
+                idempotencyKey ?? createOperationKey('checkout'),
+            ),
         });
+        completeOperationKey('checkout');
         return data;
     },
     async listMine(): Promise<Order[]> {
@@ -21,8 +28,13 @@ export const orderApi = {
         const { data } = await api.post<Order>(
             `/orders/${orderId}/pay`,
             undefined,
-            { headers: withIdempotencyKey(idempotencyKey) },
+            {
+                headers: withIdempotencyKey(
+                    idempotencyKey ?? createOperationKey('payment', orderId),
+                ),
+            },
         );
+        completeOperationKey('payment', orderId);
         return data;
     },
     async cancel(orderId: string): Promise<Order> {
@@ -36,8 +48,14 @@ export const orderApi = {
         const { data } = await api.post<Order>(
             `/orders/${orderId}/payment/cancel`,
             undefined,
-            { headers: withIdempotencyKey(idempotencyKey) },
+            {
+                headers: withIdempotencyKey(
+                    idempotencyKey ??
+                        createOperationKey('payment-cancel', orderId),
+                ),
+            },
         );
+        completeOperationKey('payment-cancel', orderId);
         return data;
     },
     async listSellerOrders(): Promise<SellerOrder[]> {
@@ -63,8 +81,14 @@ export const orderApi = {
         const { data } = await api.post<SellerOrder>(
             `/orders/seller/${sellerOrderId}/cancel`,
             { reason },
-            { headers: withIdempotencyKey(idempotencyKey) },
+            {
+                headers: withIdempotencyKey(
+                    idempotencyKey ??
+                        createOperationKey('seller-cancel', sellerOrderId),
+                ),
+            },
         );
+        completeOperationKey('seller-cancel', sellerOrderId);
         return data;
     },
     async refundItem(
@@ -76,8 +100,13 @@ export const orderApi = {
         const { data } = await api.post(
             `/orders/items/${orderItemId}/refund`,
             { quantity, reason },
-            { headers: withIdempotencyKey(idempotencyKey) },
+            {
+                headers: withIdempotencyKey(
+                    idempotencyKey ?? createOperationKey('refund', orderItemId),
+                ),
+            },
         );
+        completeOperationKey('refund', orderItemId);
         return data;
     },
 };

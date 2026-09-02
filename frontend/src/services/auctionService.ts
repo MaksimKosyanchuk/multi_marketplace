@@ -1,5 +1,9 @@
 import { api } from './api';
-import { withIdempotencyKey } from './requestMeta';
+import {
+    completeOperationKey,
+    createOperationKey,
+    withIdempotencyKey,
+} from './requestMeta';
 import type { Auction, Bid, Order } from '../types/marketplace.type';
 
 export interface CreateAuctionInput {
@@ -26,8 +30,14 @@ export const auctionService = {
         const { data } = await api.post<Bid>(
             `/auctions/${auctionId}/bids`,
             { amount },
-            { headers: withIdempotencyKey(idempotencyKey) },
+            {
+                headers: withIdempotencyKey(
+                    idempotencyKey ??
+                        createOperationKey('bid', `${auctionId}:${amount}`),
+                ),
+            },
         );
+        completeOperationKey('bid', `${auctionId}:${amount}`);
         return data;
     },
     async checkoutWinner(
@@ -37,8 +47,14 @@ export const auctionService = {
         const { data } = await api.post<Order>(
             `/auctions/${auctionId}/checkout`,
             undefined,
-            { headers: withIdempotencyKey(idempotencyKey) },
+            {
+                headers: withIdempotencyKey(
+                    idempotencyKey ??
+                        createOperationKey('auction-checkout', auctionId),
+                ),
+            },
         );
+        completeOperationKey('auction-checkout', auctionId);
         return data;
     },
 };

@@ -20,6 +20,7 @@ export const productService = {
                         (data.limit ?? params?.limit ?? 10),
                 ),
             },
+            facetDistribution: data.facetDistribution,
         };
     },
 

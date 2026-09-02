@@ -21,6 +21,11 @@ export interface MarketplaceSocketEvents {
     product_stock_updated: (payload: StockUpdate) => void;
     auction_bid_updated: (payload: BidUpdate) => void;
     auction_event: (payload: AuctionEvent) => void;
+    notification_created: (payload: {
+        eventId: string;
+        type: string;
+        payload: Record<string, unknown>;
+    }) => void;
 }
 
 interface MarketplaceSocketCommands {
@@ -34,6 +39,7 @@ interface MarketplaceSocketCommands {
 let socket: Socket<MarketplaceSocketCommands, MarketplaceSocketEvents> | null =
     null;
 let hasConnected = false;
+const activeAuctionRooms = new Set<string>();
 
 export function connectMarketplaceSocket(
     token: string,
@@ -54,7 +60,14 @@ export function connectMarketplaceSocket(
         },
     );
     socket.on('connect', () => {
-        if (hasConnected) void onReconnect?.();
+        if (hasConnected) {
+            void Promise.all([
+                onReconnect?.(),
+                ...[...activeAuctionRooms].map((auctionId) =>
+                    subscribeToAuction(auctionId),
+                ),
+            ]);
+        }
         hasConnected = true;
     });
     return socket;
@@ -69,6 +82,7 @@ export function subscribeToAuction(
             return;
         }
         socket.emit('auction_subscribe', { auctionId }, (response) => {
+            if (response?.subscribed) activeAuctionRooms.add(auctionId);
             resolve(response ?? { subscribed: false });
         });
     });
@@ -76,6 +90,11 @@ export function subscribeToAuction(
 
 export function unsubscribeFromAuction(auctionId: string): void {
     socket?.emit('auction_unsubscribe', { auctionId });
+    activeAuctionRooms.delete(auctionId);
+}
+
+export function getActiveAuctionRooms(): string[] {
+    return [...activeAuctionRooms];
 }
 
 export function getMarketplaceSocket(): Socket<
@@ -88,4 +107,5 @@ export function disconnectMarketplaceSocket(): void {
     socket?.disconnect();
     socket = null;
     hasConnected = false;
+    activeAuctionRooms.clear();
 }
