@@ -127,7 +127,6 @@ model User {
   passwordHash           String?
   nickName               String
   role                   Role            @default(CUSTOMER)
-  googleId               String?         @unique
   cart                   Cart?
   orders                 Order[]
   refreshTokens          RefreshToken[]

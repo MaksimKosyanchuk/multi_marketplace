@@ -27,6 +27,7 @@ import {
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { Throttle } from '@nestjs/throttler';
+import { GoogleRegisterCompleteDto } from './dto/google-register-complete.dto';
 
 interface RequestWithCookies extends Request {
     cookies: {
@@ -91,6 +92,19 @@ export class AuthController {
         @Res({ passthrough: true }) res: Response,
     ) {
         const tokens = await this.authService.loginWithGoogle(dto);
+        this.setRefreshTokenCookie(res, tokens.refreshToken);
+        return { accessToken: tokens.accessToken };
+    }
+
+    @Post('google/register/complete')
+    @Throttle({ default: { limit: 10, ttl: 60_000 } })
+    @ApiOperation({ summary: 'Завершить Google-регистрацию' })
+    async completeGoogleRegistration(
+        @Body() dto: GoogleRegisterCompleteDto,
+        @Res({ passthrough: true }) res: Response,
+    ) {
+        const tokens =
+            await this.authService.completeGoogleRegistration(dto);
         this.setRefreshTokenCookie(res, tokens.refreshToken);
         return { accessToken: tokens.accessToken };
     }

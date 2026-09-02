@@ -17,6 +17,8 @@ import { JwtPayload } from './types/jwt-payload';
 import { Role } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { GoogleLoginDto } from './dto/google-login.dto';
+import { GoogleRegisterCompleteDto } from './dto/google-register-complete.dto';
+import { RedisService } from '../redis/redis.service';
 
 const SALT_ROUNDS = 10;
 
@@ -29,6 +31,7 @@ export class AuthService {
         private readonly jwtService: JwtService,
         private readonly config: ConfigService,
         private readonly prisma: PrismaService,
+        private readonly redis: RedisService,
     ) {}
 
     async register(dto: RegisterDto) {
@@ -81,7 +84,18 @@ export class AuthService {
             throw new UnauthorizedException('Invalid credentials');
         }
 
-        async loginWithGoogle(dto: GoogleLoginDto) {
+        const matches =
+            user.passwordHash !== null &&
+            (await bcrypt.compare(dto.password, user.passwordHash));
+
+        if (!matches) {
+            throw new UnauthorizedException('Invalid credentials');
+        }
+
+        return this.issueTokens(user.id, user.email, user.role);
+    }
+
+    async loginWithGoogle(dto: GoogleLoginDto) {
             const response = await fetch(
                 'https://openidconnect.googleapis.com/v1/userinfo',
                 { headers: { Authorization: `Bearer ${dto.accessToken}` } },
@@ -100,39 +114,80 @@ export class AuthService {
             }
 
             const email = profile.email.toLowerCase();
-            let user = await this.usersService.findByEmail(email);
+            const user = await this.usersService.findByEmail(email);
             if (user) {
-                if (user.googleId && user.googleId !== profile.sub) {
-                    throw new ConflictException('Email is linked to another Google account');
-                }
-                if (!user.googleId) {
-                    user = await this.prisma.user.update({
-                        where: { id: user.id },
-                        data: { googleId: profile.sub },
-                    });
-                }
-            } else {
-                user = await this.prisma.user.create({
+                return this.issueTokens(user.id, user.email, user.role);
+            }
+            const registrationToken = randomBytes(32).toString('hex');
+            await this.redis.set(
+                `auth:google-registration:${registrationToken}`,
+                JSON.stringify({
+                    email,
+                    tokenHash: this.hashToken(dto.accessToken),
+                }),
+                600,
+            );
+            return {
+                status: 'REGISTRATION_REQUIRED' as const,
+                registrationToken,
+                email,
+            };
+        }
+
+    async completeGoogleRegistration(dto: GoogleRegisterCompleteDto) {
+        const key = `auth:google-registration:${dto.registrationToken}`;
+        const stored = await this.redis.get(key);
+        if (!stored) {
+            throw new UnauthorizedException('Google registration has expired');
+        }
+        const pending = JSON.parse(stored) as {
+            email: string;
+            tokenHash: string;
+        };
+        const response = await fetch(
+            'https://openidconnect.googleapis.com/v1/userinfo',
+            { headers: { Authorization: `Bearer ${dto.accessToken}` } },
+        );
+        if (!response.ok) {
+            throw new UnauthorizedException('Invalid Google access token');
+        }
+        const profile = (await response.json()) as {
+            email?: string;
+            email_verified?: boolean;
+        };
+        const email = profile.email?.toLowerCase();
+        if (
+            !email ||
+            profile.email_verified !== true ||
+            email !== pending.email ||
+            this.hashToken(dto.accessToken) !== pending.tokenHash
+        ) {
+            throw new UnauthorizedException('Google registration token mismatch');
+        }
+        const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
+        let user;
+        try {
+            user = await this.prisma.$transaction(async (tx) =>
+                tx.user.create({
                     data: {
                         email,
-                        googleId: profile.sub,
-                        nickName: profile.name?.trim() || email.split('@')[0],
+                        nickName: dto.nickName.trim(),
+                        passwordHash,
                         role: Role.CUSTOMER,
                         cart: { create: {} },
                     },
-                });
+                }),
+            );
+        } catch (error: unknown) {
+            if (
+                error instanceof Prisma.PrismaClientKnownRequestError &&
+                error.code === 'P2002'
+            ) {
+                throw new ConflictException('Email is already registered');
             }
-            return this.issueTokens(user.id, user.email, user.role);
+            throw error;
         }
-
-        const matches =
-            user.passwordHash !== null &&
-            (await bcrypt.compare(dto.password, user.passwordHash));
-
-        if (!matches) {
-            throw new UnauthorizedException('Invalid credentials');
-        }
-
+        await this.redis.del(key);
         return this.issueTokens(user.id, user.email, user.role);
     }
 
