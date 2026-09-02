@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrdersGateway } from './orders.geteway';
+import { RedisService } from '../redis/redis.service';
 
 export interface OrderJobData {
     orderId: string;
@@ -19,6 +20,7 @@ export class OrdersProcessor extends WorkerHost {
     constructor(
         private readonly prisma: PrismaService,
         private readonly ordersGateway: OrdersGateway,
+        private readonly redis: RedisService,
     ) {
         super();
     }
@@ -55,8 +57,16 @@ export class OrdersProcessor extends WorkerHost {
         outboxEventId: string,
     ): Promise<void> {
         const claimed = await this.prisma.outboxEvent.updateMany({
-            where: { id: outboxEventId, status: 'PENDING' },
-            data: { status: 'PROCESSING', attempts: { increment: 1 } },
+            where: {
+                id: outboxEventId,
+                status: 'PENDING',
+                availableAt: { lte: new Date() },
+            },
+            data: {
+                status: 'PROCESSING',
+                attempts: { increment: 1 },
+                availableAt: new Date(Date.now() + 30_000),
+            },
         });
         if (!claimed.count) return;
 
@@ -78,23 +88,37 @@ export class OrdersProcessor extends WorkerHost {
                 if (!payload.productId || payload.quantity === undefined) {
                     throw new Error(`Invalid stock event ${outboxEventId}`);
                 }
-                this.ordersGateway.emitStockUpdate(
-                    payload.productId,
-                    payload.quantity,
+                const firstDelivery = await this.redis.setIfAbsent(
+                    `outbox:delivered:${event.id}`,
+                    '1',
+                    60 * 60 * 24 * 30,
                 );
+                if (firstDelivery) {
+                    this.ordersGateway.emitStockUpdate(
+                        payload.productId,
+                        payload.quantity,
+                    );
+                }
             }
             if (event.order) {
-                this.ordersGateway.emitOrderStatusUpdate(
-                    event.order.userId,
-                    event.order.id,
-                    event.order.status,
+                const firstDelivery = await this.redis.setIfAbsent(
+                    `outbox:delivered:${event.id}:order`,
+                    '1',
+                    60 * 60 * 24 * 30,
                 );
-                if (event.sellerOrder) {
+                if (firstDelivery) {
                     this.ordersGateway.emitOrderStatusUpdate(
-                        event.sellerOrder.sellerId,
+                        event.order.userId,
                         event.order.id,
                         event.order.status,
                     );
+                    if (event.sellerOrder) {
+                        this.ordersGateway.emitOrderStatusUpdate(
+                            event.sellerOrder.sellerId,
+                            event.order.id,
+                            event.order.status,
+                        );
+                    }
                 }
             }
             await this.prisma.outboxEvent.update({

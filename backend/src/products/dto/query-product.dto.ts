@@ -9,8 +9,10 @@ import {
     IsInt,
     Max,
     IsBoolean,
+    IsEnum,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
+import { ProductType } from '@prisma/client';
 
 export enum ProductSort {
     PRICE_ASC = 'price_asc',
@@ -98,4 +100,32 @@ export class QueryProductDto {
     @IsBoolean()
     @Transform(({ value }) => value === 'true' || value === true)
     includeArchived?: boolean;
+
+    @ApiPropertyOptional({ description: 'Фильтр по seller UUID' })
+    @IsOptional()
+    @IsUUID()
+    sellerId?: string;
+
+    @ApiPropertyOptional({
+        description: 'Минимальный рейтинг товара',
+        minimum: 0,
+        maximum: 5,
+    })
+    @IsOptional()
+    @Type(() => Number)
+    @IsNumber()
+    @Min(0)
+    @Max(5)
+    minRating?: number;
+
+    @ApiPropertyOptional({ description: 'Только товары в наличии' })
+    @IsOptional()
+    @IsBoolean()
+    @Transform(({ value }) => value === 'true' || value === true)
+    inStock?: boolean;
+
+    @ApiPropertyOptional({ enum: ProductType, description: 'Тип товара' })
+    @IsOptional()
+    @IsEnum(ProductType)
+    type?: ProductType;
 }

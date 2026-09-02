@@ -5,13 +5,13 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
-export class OrdersDispatcher implements OnModuleInit, OnModuleDestroy {
+export class BiddingDispatcher implements OnModuleInit, OnModuleDestroy {
     private timer?: ReturnType<typeof setInterval>;
     private running = false;
 
     constructor(
         private readonly prisma: PrismaService,
-        @InjectQueue('orders') private readonly ordersQueue: Queue,
+        @InjectQueue('auctions') private readonly auctionsQueue: Queue,
     ) {}
 
     onModuleInit(): void {
@@ -30,6 +30,7 @@ export class OrdersDispatcher implements OnModuleInit, OnModuleDestroy {
             const now = new Date();
             await this.prisma.outboxEvent.updateMany({
                 where: {
+                    aggregateType: 'Auction',
                     status: OutboxStatus.PROCESSING,
                     availableAt: { lte: now },
                     attempts: { lt: 5 },
@@ -38,9 +39,9 @@ export class OrdersDispatcher implements OnModuleInit, OnModuleDestroy {
             });
             const events = await this.prisma.outboxEvent.findMany({
                 where: {
-                    aggregateType: { in: ['Order', 'SellerOrder', 'Payment'] },
+                    aggregateType: 'Auction',
                     status: OutboxStatus.PENDING,
-                    availableAt: { lte: new Date() },
+                    availableAt: { lte: now },
                     attempts: { lt: 5 },
                 },
                 select: { id: true },
@@ -49,11 +50,11 @@ export class OrdersDispatcher implements OnModuleInit, OnModuleDestroy {
             });
             await Promise.all(
                 events.map((event) =>
-                    this.ordersQueue.add(
-                        'deliver-outbox-event',
+                    this.auctionsQueue.add(
+                        'deliver-auction-event',
                         { outboxEventId: event.id },
                         {
-                            jobId: `outbox:${event.id}`,
+                            jobId: `auction-outbox:${event.id}`,
                             attempts: 5,
                             backoff: { type: 'exponential', delay: 1000 },
                             removeOnComplete: true,

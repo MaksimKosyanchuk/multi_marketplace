@@ -25,6 +25,19 @@ services:
         networks:
             - app-network
 
+    meilisearch:
+        image: getmeili/meilisearch:v1.10
+        container_name: marketplace-meilisearch
+        restart: unless-stopped
+        environment:
+            MEILI_NO_ANALYTICS: 'true'
+        ports:
+            - '7700:7700'
+        volumes:
+            - meilisearch_data:/meili_data
+        networks:
+            - app-network
+
     backend:
         build: .
         container_name: marketplace-backend
@@ -38,18 +51,21 @@ services:
             - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/marketplace?schema=public
             - REDIS_HOST=redis
             - REDIS_PORT=6379
+            - MEILISEARCH_URL=http://meilisearch:7700
         volumes:
             - .:/app
             - /app/node_modules
         depends_on:
             - postgres
             - redis
+            - meilisearch
         networks:
             - app-network
 
 volumes:
     marketplace_postgres_data:
     redis_data:
+    meilisearch_data:
 
 networks:
     app-network:

@@ -246,6 +246,7 @@ model Bid {
   bidderId  String
   amount    Decimal   @db.Decimal(12, 2)
   status    BidStatus @default(ACTIVE)
+  idempotencyKey String? @unique
   auction   Auction   @relation(fields: [auctionId], references: [id], onDelete: Cascade)
   bidder    User      @relation(fields: [bidderId], references: [id], onDelete: Restrict)
   createdAt DateTime  @default(now())

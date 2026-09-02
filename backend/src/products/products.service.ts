@@ -135,14 +135,26 @@ export class ProductsService {
 
             const imageUrl = uploadedFilePath ?? dto.imageUrl ?? null;
 
-            const product = await this.prisma.product.create({
-                data: {
-                    ...productData,
-                    sellerId,
-                    slug: this.createSlug(dto.name),
-                    description: dto.description ?? '',
-                    imageUrl,
-                },
+            const product = await this.prisma.$transaction(async (tx) => {
+                const created = await tx.product.create({
+                    data: {
+                        ...productData,
+                        sellerId,
+                        slug: this.createSlug(dto.name),
+                        description: dto.description ?? '',
+                        imageUrl,
+                    },
+                });
+                await tx.outboxEvent.create({
+                    data: {
+                        aggregateType: 'Product',
+                        aggregateId: created.id,
+                        type: 'product.created',
+                        payload: { productId: created.id },
+                        idempotencyKey: `product-created:${created.id}:${created.version}`,
+                    },
+                });
+                return created;
             });
 
             await this.redis.delByPattern(`products:list:*`);
@@ -188,13 +200,27 @@ export class ProductsService {
         }
 
         try {
-            const updatedProduct = await this.prisma.product.update({
-                where: { id },
-                data: {
-                    ...productData,
-                    imageUrl: newImageUrl,
+            const updatedProduct = await this.prisma.$transaction(
+                async (tx) => {
+                    const updated = await tx.product.update({
+                        where: { id },
+                        data: {
+                            ...productData,
+                            imageUrl: newImageUrl,
+                        },
+                    });
+                    await tx.outboxEvent.create({
+                        data: {
+                            aggregateType: 'Product',
+                            aggregateId: updated.id,
+                            type: 'product.updated',
+                            payload: { productId: updated.id },
+                            idempotencyKey: `product-updated:${updated.id}:${updated.version}`,
+                        },
+                    });
+                    return updated;
                 },
-            });
+            );
 
             if (
                 isImageChanged &&
@@ -222,16 +248,22 @@ export class ProductsService {
     async remove(id: string, sellerId: string) {
         await this.findOwnedProduct(id, sellerId);
 
-        await this.prisma.$transaction([
-            this.prisma.product.update({
+        await this.prisma.$transaction(async (tx) => {
+            const archived = await tx.product.update({
                 where: { id },
                 data: { isArchived: true },
-            }),
-
-            this.prisma.cartItem.deleteMany({
-                where: { productId: id },
-            }),
-        ]);
+            });
+            await tx.cartItem.deleteMany({ where: { productId: id } });
+            await tx.outboxEvent.create({
+                data: {
+                    aggregateType: 'Product',
+                    aggregateId: id,
+                    type: 'product.archived',
+                    payload: { productId: id },
+                    idempotencyKey: `product-archived:${archived.id}:${archived.version}`,
+                },
+            });
+        });
 
         await this.redis.delByPattern(`products:list:*`);
         await this.redis.delByPattern(`cart:*`);
@@ -251,9 +283,21 @@ export class ProductsService {
     async restore(id: string, sellerId: string) {
         await this.findOwnedProduct(id, sellerId);
 
-        const product = await this.prisma.product.update({
-            where: { id },
-            data: { isArchived: false },
+        const product = await this.prisma.$transaction(async (tx) => {
+            const restored = await tx.product.update({
+                where: { id },
+                data: { isArchived: false },
+            });
+            await tx.outboxEvent.create({
+                data: {
+                    aggregateType: 'Product',
+                    aggregateId: id,
+                    type: 'product.updated',
+                    payload: { productId: id },
+                    idempotencyKey: `product-restored:${restored.id}:${restored.version}`,
+                },
+            });
+            return restored;
         });
 
         await this.redis.delByPattern(`products:list:*`);

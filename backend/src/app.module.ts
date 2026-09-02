@@ -15,6 +15,8 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { LoggerModule } from './logger/logger.module';
 import { SellersModule } from './sellers/sellers.module';
 import { PaymentsModule } from './payments/payments.module';
+import { BiddingModule } from './bidding/bidding.module';
+import { SearchModule } from './search/search.module';
 
 @Module({
     imports: [
@@ -44,6 +46,10 @@ import { PaymentsModule } from './payments/payments.module';
         SellersModule,
 
         PaymentsModule,
+
+        BiddingModule,
+
+        SearchModule,
     ],
 
     controllers: [AppController],
