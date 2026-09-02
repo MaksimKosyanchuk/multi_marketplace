@@ -157,6 +157,18 @@ export class OrdersService {
                             `Product "${product.name}" is unavailable or has insufficient stock`,
                         );
                     }
+                    await tx.outboxEvent.create({
+                        data: {
+                            aggregateType: 'Product',
+                            aggregateId: product.id,
+                            type: 'product.stock-changed',
+                            payload: {
+                                productId: product.id,
+                                quantity: -cartItem.quantity,
+                            },
+                            idempotencyKey: `${idempotencyKey}:stock:${product.id}`,
+                        },
+                    });
 
                     const lineTotal = product.price.mul(cartItem.quantity);
                     totalAmount = totalAmount.add(lineTotal);
@@ -443,12 +455,51 @@ export class OrdersService {
                 for (const sellerOrder of order.sellerOrders) {
                     if (sellerOrder.status === SellerOrderStatus.CANCELLED)
                         continue;
-                    await tx.sellerOrder.update({
-                        where: { id: sellerOrder.id },
+                    const claimed = await tx.sellerOrder.updateMany({
+                        where: {
+                            id: sellerOrder.id,
+                            status: {
+                                in: [
+                                    SellerOrderStatus.PAYMENT_PENDING,
+                                    SellerOrderStatus.NEW,
+                                ],
+                            },
+                        },
                         data: {
                             status: SellerOrderStatus.CANCELLED,
                             cancelledAt: new Date(),
                             cancellationReason: 'Payment cancelled',
+                        },
+                    });
+                    if (!claimed.count) continue;
+                    await tx.ledgerEntry.createMany({
+                        data: [
+                            {
+                                sellerOrderId: sellerOrder.id,
+                                type: LedgerEntryType.ADJUSTMENT,
+                                amount: sellerOrder.commissionAmount.neg(),
+                                idempotencyKey: `${eventKey}:commission:${sellerOrder.id}`,
+                            },
+                            {
+                                sellerOrderId: sellerOrder.id,
+                                type: LedgerEntryType.ADJUSTMENT,
+                                amount: sellerOrder.sellerEarnings.neg(),
+                                idempotencyKey: `${eventKey}:earnings:${sellerOrder.id}`,
+                            },
+                        ],
+                    });
+                    await tx.outboxEvent.create({
+                        data: {
+                            orderId,
+                            sellerOrderId: sellerOrder.id,
+                            aggregateType: 'SellerOrder',
+                            aggregateId: sellerOrder.id,
+                            type: 'seller-order.cancelled',
+                            payload: {
+                                sellerId: sellerOrder.sellerId,
+                                reason: 'Payment cancelled',
+                            },
+                            idempotencyKey: `${eventKey}:seller-order:${sellerOrder.id}`,
                         },
                     });
                     for (const item of sellerOrder.items) {
@@ -457,6 +508,19 @@ export class OrdersService {
                             data: {
                                 stock: { increment: item.quantity },
                                 version: { increment: 1 },
+                            },
+                        });
+                        await tx.outboxEvent.create({
+                            data: {
+                                orderId,
+                                aggregateType: 'Product',
+                                aggregateId: item.productId,
+                                type: 'product.stock-changed',
+                                payload: {
+                                    productId: item.productId,
+                                    quantity: item.quantity,
+                                },
+                                idempotencyKey: `${eventKey}:stock:${item.productId}`,
                             },
                         });
                     }
@@ -569,10 +633,25 @@ export class OrdersService {
                 let refundTotal = new Prisma.Decimal(0);
                 let commissionReduction = new Prisma.Decimal(0);
                 for (const item of sellerOrder.items) {
-                    const commission = item.totalAmount.mul(
+                    const alreadyRefunded = await tx.refund.aggregate({
+                        where: {
+                            orderItemId: item.id,
+                            status: {
+                                in: ['PENDING', 'APPROVED', 'PROCESSED'],
+                            },
+                        },
+                        _sum: { quantity: true },
+                    });
+                    const refundableQuantity = Math.max(
+                        item.quantity - (alreadyRefunded._sum.quantity ?? 0),
+                        0,
+                    );
+                    if (!refundableQuantity) continue;
+                    const refundAmount = item.unitPrice.mul(refundableQuantity);
+                    const commission = refundAmount.mul(
                         sellerOrder.commissionRate,
                     );
-                    refundTotal = refundTotal.add(item.totalAmount);
+                    refundTotal = refundTotal.add(refundAmount);
                     commissionReduction = commissionReduction.add(commission);
                     if (payment) {
                         await tx.refund.create({
@@ -580,8 +659,8 @@ export class OrdersService {
                                 sellerOrderId: sellerOrder.id,
                                 orderItemId: item.id,
                                 paymentId: payment.id,
-                                amount: item.totalAmount,
-                                quantity: item.quantity,
+                                amount: refundAmount,
+                                quantity: refundableQuantity,
                                 reason: 'Cancelled by customer',
                                 status: 'PROCESSED',
                                 idempotencyKey: `customer-cancel:${orderId}:${item.id}`,
@@ -589,7 +668,7 @@ export class OrdersService {
                                 ledgerEntries: {
                                     create: {
                                         type: LedgerEntryType.REFUND,
-                                        amount: item.totalAmount.neg(),
+                                        amount: refundAmount.neg(),
                                         idempotencyKey: `customer-cancel:${orderId}:refund-ledger:${item.id}`,
                                     },
                                 },
@@ -599,8 +678,20 @@ export class OrdersService {
                     await tx.product.update({
                         where: { id: item.productId },
                         data: {
-                            stock: { increment: item.quantity },
+                            stock: { increment: refundableQuantity },
                             version: { increment: 1 },
+                        },
+                    });
+                    await tx.outboxEvent.create({
+                        data: {
+                            aggregateType: 'Product',
+                            aggregateId: item.productId,
+                            type: 'product.stock-changed',
+                            payload: {
+                                productId: item.productId,
+                                quantity: item.quantity,
+                            },
+                            idempotencyKey: `customer-cancel:${orderId}:stock:${item.productId}`,
                         },
                     });
                 }
@@ -772,11 +863,24 @@ export class OrdersService {
                 let refundTotal = new Prisma.Decimal(0);
                 let commissionReduction = new Prisma.Decimal(0);
                 for (const item of sellerOrder.items) {
-                    const refundAmount = item.totalAmount;
+                    const alreadyRefunded = await tx.refund.aggregate({
+                        where: {
+                            orderItemId: item.id,
+                            status: {
+                                in: ['PENDING', 'APPROVED', 'PROCESSED'],
+                            },
+                        },
+                        _sum: { quantity: true },
+                    });
+                    const refundableQuantity = Math.max(
+                        item.quantity - (alreadyRefunded._sum.quantity ?? 0),
+                        0,
+                    );
+                    if (!refundableQuantity) continue;
+                    const refundAmount = item.unitPrice.mul(refundableQuantity);
                     const commission = refundAmount.mul(
                         sellerOrder.commissionRate,
                     );
-                    const earnings = refundAmount.sub(commission);
                     refundTotal = refundTotal.add(refundAmount);
                     commissionReduction = commissionReduction.add(commission);
                     if (payment) {
@@ -786,7 +890,7 @@ export class OrdersService {
                                 orderItemId: item.id,
                                 paymentId: payment.id,
                                 amount: refundAmount,
-                                quantity: item.quantity,
+                                quantity: refundableQuantity,
                                 reason: reason.trim() || 'Cancelled by seller',
                                 status: 'PROCESSED' as const,
                                 idempotencyKey: `${idempotencyKey}:refund:${item.id}`,
@@ -804,8 +908,22 @@ export class OrdersService {
                     await tx.product.update({
                         where: { id: item.productId },
                         data: {
-                            stock: { increment: item.quantity },
+                            stock: { increment: refundableQuantity },
                             version: { increment: 1 },
+                        },
+                    });
+                    await tx.outboxEvent.create({
+                        data: {
+                            orderId: sellerOrder.orderId,
+                            sellerOrderId: sellerOrder.id,
+                            aggregateType: 'Product',
+                            aggregateId: item.productId,
+                            type: 'product.stock-changed',
+                            payload: {
+                                productId: item.productId,
+                                quantity: refundableQuantity,
+                            },
+                            idempotencyKey: `${eventKey}:stock:${item.productId}`,
                         },
                     });
                 }

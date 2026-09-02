@@ -65,4 +65,8 @@ export class OrdersGateway implements OnGatewayConnection, OnGatewayDisconnect {
             status,
         });
     }
+
+    emitStockUpdate(productId: string, quantity: number) {
+        this.server.emit('product_stock_updated', { productId, quantity });
+    }
 }

@@ -70,6 +70,19 @@ export class OrdersProcessor extends WorkerHost {
             });
             if (!event)
                 throw new Error(`Outbox event ${outboxEventId} was not found`);
+            if (event.type === 'product.stock-changed') {
+                const payload = event.payload as {
+                    productId?: string;
+                    quantity?: number;
+                };
+                if (!payload.productId || payload.quantity === undefined) {
+                    throw new Error(`Invalid stock event ${outboxEventId}`);
+                }
+                this.ordersGateway.emitStockUpdate(
+                    payload.productId,
+                    payload.quantity,
+                );
+            }
             if (event.order) {
                 this.ordersGateway.emitOrderStatusUpdate(
                     event.order.userId,
