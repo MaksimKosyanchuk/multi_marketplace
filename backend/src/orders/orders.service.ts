@@ -541,12 +541,7 @@ export class OrdersService {
             for (const sellerOrder of currentOrder.sellerOrders) {
                 if (sellerOrder.status === SellerOrderStatus.CANCELLED)
                     continue;
-                if (
-                    sellerOrder.status !== SellerOrderStatus.PAYMENT_PENDING &&
-                    sellerOrder.status !== SellerOrderStatus.PAYMENT_PENDING &&
-                    sellerOrder.status !== SellerOrderStatus.NEW &&
-                    sellerOrder.status !== SellerOrderStatus.PROCESSING
-                ) {
+                if (sellerOrder.status !== SellerOrderStatus.PROCESSING) {
                     throw new BadRequestException(
                         `Seller order cannot be cancelled in status ${sellerOrder.status}`,
                     );
@@ -556,11 +551,7 @@ export class OrdersService {
                     where: {
                         id: sellerOrder.id,
                         status: {
-                            in: [
-                                SellerOrderStatus.PAYMENT_PENDING,
-                                SellerOrderStatus.NEW,
-                                SellerOrderStatus.PROCESSING,
-                            ],
+                            in: [SellerOrderStatus.PROCESSING],
                         },
                     },
                     data: {
@@ -747,10 +738,7 @@ export class OrdersService {
                         'You do not have access to this seller order',
                     );
                 }
-                if (
-                    sellerOrder.status !== SellerOrderStatus.NEW &&
-                    sellerOrder.status !== SellerOrderStatus.PROCESSING
-                ) {
+                if (sellerOrder.status !== SellerOrderStatus.PROCESSING) {
                     throw new BadRequestException(
                         `Seller order cannot be cancelled in status ${sellerOrder.status}`,
                     );
@@ -759,11 +747,7 @@ export class OrdersService {
                     where: {
                         id: sellerOrderId,
                         status: {
-                            in: [
-                                SellerOrderStatus.PAYMENT_PENDING,
-                                SellerOrderStatus.NEW,
-                                SellerOrderStatus.PROCESSING,
-                            ],
+                            in: [SellerOrderStatus.PROCESSING],
                         },
                     },
                     data: {
