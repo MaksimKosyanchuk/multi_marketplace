@@ -1,6 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { Prisma } from '@prisma/client';
+import { Prisma, ProductStatus, ProductType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CartService } from './cart.service';
 
@@ -19,6 +19,8 @@ type MockProduct = {
     stock: number;
     imageUrl: string | null;
     categoryId: string;
+    status: ProductStatus;
+    type: ProductType;
     isArchived: boolean;
     createdAt: Date;
     updatedAt: Date;
@@ -133,6 +135,8 @@ describe('CartService', () => {
         stock: 5,
         imageUrl: null,
         categoryId: 'cat-1',
+        status: ProductStatus.ACTIVE,
+        type: ProductType.FIXED_PRICE,
         isArchived: false,
         createdAt: new Date(),
         updatedAt: new Date(),

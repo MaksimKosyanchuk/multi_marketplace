@@ -4,6 +4,7 @@ import {
     NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { ProductStatus, ProductType } from '@prisma/client';
 import { AddToCartDto } from './dto/add-to-cart.dto';
 import { UpdateCartItemDto } from './dto/update-cart-item.dto';
 
@@ -40,6 +41,15 @@ export class CartService {
             where: { id: dto.productId },
         });
         if (!product) throw new NotFoundException('Product not found');
+        if (
+            product.status !== ProductStatus.ACTIVE ||
+            product.type !== ProductType.FIXED_PRICE ||
+            product.isArchived
+        ) {
+            throw new BadRequestException(
+                'Product is not available for purchase',
+            );
+        }
 
         const cart = await this.getOrCreateCart(userId);
 
@@ -78,6 +88,16 @@ export class CartService {
 
     async updateItem(userId: string, itemId: string, dto: UpdateCartItemDto) {
         const item = await this.findOwnedItem(userId, itemId);
+
+        if (
+            item.product.status !== ProductStatus.ACTIVE ||
+            item.product.type !== ProductType.FIXED_PRICE ||
+            item.product.isArchived
+        ) {
+            throw new BadRequestException(
+                'Product is not available for purchase',
+            );
+        }
 
         if (item.product.stock < dto.quantity) {
             throw new BadRequestException(

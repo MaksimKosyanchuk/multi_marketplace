@@ -20,7 +20,12 @@ async function bootstrap() {
         origin: [clientUrl],
         credentials: true,
         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+        allowedHeaders: [
+            'Content-Type',
+            'Authorization',
+            'Accept',
+            'Idempotency-Key',
+        ],
     });
     app.use(cookieParser());
 

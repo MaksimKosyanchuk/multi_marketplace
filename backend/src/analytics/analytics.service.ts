@@ -20,10 +20,14 @@ export class AnalyticsService {
             OrderStatus.SHIPPED,
             OrderStatus.PARTIALLY_COMPLETED,
             OrderStatus.COMPLETED,
+            OrderStatus.PARTIALLY_CANCELLED,
         ];
     }
 
-    private buildDateFilter(from?: string, to?: string): Prisma.OrderWhereInput {
+    private buildDateFilter(
+        from?: string,
+        to?: string,
+    ): Prisma.OrderWhereInput {
         if (!from && !to) return {};
         const createdAt: Prisma.DateTimeFilter = {};
         if (from) createdAt.gte = new Date(`${from}T00:00:00.000Z`);
@@ -32,7 +36,9 @@ export class AnalyticsService {
     }
 
     private formatDateToLocal(date: Date): string {
-        return new Intl.DateTimeFormat('sv-SE', { timeZone: this.TIME_ZONE }).format(date);
+        return new Intl.DateTimeFormat('sv-SE', {
+            timeZone: this.TIME_ZONE,
+        }).format(date);
     }
 
     async getDashboardData(dto: DateFilterDto) {
@@ -40,36 +46,46 @@ export class AnalyticsService {
             ...this.buildDateFilter(dto.from, dto.to),
             status: { in: this.getRevenueStatuses() },
         };
-        const [orderStats, commissionStats, topItems, commissions] = await Promise.all([
-            this.prisma.order.aggregate({ where: orderFilter, _count: { id: true } }),
-            this.prisma.ledgerEntry.aggregate({
-                where: {
-                    type: LedgerEntryType.PLATFORM_COMMISSION,
-                    sellerOrder: { order: orderFilter },
-                },
-                _sum: { amount: true },
-            }),
-            this.prisma.orderItem.groupBy({
-                by: ['productId', 'productName'],
-                where: { sellerOrder: { order: orderFilter } },
-                _sum: { quantity: true, totalAmount: true },
-                orderBy: { _sum: { quantity: 'desc' } },
-                take: 5,
-            }),
-            this.prisma.ledgerEntry.findMany({
-                where: {
-                    type: LedgerEntryType.PLATFORM_COMMISSION,
-                    sellerOrder: { order: orderFilter },
-                },
-                select: {
-                    amount: true,
-                    sellerOrder: { select: { order: { select: { createdAt: true } } } },
-                },
-                orderBy: { createdAt: 'asc' },
-            }),
-        ]);
+        const [orderStats, commissionStats, grossStats, topItems, commissions] =
+            await Promise.all([
+                this.prisma.order.aggregate({
+                    where: orderFilter,
+                    _count: { id: true },
+                    _sum: { totalAmount: true },
+                }),
+                this.prisma.sellerOrder.aggregate({
+                    where: { order: orderFilter },
+                    _sum: { commissionAmount: true },
+                }),
+                this.prisma.order.aggregate({
+                    where: orderFilter,
+                    _sum: { totalAmount: true },
+                }),
+                this.prisma.orderItem.groupBy({
+                    by: ['productId', 'productName'],
+                    where: { sellerOrder: { order: orderFilter } },
+                    _sum: { quantity: true, totalAmount: true },
+                    orderBy: { _sum: { quantity: 'desc' } },
+                    take: 5,
+                }),
+                this.prisma.ledgerEntry.findMany({
+                    where: {
+                        type: LedgerEntryType.PLATFORM_COMMISSION,
+                        sellerOrder: { order: orderFilter },
+                    },
+                    select: {
+                        amount: true,
+                        sellerOrder: {
+                            select: { order: { select: { createdAt: true } } },
+                        },
+                    },
+                    orderBy: { createdAt: 'asc' },
+                }),
+            ]);
 
-        const platformRevenue = Number(commissionStats._sum.amount ?? 0);
+        const platformRevenue = Number(
+            commissionStats._sum.commissionAmount ?? 0,
+        );
         const totalOrders = orderStats._count.id;
         const topProducts = topItems.map((item) => ({
             productId: item.productId,
@@ -79,19 +95,29 @@ export class AnalyticsService {
         }));
         const timeline = new Map<string, { revenue: number; orders: number }>();
         for (const entry of commissions) {
-            const date = this.formatDateToLocal(entry.sellerOrder!.order.createdAt);
+            const date = this.formatDateToLocal(
+                entry.sellerOrder!.order.createdAt,
+            );
             const current = timeline.get(date) ?? { revenue: 0, orders: 0 };
-            timeline.set(date, { revenue: current.revenue + Number(entry.amount), orders: current.orders + 1 });
+            timeline.set(date, {
+                revenue: current.revenue + Number(entry.amount),
+                orders: current.orders + 1,
+            });
         }
 
         return {
             summary: {
                 totalRevenue: platformRevenue,
                 totalOrders,
-                averageOrderValue: totalOrders ? platformRevenue / totalOrders : 0,
+                averageOrderValue: totalOrders
+                    ? Number(grossStats._sum.totalAmount ?? 0) / totalOrders
+                    : 0,
             },
             topProducts,
-            salesTimeline: [...timeline.entries()].map(([date, values]) => ({ date, ...values })),
+            salesTimeline: [...timeline.entries()].map(([date, values]) => ({
+                date,
+                ...values,
+            })),
         };
     }
 
@@ -104,10 +130,16 @@ export class AnalyticsService {
         const header = 'Order ID,Date,Customer,Status,Total Amount ($)\n';
         const rows = orders.map((order) => {
             const date = this.formatDateToLocal(order.createdAt);
-            const time = new Intl.DateTimeFormat('sv-SE', {
-                timeZone: this.TIME_ZONE,
-                hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-            }).format(order.createdAt).split(' ')[1] || '00:00:00';
+            const time =
+                new Intl.DateTimeFormat('sv-SE', {
+                    timeZone: this.TIME_ZONE,
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false,
+                })
+                    .format(order.createdAt)
+                    .split(' ')[1] || '00:00:00';
             return `"${order.id}","${date} ${time}","${order.user?.email ?? 'N/A'}","${order.status}",${Number(order.totalAmount).toFixed(2)}`;
         });
         return header + rows.join('\n');

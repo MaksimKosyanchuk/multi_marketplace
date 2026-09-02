@@ -73,7 +73,9 @@ type MockConfigService = {
 type MockPrismaService = {
     user: {
         count: jest.Mock<Promise<number>, []>;
+        create: jest.Mock<Promise<MockUser>, [Record<string, unknown>]>;
     };
+    $transaction: jest.Mock;
 
     refreshToken: {
         findUnique: jest.Mock<
@@ -167,7 +169,10 @@ describe('AuthService', () => {
     const mockPrismaService: MockPrismaService = {
         user: {
             count: jest.fn<Promise<number>, []>(),
+            create: jest.fn<Promise<MockUser>, [Record<string, unknown>]>(),
         },
+
+        $transaction: jest.fn(),
 
         refreshToken: {
             findUnique: jest.fn<
@@ -283,6 +288,10 @@ describe('AuthService', () => {
         service = module.get<AuthService>(AuthService);
 
         jest.clearAllMocks();
+        mockPrismaService.$transaction.mockImplementation(
+            async (callback: (tx: MockPrismaService) => Promise<MockUser>) =>
+                callback(mockPrismaService),
+        );
     });
 
     it('should be defined', () => {
@@ -315,7 +324,8 @@ describe('AuthService', () => {
 
             getHashMock().mockResolvedValue('hashed_password');
 
-            mockUsersService.create.mockResolvedValue(mockUser);
+            mockPrismaService.user.count.mockResolvedValue(1);
+            mockPrismaService.user.create.mockResolvedValue(mockUser);
 
             mockJwtService.signAsync.mockResolvedValue('access_token_123');
 
@@ -347,12 +357,16 @@ describe('AuthService', () => {
                 10,
             );
 
-            expect(mockUsersService.create).toHaveBeenCalledWith({
-                email: registerDto.email,
-                passwordHash: 'hashed_password',
-                nickName: registerDto.nickName,
-                role: 'CUSTOMER',
-            });
+            expect(mockPrismaService.user.create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    data: expect.objectContaining({
+                        email: registerDto.email,
+                        passwordHash: 'hashed_password',
+                        nickName: registerDto.nickName,
+                        role: 'CUSTOMER',
+                    }),
+                }),
+            );
 
             expect(mockJwtService.signAsync).toHaveBeenCalledWith({
                 sub: mockUser.id,

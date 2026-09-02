@@ -9,7 +9,7 @@ import { RedisService } from '../redis/redis.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductSort, QueryProductDto } from './dto/query-product.dto';
-import { Prisma } from '@prisma/client';
+import { Prisma, ProductStatus } from '@prisma/client';
 import { deleteFile } from '../common/utils/file';
 import { LoggerService } from '../logger/logger.service';
 
@@ -69,6 +69,7 @@ export class ProductsService {
         } = query;
 
         const where: Prisma.ProductWhereInput = {
+            status: ProductStatus.ACTIVE,
             ...(!includeArchived && { isArchived: false }),
             ...(search && { name: { contains: search, mode: 'insensitive' } }),
             ...(categoryId && { categoryId }),
@@ -110,7 +111,7 @@ export class ProductsService {
 
     async findOne(id: string): Promise<ProductWithCategory> {
         const product = await this.prisma.product.findUnique({
-            where: { id },
+            where: { id, status: ProductStatus.ACTIVE, isArchived: false },
             include: { category: true },
         });
 
@@ -265,7 +266,11 @@ export class ProductsService {
     }
 
     private async findOwnedProduct(id: string, sellerId: string) {
-        const product = await this.findOne(id);
+        const product = await this.prisma.product.findUnique({
+            where: { id },
+            include: { category: true },
+        });
+        if (!product) throw new NotFoundException('Product not found');
         if (product.sellerId !== sellerId) {
             throw new ForbiddenException('You do not own this product');
         }

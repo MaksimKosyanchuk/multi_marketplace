@@ -15,6 +15,7 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { JwtPayload } from './types/jwt-payload';
 import { Role } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 const SALT_ROUNDS = 10;
 
@@ -36,18 +37,36 @@ export class AuthService {
             throw new ConflictException('Email is already registered');
         }
 
-        const userCount = await this.prisma.user.count();
-
-        const role = userCount === 0 ? Role.ADMIN : Role.CUSTOMER;
-
         const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
-
-        const user = await this.usersService.create({
-            email: dto.email,
-            passwordHash,
-            nickName: dto.nickName,
-            role,
-        });
+        let user;
+        try {
+            user = await this.prisma.$transaction(
+                async (tx) => {
+                    const userCount = await tx.user.count();
+                    return tx.user.create({
+                        data: {
+                            email: dto.email.toLowerCase(),
+                            passwordHash,
+                            nickName: dto.nickName,
+                            role: userCount === 0 ? Role.ADMIN : Role.CUSTOMER,
+                            cart: { create: {} },
+                        },
+                    });
+                },
+                {
+                    isolationLevel:
+                        Prisma.TransactionIsolationLevel.Serializable,
+                },
+            );
+        } catch (error: unknown) {
+            if (
+                error instanceof Prisma.PrismaClientKnownRequestError &&
+                error.code === 'P2002'
+            ) {
+                throw new ConflictException('Email is already registered');
+            }
+            throw error;
+        }
 
         this.logger.log(`User registered ${user.id}`);
 

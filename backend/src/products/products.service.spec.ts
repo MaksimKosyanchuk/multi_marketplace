@@ -5,6 +5,7 @@ import { RedisService } from '../redis/redis.service';
 import { ProductSort } from './dto/query-product.dto';
 import { ProductsService } from './products.service';
 import { LoggerService } from '../logger/logger.service';
+import { ProductStatus, ProductType } from '@prisma/client';
 import * as fileUtils from '../common/utils/file';
 
 jest.mock('../common/utils/file', () => ({
@@ -48,6 +49,8 @@ describe('ProductsService', () => {
         price: 999,
         stock: 10,
         categoryId: 'cat-1',
+        status: ProductStatus.ACTIVE,
+        type: ProductType.FIXED_PRICE,
         imageUrl: '/uploads/phone.jpg',
         isArchived: false,
         createdAt: new Date(),
@@ -172,7 +175,11 @@ describe('ProductsService', () => {
             const result = await service.findOne('prod-1');
 
             expect(prisma.product.findUnique).toHaveBeenCalledWith({
-                where: { id: 'prod-1' },
+                where: {
+                    id: 'prod-1',
+                    status: ProductStatus.ACTIVE,
+                    isArchived: false,
+                },
                 include: { category: true },
             });
             expect(result).toEqual(mockProduct);
@@ -200,7 +207,11 @@ describe('ProductsService', () => {
             prisma.category.findUnique.mockResolvedValue(mockCategory);
             prisma.product.create.mockResolvedValue(mockProduct);
 
-            const result = await service.create(dto, 'seller-1', '/uploads/phone.jpg');
+            const result = await service.create(
+                dto,
+                'seller-1',
+                '/uploads/phone.jpg',
+            );
 
             expect(prisma.category.findUnique).toHaveBeenCalledWith({
                 where: { id: 'cat-1' },

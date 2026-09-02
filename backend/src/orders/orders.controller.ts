@@ -20,6 +20,8 @@ import {
 import type { Request } from 'express';
 import { OrdersService } from './orders.service';
 import { UpdateSellerOrderStatusDto } from './dto/update-seller-order-status.dto';
+import { CancelSellerOrderDto } from './dto/cancel-seller-order.dto';
+import { RefundOrderItemDto } from './dto/refund-order-item.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -183,6 +185,41 @@ export class OrdersController {
         );
     }
 
+    @UseGuards(RolesGuard)
+    @Roles(Role.SELLER)
+    @Post('seller/:sellerOrderId/cancel')
+    @ApiOperation({ summary: 'Отменить свой sub-заказ с возвратом средств' })
+    cancelSellerOrder(
+        @Req() req: Request & { user: { id: string } },
+        @Param('sellerOrderId') sellerOrderId: string,
+        @Headers('idempotency-key') idempotencyKey: string | undefined,
+        @Body() dto: CancelSellerOrderDto,
+    ): ReturnType<OrdersService['cancelSellerOrder']> {
+        return this.ordersService.cancelSellerOrder(
+            req.user.id,
+            sellerOrderId,
+            idempotencyKey ?? '',
+            dto.reason,
+        );
+    }
+
+    @Post('items/:orderItemId/refund')
+    @ApiOperation({ summary: 'Вернуть часть количества конкретного товара' })
+    refundOrderItem(
+        @Req() req: Request & { user: { id: string } },
+        @Param('orderItemId') orderItemId: string,
+        @Headers('idempotency-key') idempotencyKey: string | undefined,
+        @Body() dto: RefundOrderItemDto,
+    ): ReturnType<OrdersService['refundOrderItem']> {
+        return this.ordersService.refundOrderItem(
+            req.user.id,
+            orderItemId,
+            dto.quantity,
+            dto.reason,
+            idempotencyKey ?? '',
+        );
+    }
+
     @Get(':id')
     @ApiOperation({
         summary: 'Получить детальную информацию о заказе',
@@ -243,5 +280,4 @@ export class OrdersController {
     ): ReturnType<OrdersService['findAll']> {
         return this.ordersService.findAll(query);
     }
-
 }

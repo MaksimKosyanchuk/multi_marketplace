@@ -3,6 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 import { OrdersProcessor } from './orders.processor';
+import { OrdersDispatcher } from './orders.dispatcher';
 import { OrdersGateway } from './orders.geteway';
 import { AuthModule } from 'src/auth/auth.module';
 
@@ -14,6 +15,11 @@ import { AuthModule } from 'src/auth/auth.module';
         AuthModule,
     ],
     controllers: [OrdersController],
-    providers: [OrdersService, OrdersProcessor, OrdersGateway],
+    providers: [
+        OrdersService,
+        OrdersProcessor,
+        OrdersDispatcher,
+        OrdersGateway,
+    ],
 })
 export class OrdersModule {}
