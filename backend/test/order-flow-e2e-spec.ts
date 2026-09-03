@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
+import type { App as SupertestApp } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { BiddingService } from '../src/bidding/bidding.service';
@@ -149,18 +150,20 @@ describe('Critical marketplace flows (integration)', () => {
         ]);
         createdProductIds.push(productA.id, productB.id);
 
-        await request(app.getHttpServer())
+        await request(app.getHttpServer() as SupertestApp)
             .post('/cart/items')
             .set('Authorization', `Bearer ${token}`)
             .send({ productId: productA.id, quantity: 2 })
             .expect(201);
-        await request(app.getHttpServer())
+        await request(app.getHttpServer() as SupertestApp)
             .post('/cart/items')
             .set('Authorization', `Bearer ${token}`)
             .send({ productId: productB.id, quantity: 3 })
             .expect(201);
 
-        const checkoutResponse = await request(app.getHttpServer())
+        const checkoutResponse = await request(
+            app.getHttpServer() as SupertestApp,
+        )
             .post('/orders/checkout')
             .set('Authorization', `Bearer ${token}`)
             .set('Idempotency-Key', `e2e-checkout-${suffix}`)

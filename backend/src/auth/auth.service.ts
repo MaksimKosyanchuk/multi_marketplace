@@ -13,7 +13,7 @@ import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { JwtPayload } from './types/jwt-payload';
-import { Role } from '@prisma/client';
+import { Role, User } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { GoogleRegisterCompleteDto } from './dto/google-register-complete.dto';
@@ -46,9 +46,9 @@ export class AuthService {
         }
 
         const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
-        let user;
+        let user: User;
         try {
-            user = await this.prisma.$transaction(
+            user = await this.prisma.$transaction<User>(
                 async (tx) => {
                     const userCount = await tx.user.count();
                     return tx.user.create({
@@ -192,9 +192,9 @@ export class AuthService {
             );
         }
         const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
-        let user;
+        let user: User;
         try {
-            user = await this.prisma.$transaction(async (tx) =>
+            user = await this.prisma.$transaction<User>(async (tx) =>
                 tx.user.create({
                     data: {
                         email,
