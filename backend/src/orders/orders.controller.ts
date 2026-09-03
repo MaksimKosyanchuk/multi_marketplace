@@ -234,6 +234,24 @@ export class OrdersController {
         );
     }
 
+    @UseGuards(RolesGuard)
+    @Roles(Role.CUSTOMER)
+    @Post('suborders/:sellerOrderId/cancel')
+    @ApiOperation({ summary: 'Отменить sub-заказ покупателем с возвратом средств' })
+    cancelCustomerSuborder(
+        @Req() req: Request & { user: { id: string } },
+        @Param('sellerOrderId') sellerOrderId: string,
+        @Headers('idempotency-key') idempotencyKey: string | undefined,
+        @Body() dto: CancelSellerOrderDto,
+    ): ReturnType<OrdersService['cancelCustomerSuborder']> {
+        return this.ordersService.cancelCustomerSuborder(
+            req.user.id,
+            sellerOrderId,
+            idempotencyKey ?? '',
+            dto.reason,
+        );
+    }
+
     @Post('items/:orderItemId/refund')
     @ApiOperation({ summary: 'Вернуть часть количества конкретного товара' })
     refundOrderItem(

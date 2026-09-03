@@ -347,8 +347,38 @@ export class OrdersService {
                 const payment = order.payments.find(
                     ({ status }) => status === PaymentStatus.PENDING,
                 );
-                if (!payment)
+                const completedPayment = order.payments.find(
+                    ({ status }) =>
+                        status === PaymentStatus.PAID ||
+                        status === PaymentStatus.PARTIALLY_REFUNDED,
+                );
+                if (!payment && completedPayment) {
+                    const sellerOrderStatuses = await tx.sellerOrder.findMany({
+                        where: { orderId },
+                        select: { status: true },
+                    });
+                    const derivedStatus = deriveOrderStatus(
+                        sellerOrderStatuses.map(({ status }) => status),
+                    );
+                    return tx.order.update({
+                        where: { id: orderId },
+                        data: {
+                            status:
+                                derivedStatus === OrderStatus.PAYMENT_PENDING ||
+                                derivedStatus === OrderStatus.NEW
+                                    ? OrderStatus.PROCESSING
+                                    : derivedStatus,
+                        },
+                        include: orderDetails,
+                    });
+                }
+                if (!payment) {
                     throw new BadRequestException('Payment is not pending');
+                }
+                const sellerOrdersForPayment = await tx.sellerOrder.findMany({
+                    where: { orderId },
+                    select: { id: true, status: true, sellerId: true, subtotal: true },
+                });
                 const charge = this.mockPayment.charge(
                     payment.id,
                     payment.amount,
@@ -381,9 +411,41 @@ export class OrdersService {
                     },
                     data: { status: SellerOrderStatus.PROCESSING },
                 });
+                for (const sellerOrder of sellerOrdersForPayment) {
+                    if (sellerOrder.status === SellerOrderStatus.CANCELLED) {
+                        continue;
+                    }
+                    await this.logger.log(
+                        OrdersService.name,
+                        `Mock payment to seller ${sellerOrder.sellerId} for sub-order ${orderId}: $${sellerOrder.subtotal.toString()}`,
+                        {
+                            orderId,
+                            sellerOrderId: sellerOrder.id,
+                            sellerId: sellerOrder.sellerId,
+                            amount: sellerOrder.subtotal.toString(),
+                        },
+                    );
+                }
+                const updatedSellerOrderStatuses = await tx.sellerOrder.findMany({
+                    where: { orderId },
+                    select: { status: true },
+                });
+                if (
+                    updatedSellerOrderStatuses.every(
+                        ({ status }) =>
+                            status === SellerOrderStatus.CANCELLED,
+                    )
+                ) {
+                    throw new BadRequestException(
+                        'Order has no payable seller orders',
+                    );
+                }
+                const aggregateStatus = deriveOrderStatus(
+                    updatedSellerOrderStatuses.map(({ status }) => status),
+                );
                 const result = await tx.order.update({
                     where: { id: orderId },
-                    data: { status: OrderStatus.PROCESSING },
+                    data: { status: aggregateStatus },
                     include: orderDetails,
                 });
                 await tx.outboxEvent.create({
@@ -400,7 +462,7 @@ export class OrdersService {
                         idempotencyKey: eventKey,
                     },
                 });
-                return result;
+                    return result;
             });
             await this.ordersQueue.add('process-order', { orderId });
             return updated;
@@ -456,6 +518,18 @@ export class OrdersService {
                     throw new BadRequestException(
                         'Only pending payments can be cancelled',
                     );
+                if (
+                    order.sellerOrders.some(
+                        ({ status }) =>
+                            status !== SellerOrderStatus.PAYMENT_PENDING &&
+                            status !== SellerOrderStatus.NEW &&
+                            status !== SellerOrderStatus.CANCELLED,
+                    )
+                ) {
+                    throw new BadRequestException(
+                        'Payment cannot be cancelled after order processing has started',
+                    );
+                }
                 const cancellation = this.mockPayment.cancel(payment.id);
                 await tx.payment.update({
                     where: { id: payment.id },
@@ -539,9 +613,17 @@ export class OrdersService {
                         });
                     }
                 }
+                const statuses = await tx.sellerOrder.findMany({
+                    where: { orderId },
+                    select: { status: true },
+                });
                 const result = await tx.order.update({
                     where: { id: orderId },
-                    data: { status: OrderStatus.CANCELLED },
+                    data: {
+                        status: deriveOrderStatus(
+                            statuses.map(({ status }) => status),
+                        ),
+                    },
                     include: orderDetails,
                 });
                 await tx.outboxEvent.create({
@@ -826,6 +908,7 @@ export class OrdersService {
         sellerOrderId: string,
         idempotencyKey: string,
         reason = 'Cancelled by seller',
+        customerId?: string,
     ) {
         if (!idempotencyKey?.trim()) {
             throw new BadRequestException('Idempotency-Key header is required');
@@ -848,12 +931,23 @@ export class OrdersService {
                 });
                 if (!sellerOrder)
                     throw new NotFoundException('Seller order not found');
-                if (sellerOrder.sellerId !== sellerId) {
+                if (
+                    customerId
+                        ? sellerOrder.order.userId !== customerId
+                        : sellerOrder.sellerId !== sellerId
+                ) {
                     throw new ForbiddenException(
                         'You do not have access to this seller order',
                     );
                 }
-                if (sellerOrder.status !== SellerOrderStatus.PROCESSING) {
+                const cancellableStatuses: SellerOrderStatus[] = customerId
+                    ? [
+                          SellerOrderStatus.NEW,
+                          SellerOrderStatus.PAYMENT_PENDING,
+                          SellerOrderStatus.PROCESSING,
+                      ]
+                    : [SellerOrderStatus.PROCESSING];
+                if (!cancellableStatuses.includes(sellerOrder.status)) {
                     throw new BadRequestException(
                         `Seller order cannot be cancelled in status ${sellerOrder.status}`,
                     );
@@ -1023,7 +1117,7 @@ export class OrdersService {
                             aggregateId: sellerOrderId,
                             type: 'seller-order.cancelled',
                             payload: {
-                                sellerId,
+                                sellerId: sellerOrder.sellerId,
                                 reason,
                                 refundAmount: refundTotal.toString(),
                                 correlationId: getCorrelationId(),
@@ -1063,7 +1157,9 @@ export class OrdersService {
                         backoff: { type: 'exponential', delay: 1000 },
                     },
                 );
-            return result;
+            // Preserve the SellerOrder response shape expected by the seller
+            // UI and include the updated parent aggregate for refreshes.
+            return { ...result.sellerOrder, order: result.order };
         } catch (error: unknown) {
             if (
                 error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -1077,6 +1173,21 @@ export class OrdersService {
             }
             throw error;
         }
+    }
+
+    async cancelCustomerSuborder(
+        userId: string,
+        sellerOrderId: string,
+        idempotencyKey: string,
+        reason = 'Cancelled by customer',
+    ) {
+        return this.cancelSellerOrder(
+            '',
+            sellerOrderId,
+            idempotencyKey,
+            reason,
+            userId,
+        );
     }
 
     async refundOrderItem(
@@ -1289,7 +1400,9 @@ export class OrdersService {
 
         return orders.map(({ payments, ...order }) => {
             const hasPaidPayment = payments.some(
-                (payment) => payment.status === PaymentStatus.PAID,
+                (payment) =>
+                    payment.status === PaymentStatus.PAID ||
+                    payment.status === PaymentStatus.PARTIALLY_REFUNDED,
             );
 
             if (
@@ -1306,7 +1419,9 @@ export class OrdersService {
 
     findMySellerOrders(sellerId: string) {
         return this.prisma.sellerOrder.findMany({
-            where: { sellerId, status: SellerOrderStatus.COMPLETED },
+            // Sellers need active sub-orders here to be able to fulfil or
+            // cancel them; completed and cancelled orders remain in history.
+            where: { sellerId },
             include: sellerOrderDetails,
             orderBy: { createdAt: 'desc' },
         });
