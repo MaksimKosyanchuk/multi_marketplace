@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { Prisma, ProductStatus, ProductType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { DatabaseClient } from './database.types';
@@ -12,7 +12,9 @@ type CatalogProduct = Prisma.ProductGetPayload<{
 
 @Injectable()
 export class ProductRepository {
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        @Inject(PrismaService) private readonly prisma: DatabaseClient,
+    ) {}
 
     decrementStockForCheckout(
         productId: string,

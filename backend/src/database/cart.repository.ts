@@ -1,11 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { DatabaseClient } from './database.types';
 
 @Injectable()
 export class CartRepository {
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        @Inject(PrismaService) private readonly prisma: DatabaseClient,
+    ) {}
 
     findByUserId(userId: string, db: DatabaseClient = this.prisma) {
         return db.cart.findUnique({ where: { userId } });

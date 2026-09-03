@@ -16,6 +16,7 @@ import {
     CartRepository,
     OutboxRepository,
     ProductRepository,
+    UnitOfWork,
 } from '../database';
 
 jest.mock('../common/utils/file', () => ({
@@ -145,6 +146,7 @@ describe('ProductsService', () => {
                 AuctionRepository,
                 CartRepository,
                 OutboxRepository,
+                UnitOfWork,
             ],
         }).compile();
 

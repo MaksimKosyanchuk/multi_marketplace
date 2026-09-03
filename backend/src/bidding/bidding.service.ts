@@ -19,7 +19,6 @@ import {
 } from '@prisma/client';
 import { Queue } from 'bullmq';
 import { getCorrelationId } from '../common/correlation/correlation.context';
-import { PrismaService } from '../prisma/prisma.service';
 import { CreateAuctionDto } from './dto/create-auction.dto';
 import { LoggerService } from '../logger/logger.service';
 import {
@@ -28,12 +27,13 @@ import {
     OrderRepository,
     OutboxRepository,
     ProductRepository,
+    UnitOfWork,
 } from '../database';
 
 @Injectable()
 export class BiddingService {
     constructor(
-        private readonly prisma: PrismaService,
+        private readonly unitOfWork: UnitOfWork,
         @InjectQueue('auctions') private readonly auctionsQueue: Queue,
         private readonly logger: LoggerService,
         private readonly auctionRepository: AuctionRepository,
@@ -52,35 +52,40 @@ export class BiddingService {
             );
         }
 
-        const auction = await this.prisma.$transaction(async (tx) => {
-            const product = await this.productRepository.findById(
-                dto.productId,
-                tx,
-            );
-            if (!product) throw new NotFoundException('Product not found');
-            if (product.sellerId !== sellerId) {
-                throw new ForbiddenException('You do not own this product');
-            }
-            if (
-                product.type !== ProductType.AUCTION ||
-                (product.status !== ProductStatus.DRAFT &&
-                    product.status !== ProductStatus.PENDING_APPROVAL &&
-                    product.status !== ProductStatus.ACTIVE) ||
-                product.isArchived
-            ) {
-                throw new BadRequestException(
-                    'Only a draft, pending, or active auction product can be listed',
+        const auction = await this.unitOfWork.run(
+            async ({
+                cartRepository,
+                orderRepository,
+                outboxRepository,
+                productRepository,
+                auctionRepository,
+                bidRepository,
+            }) => {
+                const product = await productRepository.findById(dto.productId);
+                if (!product) throw new NotFoundException('Product not found');
+                if (product.sellerId !== sellerId) {
+                    throw new ForbiddenException('You do not own this product');
+                }
+                if (
+                    product.type !== ProductType.AUCTION ||
+                    (product.status !== ProductStatus.DRAFT &&
+                        product.status !== ProductStatus.PENDING_APPROVAL &&
+                        product.status !== ProductStatus.ACTIVE) ||
+                    product.isArchived
+                ) {
+                    throw new BadRequestException(
+                        'Only a draft, pending, or active auction product can be listed',
+                    );
+                }
+                const existing = await auctionRepository.findByProductId(
+                    dto.productId,
                 );
-            }
-            const existing = await this.auctionRepository.findByProductId(
-                dto.productId,
-                tx,
-            );
-            if (existing)
-                throw new ConflictException('Product already has an auction');
+                if (existing)
+                    throw new ConflictException(
+                        'Product already has an auction',
+                    );
 
-            return this.auctionRepository.create(
-                {
+                return auctionRepository.create({
                     productId: dto.productId,
                     startingPrice: new Prisma.Decimal(dto.startingPrice),
                     currentPrice: new Prisma.Decimal(dto.startingPrice),
@@ -88,10 +93,9 @@ export class BiddingService {
                     startsAt,
                     endsAt,
                     status: AuctionStatus.DRAFT,
-                },
-                tx,
-            );
-        });
+                });
+            },
+        );
         await this.auctionsQueue.add(
             'end-auction',
             { auctionId: auction.id },
@@ -127,37 +131,40 @@ export class BiddingService {
     }
 
     async startAuction(auctionId: string) {
-        return this.prisma.$transaction(async (tx) => {
-            const auction = await this.auctionRepository.findById(
-                auctionId,
-                tx,
-            );
-            if (
-                !auction ||
-                auction.status !== AuctionStatus.DRAFT ||
-                auction.startsAt > new Date()
-            )
-                return auction;
-            const product = await this.productRepository.findById(
-                auction.productId,
-                tx,
-            );
-            if (product?.status !== ProductStatus.ACTIVE) {
-                return auction;
-            }
-            const result = await this.auctionRepository.activate(auctionId, tx);
-            await this.outboxRepository.create(
-                {
+        return this.unitOfWork.run(
+            async ({
+                cartRepository,
+                orderRepository,
+                outboxRepository,
+                productRepository,
+                auctionRepository,
+                bidRepository,
+            }) => {
+                const auction = await auctionRepository.findById(auctionId);
+                if (
+                    !auction ||
+                    auction.status !== AuctionStatus.DRAFT ||
+                    auction.startsAt > new Date()
+                )
+                    return auction;
+                const product = await productRepository.findById(
+                    auction.productId,
+                );
+                if (product?.status !== ProductStatus.ACTIVE) {
+                    return auction;
+                }
+                const result = await auctionRepository.activate(auctionId);
+                await outboxRepository.create({
                     aggregateType: 'Auction',
                     aggregateId: auctionId,
                     type: 'auction.started',
-                    payload: { auctionId, correlationId: getCorrelationId() },
+                    payload: {
+                        auctionId,
+                        correlationId: getCorrelationId(),
+                    },
                     idempotencyKey: `auction-started:${auctionId}`,
-                },
-                tx,
-            );
-            await this.outboxRepository.create(
-                {
+                });
+                await outboxRepository.create({
                     aggregateType: 'Product',
                     aggregateId: auction.productId,
                     type: 'product.auction-status-changed',
@@ -166,15 +173,14 @@ export class BiddingService {
                         correlationId: getCorrelationId(),
                     },
                     idempotencyKey: `product-auction-status:${auctionId}:ACTIVE`,
-                },
-                tx,
-            );
-            void this.logger.audit(BiddingService.name, 'Auction started', {
-                auctionId,
-                productId: auction.productId,
-            });
-            return result;
-        });
+                });
+                void this.logger.audit(BiddingService.name, 'Auction started', {
+                    auctionId,
+                    productId: auction.productId,
+                });
+                return result;
+            },
+        );
     }
 
     async findAuction(auctionId: string) {
@@ -221,74 +227,75 @@ export class BiddingService {
         }
 
         try {
-            const result = await this.prisma.$transaction(async (tx) => {
-                const auction = await this.auctionRepository.findById(
-                    auctionId,
-                    tx,
-                );
-                if (!auction) throw new NotFoundException('Auction not found');
-                const now = new Date();
-                if (
-                    auction.status !== AuctionStatus.ACTIVE ||
-                    now < auction.startsAt ||
-                    now >= auction.endsAt
-                ) {
-                    throw new BadRequestException(
-                        'Auction is not accepting bids',
+            const result = await this.unitOfWork.run(
+                async ({
+                    cartRepository,
+                    orderRepository,
+                    outboxRepository,
+                    productRepository,
+                    auctionRepository,
+                    bidRepository,
+                }) => {
+                    const auction = await auctionRepository.findById(auctionId);
+                    if (!auction)
+                        throw new NotFoundException('Auction not found');
+                    const now = new Date();
+                    if (
+                        auction.status !== AuctionStatus.ACTIVE ||
+                        now < auction.startsAt ||
+                        now >= auction.endsAt
+                    ) {
+                        throw new BadRequestException(
+                            'Auction is not accepting bids',
+                        );
+                    }
+                    const bidAmount = new Prisma.Decimal(amount);
+                    const minimum = auction.currentPrice.add(
+                        auction.minBidIncrement,
                     );
-                }
-                const bidAmount = new Prisma.Decimal(amount);
-                const minimum = auction.currentPrice.add(
-                    auction.minBidIncrement,
-                );
-                if (bidAmount.lt(minimum)) {
-                    void this.logger.warn(
-                        BiddingService.name,
-                        'Bid rejected: below minimum',
-                        {
-                            auctionId,
-                            bidderId,
-                            amount,
-                            minimum: minimum.toString(),
-                        },
+                    if (bidAmount.lt(minimum)) {
+                        void this.logger.warn(
+                            BiddingService.name,
+                            'Bid rejected: below minimum',
+                            {
+                                auctionId,
+                                bidderId,
+                                amount,
+                                minimum: minimum.toString(),
+                            },
+                        );
+                        throw new BadRequestException(
+                            `Bid must be at least ${minimum.toString()}`,
+                        );
+                    }
+                    const updated = await bidRepository.claimAuctionVersion(
+                        auctionId,
+                        auction.version,
+                        auction.currentPrice,
+                        bidAmount,
                     );
-                    throw new BadRequestException(
-                        `Bid must be at least ${minimum.toString()}`,
-                    );
-                }
-                const updated = await this.bidRepository.claimAuctionVersion(
-                    auctionId,
-                    auction.version,
-                    auction.currentPrice,
-                    bidAmount,
-                    tx,
-                );
-                if (!updated.count) {
-                    void this.logger.warn(
-                        BiddingService.name,
-                        'Bid rejected: concurrent auction update',
-                        {
-                            auctionId,
-                            bidderId,
-                            amount,
-                        },
-                    );
-                    throw new ConflictException(
-                        'Auction changed; retry the bid',
-                    );
-                }
-                await this.bidRepository.markActiveOutbid(auctionId, tx);
-                const bid = await this.bidRepository.create(
-                    {
+                    if (!updated.count) {
+                        void this.logger.warn(
+                            BiddingService.name,
+                            'Bid rejected: concurrent auction update',
+                            {
+                                auctionId,
+                                bidderId,
+                                amount,
+                            },
+                        );
+                        throw new ConflictException(
+                            'Auction changed; retry the bid',
+                        );
+                    }
+                    await bidRepository.markActiveOutbid(auctionId);
+                    const bid = await bidRepository.create({
                         auctionId,
                         bidderId,
                         amount: bidAmount,
                         idempotencyKey,
-                    },
-                    tx,
-                );
-                await this.outboxRepository.create(
-                    {
+                    });
+                    await outboxRepository.create({
                         aggregateType: 'Auction',
                         aggregateId: auctionId,
                         type: 'auction.bid-placed',
@@ -299,11 +306,10 @@ export class BiddingService {
                             correlationId: getCorrelationId(),
                         },
                         idempotencyKey: `${idempotencyKey}:event`,
-                    },
-                    tx,
-                );
-                return { bid, currentPrice: bidAmount };
-            });
+                    });
+                    return { bid, currentPrice: bidAmount };
+                },
+            );
             void this.logger.audit(BiddingService.name, 'Bid accepted', {
                 auctionId,
                 bidderId,
@@ -327,43 +333,39 @@ export class BiddingService {
     }
 
     async endAuction(auctionId: string) {
-        return this.prisma.$transaction(async (tx) => {
-            const auction = await this.auctionRepository.findById(
-                auctionId,
-                tx,
-            );
-            if (!auction || auction.status !== AuctionStatus.ACTIVE)
-                return auction;
-            if (new Date() < auction.endsAt) return auction;
-            const claimed = await this.auctionRepository.claimExpired(
-                auctionId,
-                tx,
-            );
-            if (!claimed.count)
-                return this.auctionRepository.findByIdWithDetails(
+        return this.unitOfWork.run(
+            async ({
+                cartRepository,
+                orderRepository,
+                outboxRepository,
+                productRepository,
+                auctionRepository,
+                bidRepository,
+            }) => {
+                const auction = await auctionRepository.findById(auctionId);
+                if (!auction || auction.status !== AuctionStatus.ACTIVE)
+                    return auction;
+                if (new Date() < auction.endsAt) return auction;
+                const claimed = await auctionRepository.claimExpired(auctionId);
+                if (!claimed.count)
+                    return auctionRepository.findByIdWithDetails(auctionId);
+                const winner = await bidRepository.findHighestActive(auctionId);
+                const status = winner
+                    ? AuctionStatus.SOLD
+                    : AuctionStatus.EXPIRED;
+                const result = await auctionRepository.markEnded(
                     auctionId,
-                    tx,
+                    winner?.bidderId ?? null,
+                    status,
                 );
-            const winner = await this.bidRepository.findHighestActive(
-                auctionId,
-                tx,
-            );
-            const status = winner ? AuctionStatus.SOLD : AuctionStatus.EXPIRED;
-            const result = await this.auctionRepository.markEnded(
-                auctionId,
-                winner?.bidderId ?? null,
-                status,
-                tx,
-            );
-            if (winner) await this.bidRepository.markWon(winner.id, tx);
-            void this.logger.audit(BiddingService.name, 'Auction ended', {
-                auctionId,
-                status,
-                winnerId: winner?.bidderId ?? null,
-                winningBidId: winner?.id ?? null,
-            });
-            await this.outboxRepository.create(
-                {
+                if (winner) await bidRepository.markWon(winner.id);
+                void this.logger.audit(BiddingService.name, 'Auction ended', {
+                    auctionId,
+                    status,
+                    winnerId: winner?.bidderId ?? null,
+                    winningBidId: winner?.id ?? null,
+                });
+                await outboxRepository.create({
                     aggregateType: 'Auction',
                     aggregateId: auctionId,
                     type: 'auction.ended',
@@ -374,54 +376,58 @@ export class BiddingService {
                         correlationId: getCorrelationId(),
                     },
                     idempotencyKey: `auction-ended:${auctionId}`,
-                },
-                tx,
-            );
-            return result;
-        });
+                });
+                return result;
+            },
+        );
     }
 
     async expireWinnerCheckout(auctionId: string) {
-        return this.prisma.$transaction(async (tx) => {
-            const auction = await this.auctionRepository.findById(
-                auctionId,
-                tx,
-            );
-            if (
-                !auction ||
-                auction.status !== AuctionStatus.SOLD ||
-                !auction.checkoutExpiresAt ||
-                auction.checkoutExpiresAt > new Date()
-            )
-                return auction;
-            const claimed = await this.auctionRepository.claimCheckoutExpiry(
-                auctionId,
-                auction.winnerId,
-                auction.checkoutExpiresAt,
-                tx,
-            );
-            if (!claimed.count) return auction;
-            const result = await this.auctionRepository.findById(auctionId, tx);
-            await this.outboxRepository.create(
-                {
+        return this.unitOfWork.run(
+            async ({
+                cartRepository,
+                orderRepository,
+                outboxRepository,
+                productRepository,
+                auctionRepository,
+                bidRepository,
+            }) => {
+                const auction = await auctionRepository.findById(auctionId);
+                if (
+                    !auction ||
+                    auction.status !== AuctionStatus.SOLD ||
+                    !auction.checkoutExpiresAt ||
+                    auction.checkoutExpiresAt > new Date()
+                )
+                    return auction;
+                const claimed = await auctionRepository.claimCheckoutExpiry(
+                    auctionId,
+                    auction.winnerId,
+                    auction.checkoutExpiresAt,
+                );
+                if (!claimed.count) return auction;
+                const result = await auctionRepository.findById(auctionId);
+                await outboxRepository.create({
                     aggregateType: 'Auction',
                     aggregateId: auctionId,
                     type: 'auction.checkout-expired',
-                    payload: { auctionId, correlationId: getCorrelationId() },
+                    payload: {
+                        auctionId,
+                        correlationId: getCorrelationId(),
+                    },
                     idempotencyKey: `auction-checkout-expired:${auctionId}`,
-                },
-                tx,
-            );
-            void this.logger.audit(
-                BiddingService.name,
-                'Auction winner checkout expired',
-                {
-                    auctionId,
-                    winnerId: auction.winnerId,
-                },
-            );
-            return result;
-        });
+                });
+                void this.logger.audit(
+                    BiddingService.name,
+                    'Auction winner checkout expired',
+                    {
+                        auctionId,
+                        winnerId: auction.winnerId,
+                    },
+                );
+                return result;
+            },
+        );
     }
 
     async checkoutWinner(
@@ -446,130 +452,128 @@ export class BiddingService {
         }
 
         try {
-            return await this.prisma.$transaction(async (tx) => {
-                const auction =
-                    await this.auctionRepository.findByIdWithProduct(
-                        auctionId,
-                        tx,
-                    );
-                if (!auction) throw new NotFoundException('Auction not found');
-                if (auction.checkoutOrderId) {
-                    const paidOrder =
-                        await this.orderRepository.findByIdWithSellerOrderItems(
-                            auction.checkoutOrderId,
-                            tx,
+            return await this.unitOfWork.run(
+                async ({
+                    cartRepository,
+                    orderRepository,
+                    outboxRepository,
+                    productRepository,
+                    auctionRepository,
+                    bidRepository,
+                }) => {
+                    const auction =
+                        await auctionRepository.findByIdWithProduct(auctionId);
+                    if (!auction)
+                        throw new NotFoundException('Auction not found');
+                    if (auction.checkoutOrderId) {
+                        const paidOrder =
+                            await orderRepository.findByIdWithSellerOrderItems(
+                                auction.checkoutOrderId,
+                            );
+                        if (paidOrder?.userId === winnerId) return paidOrder;
+                        throw new ForbiddenException(
+                            'Auction checkout belongs to another user',
                         );
-                    if (paidOrder?.userId === winnerId) return paidOrder;
-                    throw new ForbiddenException(
-                        'Auction checkout belongs to another user',
-                    );
-                }
-                if (
-                    auction.status !== AuctionStatus.SOLD ||
-                    auction.winnerId !== winnerId
-                ) {
-                    throw new ForbiddenException(
-                        'Only the auction winner can checkout',
-                    );
-                }
-                if (
-                    !auction.checkoutExpiresAt ||
-                    auction.checkoutExpiresAt <= new Date()
-                ) {
-                    throw new BadRequestException(
-                        'Auction checkout window has expired',
-                    );
-                }
-                if (
-                    auction.product.type !== ProductType.AUCTION ||
-                    auction.product.isArchived ||
-                    auction.product.status !== ProductStatus.ACTIVE
-                ) {
-                    throw new BadRequestException(
-                        'Auction product is no longer available',
-                    );
-                }
-                await this.productRepository.update(
-                    auction.productId,
-                    {
+                    }
+                    if (
+                        auction.status !== AuctionStatus.SOLD ||
+                        auction.winnerId !== winnerId
+                    ) {
+                        throw new ForbiddenException(
+                            'Only the auction winner can checkout',
+                        );
+                    }
+                    if (
+                        !auction.checkoutExpiresAt ||
+                        auction.checkoutExpiresAt <= new Date()
+                    ) {
+                        throw new BadRequestException(
+                            'Auction checkout window has expired',
+                        );
+                    }
+                    if (
+                        auction.product.type !== ProductType.AUCTION ||
+                        auction.product.isArchived ||
+                        auction.product.status !== ProductStatus.ACTIVE
+                    ) {
+                        throw new BadRequestException(
+                            'Auction product is no longer available',
+                        );
+                    }
+                    await productRepository.update(auction.productId, {
                         status: ProductStatus.SOLD,
                         version: { increment: 1 },
-                    },
-                    tx,
-                );
-                const commissionRate = new Prisma.Decimal('0.10');
-                const commissionAmount =
-                    auction.currentPrice.mul(commissionRate);
-                const sellerEarnings =
-                    auction.currentPrice.sub(commissionAmount);
-                const order = await this.orderRepository.create(
-                    {
-                        userId: winnerId,
-                        status: OrderStatus.PROCESSING,
-                        subtotal: auction.currentPrice,
-                        totalAmount: auction.currentPrice,
-                        payments: {
-                            create: {
-                                provider: 'mock',
-                                status: PaymentStatus.PAID,
-                                amount: auction.currentPrice,
-                                idempotencyKey,
+                    });
+                    const commissionRate = new Prisma.Decimal('0.10');
+                    const commissionAmount =
+                        auction.currentPrice.mul(commissionRate);
+                    const sellerEarnings =
+                        auction.currentPrice.sub(commissionAmount);
+                    const order = await orderRepository.create(
+                        {
+                            userId: winnerId,
+                            status: OrderStatus.PROCESSING,
+                            subtotal: auction.currentPrice,
+                            totalAmount: auction.currentPrice,
+                            payments: {
+                                create: {
+                                    provider: 'mock',
+                                    status: PaymentStatus.PAID,
+                                    amount: auction.currentPrice,
+                                    idempotencyKey,
+                                },
                             },
-                        },
-                        sellerOrders: {
-                            create: {
-                                sellerId: auction.product.sellerId,
-                                status: SellerOrderStatus.PROCESSING,
-                                subtotal: auction.currentPrice,
-                                commissionRate,
-                                commissionAmount,
-                                sellerEarnings,
-                                items: {
-                                    create: {
-                                        productId: auction.productId,
-                                        productName: auction.product.name,
-                                        quantity: 1,
-                                        unitPrice: auction.currentPrice,
-                                        totalAmount: auction.currentPrice,
+                            sellerOrders: {
+                                create: {
+                                    sellerId: auction.product.sellerId,
+                                    status: SellerOrderStatus.PROCESSING,
+                                    subtotal: auction.currentPrice,
+                                    commissionRate,
+                                    commissionAmount,
+                                    sellerEarnings,
+                                    items: {
+                                        create: {
+                                            productId: auction.productId,
+                                            productName: auction.product.name,
+                                            quantity: 1,
+                                            unitPrice: auction.currentPrice,
+                                            totalAmount: auction.currentPrice,
+                                        },
+                                    },
+                                    ledgerEntries: {
+                                        create: [
+                                            {
+                                                type: LedgerEntryType.PLATFORM_COMMISSION,
+                                                amount: commissionAmount,
+                                                idempotencyKey: `${idempotencyKey}:commission`,
+                                            },
+                                            {
+                                                type: LedgerEntryType.SELLER_EARNING,
+                                                amount: sellerEarnings,
+                                                idempotencyKey: `${idempotencyKey}:earning`,
+                                            },
+                                        ],
                                     },
                                 },
-                                ledgerEntries: {
-                                    create: [
-                                        {
-                                            type: LedgerEntryType.PLATFORM_COMMISSION,
-                                            amount: commissionAmount,
-                                            idempotencyKey: `${idempotencyKey}:commission`,
-                                        },
-                                        {
-                                            type: LedgerEntryType.SELLER_EARNING,
-                                            amount: sellerEarnings,
-                                            idempotencyKey: `${idempotencyKey}:earning`,
-                                        },
-                                    ],
-                                },
                             },
                         },
-                    },
-                    { sellerOrders: { include: { items: true } } },
-                    tx,
-                );
-                await this.auctionRepository.updateCheckoutOrder(
-                    auctionId,
-                    order.id,
-                    tx,
-                );
-                void this.logger.audit(
-                    BiddingService.name,
-                    'Auction winner checkout created',
-                    {
+                        { sellerOrders: { include: { items: true } } },
+                    );
+                    await auctionRepository.updateCheckoutOrder(
                         auctionId,
-                        orderId: order.id,
-                        winnerId,
-                        amount: auction.currentPrice.toString(),
-                    },
-                );
-                await this.outboxRepository.createMany(
-                    [
+                        order.id,
+                    );
+                    void this.logger.audit(
+                        BiddingService.name,
+                        'Auction winner checkout created',
+                        {
+                            auctionId,
+                            orderId: order.id,
+                            winnerId,
+                            amount: auction.currentPrice.toString(),
+                        },
+                    );
+                    await outboxRepository.createMany([
                         {
                             orderId: order.id,
                             aggregateType: 'Order',
@@ -596,11 +600,10 @@ export class BiddingService {
                             },
                             idempotencyKey: `${idempotencyKey}:auction-checkout`,
                         },
-                    ],
-                    tx,
-                );
-                return order;
-            });
+                    ]);
+                    return order;
+                },
+            );
         } catch (error: unknown) {
             if (
                 error instanceof Prisma.PrismaClientKnownRequestError &&

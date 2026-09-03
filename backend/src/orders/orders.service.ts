@@ -17,7 +17,6 @@ import {
     Role,
     SellerOrderStatus,
 } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
 import { LoggerService } from '../logger/logger.service';
 import { RedisService } from '../redis/redis.service';
 import { QueryOrderDto } from './dto/query-order.dto';
@@ -30,6 +29,7 @@ import {
     OrderRepository,
     OutboxRepository,
     ProductRepository,
+    UnitOfWork,
 } from '../database';
 
 const orderDetails = {
@@ -68,7 +68,7 @@ export function deriveOrderStatus(statuses: SellerOrderStatus[]): OrderStatus {
 @Injectable()
 export class OrdersService {
     constructor(
-        private readonly prisma: PrismaService,
+        private readonly unitOfWork: UnitOfWork,
         @InjectQueue('orders') private readonly ordersQueue: Queue,
         private readonly logger: LoggerService,
         private readonly redis: RedisService,
@@ -93,61 +93,63 @@ export class OrdersService {
         if (existing) return existing;
 
         try {
-            const order = await this.prisma.$transaction(async (tx) => {
-                const priorPayment =
-                    await this.orderRepository.findByPaymentIdempotencyKey(
-                        idempotencyKey,
-                        tx,
-                    );
-                if (priorPayment) {
-                    if (priorPayment.order.userId !== userId) {
-                        throw new ForbiddenException(
-                            'Idempotency key belongs to another user',
+            const order = await this.unitOfWork.run(
+                async ({
+                    cartRepository,
+                    orderRepository,
+                    outboxRepository,
+                    productRepository,
+                    auctionRepository,
+                    bidRepository,
+                }) => {
+                    const priorPayment =
+                        await orderRepository.findByPaymentIdempotencyKey(
+                            idempotencyKey,
                         );
+                    if (priorPayment) {
+                        if (priorPayment.order.userId !== userId) {
+                            throw new ForbiddenException(
+                                'Idempotency key belongs to another user',
+                            );
+                        }
+                        return priorPayment.order;
                     }
-                    return priorPayment.order;
-                }
 
-                const cart = await this.cartRepository.findByUserId(userId, tx);
-                if (!cart) throw new BadRequestException('Cart is empty');
+                    const cart = await cartRepository.findByUserId(userId);
+                    if (!cart) throw new BadRequestException('Cart is empty');
 
-                const cartItems = await this.cartRepository.findItems(
-                    cart.id,
-                    tx,
-                );
-                if (!cartItems.length)
-                    throw new BadRequestException('Cart is empty');
+                    const cartItems = await cartRepository.findItems(cart.id);
+                    if (!cartItems.length)
+                        throw new BadRequestException('Cart is empty');
 
-                const bySeller = new Map<
-                    string,
-                    {
-                        subtotal: Prisma.Decimal;
-                        items: Array<{
-                            productId: string;
-                            productName: string;
-                            quantity: number;
-                            unitPrice: Prisma.Decimal;
-                            totalAmount: Prisma.Decimal;
-                        }>;
-                    }
-                >();
-                let totalAmount = new Prisma.Decimal(0);
-
-                for (const cartItem of cartItems) {
-                    const product = cartItem.product;
-                    const stockUpdate =
-                        await this.productRepository.decrementStockForCheckout(
-                            product.id,
-                            cartItem.quantity,
-                            tx,
-                        );
-                    if (!stockUpdate.count) {
-                        throw new BadRequestException(
-                            `Product "${product.name}" is unavailable or has insufficient stock`,
-                        );
-                    }
-                    await this.outboxRepository.create(
+                    const bySeller = new Map<
+                        string,
                         {
+                            subtotal: Prisma.Decimal;
+                            items: Array<{
+                                productId: string;
+                                productName: string;
+                                quantity: number;
+                                unitPrice: Prisma.Decimal;
+                                totalAmount: Prisma.Decimal;
+                            }>;
+                        }
+                    >();
+                    let totalAmount = new Prisma.Decimal(0);
+
+                    for (const cartItem of cartItems) {
+                        const product = cartItem.product;
+                        const stockUpdate =
+                            await productRepository.decrementStockForCheckout(
+                                product.id,
+                                cartItem.quantity,
+                            );
+                        if (!stockUpdate.count) {
+                            throw new BadRequestException(
+                                `Product "${product.name}" is unavailable or has insufficient stock`,
+                            );
+                        }
+                        await outboxRepository.create({
                             aggregateType: 'Product',
                             aggregateId: product.id,
                             type: 'product.stock-changed',
@@ -157,29 +159,27 @@ export class OrdersService {
                                 correlationId: getCorrelationId(),
                             },
                             idempotencyKey: `${idempotencyKey}:stock:${product.id}`,
-                        },
-                        tx,
-                    );
+                        });
 
-                    const lineTotal = product.price.mul(cartItem.quantity);
-                    totalAmount = totalAmount.add(lineTotal);
-                    const sellerGroup = bySeller.get(product.sellerId) ?? {
-                        subtotal: new Prisma.Decimal(0),
-                        items: [],
-                    };
-                    sellerGroup.subtotal = sellerGroup.subtotal.add(lineTotal);
-                    sellerGroup.items.push({
-                        productId: product.id,
-                        productName: product.name,
-                        quantity: cartItem.quantity,
-                        unitPrice: product.price,
-                        totalAmount: lineTotal,
-                    });
-                    bySeller.set(product.sellerId, sellerGroup);
-                }
+                        const lineTotal = product.price.mul(cartItem.quantity);
+                        totalAmount = totalAmount.add(lineTotal);
+                        const sellerGroup = bySeller.get(product.sellerId) ?? {
+                            subtotal: new Prisma.Decimal(0),
+                            items: [],
+                        };
+                        sellerGroup.subtotal =
+                            sellerGroup.subtotal.add(lineTotal);
+                        sellerGroup.items.push({
+                            productId: product.id,
+                            productName: product.name,
+                            quantity: cartItem.quantity,
+                            unitPrice: product.price,
+                            totalAmount: lineTotal,
+                        });
+                        bySeller.set(product.sellerId, sellerGroup);
+                    }
 
-                const order = await this.orderRepository.createCheckoutOrder(
-                    {
+                    const order = await orderRepository.createCheckoutOrder({
                         userId,
                         status: OrderStatus.NEW,
                         subtotal: totalAmount,
@@ -228,12 +228,9 @@ export class OrdersService {
                                 },
                             ),
                         },
-                    },
-                    tx,
-                );
+                    });
 
-                await this.outboxRepository.createMany(
-                    [
+                    await outboxRepository.createMany([
                         {
                             orderId: order.id,
                             aggregateType: 'Order',
@@ -259,13 +256,12 @@ export class OrdersService {
                             },
                             idempotencyKey: `${idempotencyKey}:seller-order:${sellerOrder.id}`,
                         })),
-                    ],
-                    tx,
-                );
+                    ]);
 
-                await this.cartRepository.clear(cart.id, tx);
-                return order;
-            });
+                    await cartRepository.clear(cart.id);
+                    return order;
+                },
+            );
 
             await Promise.all([
                 this.redis.delByPattern('products:list:*'),
@@ -324,16 +320,21 @@ export class OrdersService {
                 ({ status }) => status === PaymentStatus.PENDING,
             )
         ) {
-            await this.prisma.$transaction(async (tx) => {
-                await this.orderRepository.updateOrderPaymentPending(
-                    orderId,
-                    tx,
-                );
-                await this.orderRepository.updateSellerOrdersPaymentPending(
-                    orderId,
-                    tx,
-                );
-            });
+            await this.unitOfWork.run(
+                async ({
+                    cartRepository,
+                    orderRepository,
+                    outboxRepository,
+                    productRepository,
+                    auctionRepository,
+                    bidRepository,
+                }) => {
+                    await orderRepository.updateOrderPaymentPending(orderId);
+                    await orderRepository.updateSellerOrdersPaymentPending(
+                        orderId,
+                    );
+                },
+            );
             this.ordersGateway?.emitOrderStatusUpdate(
                 userId,
                 orderId,
@@ -355,142 +356,134 @@ export class OrdersService {
         }
 
         try {
-            const updated = await this.prisma.$transaction(async (tx) => {
-                const order =
-                    await this.orderRepository.findForPaymentProcessing(
-                        orderId,
-                        tx,
-                    );
-                if (!order) throw new NotFoundException('Order not found');
-                if (order.userId !== userId) {
-                    throw new ForbiddenException(
-                        'You do not have access to this order',
-                    );
-                }
-                if (
-                    order.status !== OrderStatus.PAYMENT_PENDING &&
-                    order.status !== OrderStatus.NEW &&
-                    order.status !== OrderStatus.PARTIALLY_CANCELLED
-                ) {
-                    throw new BadRequestException(
-                        `Order cannot be paid in status ${order.status}`,
-                    );
-                }
-                const payment = order.payments.find(
-                    ({ status }) => status === PaymentStatus.PENDING,
-                );
-                const completedPayment = order.payments.find(
-                    ({ status }) =>
-                        status === PaymentStatus.PAID ||
-                        status === PaymentStatus.PARTIALLY_REFUNDED,
-                );
-                if (!payment && completedPayment) {
-                    const sellerOrderStatuses =
-                        await this.orderRepository.findSellerOrderStatuses(
-                            orderId,
-                            tx,
+            const updated = await this.unitOfWork.run(
+                async ({
+                    cartRepository,
+                    orderRepository,
+                    outboxRepository,
+                    productRepository,
+                    auctionRepository,
+                    bidRepository,
+                }) => {
+                    const order =
+                        await orderRepository.findForPaymentProcessing(orderId);
+                    if (!order) throw new NotFoundException('Order not found');
+                    if (order.userId !== userId) {
+                        throw new ForbiddenException(
+                            'You do not have access to this order',
                         );
-                    const derivedStatus = deriveOrderStatus(
-                        sellerOrderStatuses.map(({ status }) => status),
+                    }
+                    if (
+                        order.status !== OrderStatus.PAYMENT_PENDING &&
+                        order.status !== OrderStatus.NEW &&
+                        order.status !== OrderStatus.PARTIALLY_CANCELLED
+                    ) {
+                        throw new BadRequestException(
+                            `Order cannot be paid in status ${order.status}`,
+                        );
+                    }
+                    const payment = order.payments.find(
+                        ({ status }) => status === PaymentStatus.PENDING,
                     );
-                    return this.orderRepository.updateOrderStatusWithDetails(
-                        orderId,
-                        derivedStatus === OrderStatus.PAYMENT_PENDING ||
-                            derivedStatus === OrderStatus.NEW
-                            ? OrderStatus.PROCESSING
-                            : derivedStatus,
-                        tx,
+                    const completedPayment = order.payments.find(
+                        ({ status }) =>
+                            status === PaymentStatus.PAID ||
+                            status === PaymentStatus.PARTIALLY_REFUNDED,
                     );
-                }
-                if (!payment) {
-                    throw new BadRequestException('Payment is not pending');
-                }
-                const sellerOrdersForPayment =
-                    await this.orderRepository.findSellerOrdersForPayment(
-                        orderId,
-                        tx,
+                    if (!payment && completedPayment) {
+                        const sellerOrderStatuses =
+                            await orderRepository.findSellerOrderStatuses(
+                                orderId,
+                            );
+                        const derivedStatus = deriveOrderStatus(
+                            sellerOrderStatuses.map(({ status }) => status),
+                        );
+                        return orderRepository.updateOrderStatusWithDetails(
+                            orderId,
+                            derivedStatus === OrderStatus.PAYMENT_PENDING ||
+                                derivedStatus === OrderStatus.NEW
+                                ? OrderStatus.PROCESSING
+                                : derivedStatus,
+                        );
+                    }
+                    if (!payment) {
+                        throw new BadRequestException('Payment is not pending');
+                    }
+                    const sellerOrdersForPayment =
+                        await orderRepository.findSellerOrdersForPayment(
+                            orderId,
+                        );
+                    const payableAmount = sellerOrdersForPayment
+                        .filter(
+                            ({ status }) =>
+                                status !== SellerOrderStatus.CANCELLED,
+                        )
+                        .reduce(
+                            (total, sellerOrder) =>
+                                total.add(sellerOrder.subtotal),
+                            new Prisma.Decimal(0),
+                        );
+                    if (payableAmount.isZero()) {
+                        throw new BadRequestException(
+                            'Order has no payable seller orders',
+                        );
+                    }
+                    const charge = this.mockPayment.charge(
+                        payment.id,
+                        payableAmount,
                     );
-                const payableAmount = sellerOrdersForPayment
-                    .filter(
-                        ({ status }) => status !== SellerOrderStatus.CANCELLED,
-                    )
-                    .reduce(
-                        (total, sellerOrder) => total.add(sellerOrder.subtotal),
-                        new Prisma.Decimal(0),
-                    );
-                if (payableAmount.isZero()) {
-                    throw new BadRequestException(
-                        'Order has no payable seller orders',
-                    );
-                }
-                const charge = this.mockPayment.charge(
-                    payment.id,
-                    payableAmount,
-                );
-                await this.orderRepository.updatePayment(
-                    payment.id,
-                    {
+                    await orderRepository.updatePayment(payment.id, {
                         amount: payableAmount,
                         status: PaymentStatus.PAID,
                         providerRef: charge.providerRef,
                         paidAt: new Date(),
-                    },
-                    tx,
-                );
-                await this.orderRepository.createLedgerEntry(
-                    {
+                    });
+                    await orderRepository.createLedgerEntry({
                         paymentId: payment.id,
                         type: LedgerEntryType.CUSTOMER_CHARGE,
                         amount: charge.amount,
                         idempotencyKey: `${idempotencyKey}:charge-ledger`,
-                    },
-                    tx,
-                );
-                await this.orderRepository.updateSellerOrdersProcessing(
-                    orderId,
-                    tx,
-                );
-                for (const sellerOrder of sellerOrdersForPayment) {
-                    if (sellerOrder.status === SellerOrderStatus.CANCELLED) {
-                        continue;
+                    });
+                    await orderRepository.updateSellerOrdersProcessing(orderId);
+                    for (const sellerOrder of sellerOrdersForPayment) {
+                        if (
+                            sellerOrder.status === SellerOrderStatus.CANCELLED
+                        ) {
+                            continue;
+                        }
+                        this.logger.log(
+                            OrdersService.name,
+                            'Seller payment allocated',
+                            {
+                                orderId,
+                                sellerOrderId: sellerOrder.id,
+                                sellerId: sellerOrder.sellerId,
+                                amount: sellerOrder.subtotal.toString(),
+                                operation: 'payment.success',
+                            },
+                        );
                     }
-                    this.logger.log(
-                        OrdersService.name,
-                        'Seller payment allocated',
-                        {
+                    const updatedSellerOrderStatuses =
+                        await orderRepository.findSellerOrderStatuses(orderId);
+                    if (
+                        updatedSellerOrderStatuses.every(
+                            ({ status }) =>
+                                status === SellerOrderStatus.CANCELLED,
+                        )
+                    ) {
+                        throw new BadRequestException(
+                            'Order has no payable seller orders',
+                        );
+                    }
+                    const aggregateStatus = deriveOrderStatus(
+                        updatedSellerOrderStatuses.map(({ status }) => status),
+                    );
+                    const result =
+                        await orderRepository.updateOrderStatusWithDetails(
                             orderId,
-                            sellerOrderId: sellerOrder.id,
-                            sellerId: sellerOrder.sellerId,
-                            amount: sellerOrder.subtotal.toString(),
-                            operation: 'payment.success',
-                        },
-                    );
-                }
-                const updatedSellerOrderStatuses =
-                    await this.orderRepository.findSellerOrderStatuses(
-                        orderId,
-                        tx,
-                    );
-                if (
-                    updatedSellerOrderStatuses.every(
-                        ({ status }) => status === SellerOrderStatus.CANCELLED,
-                    )
-                ) {
-                    throw new BadRequestException(
-                        'Order has no payable seller orders',
-                    );
-                }
-                const aggregateStatus = deriveOrderStatus(
-                    updatedSellerOrderStatuses.map(({ status }) => status),
-                );
-                const result =
-                    await this.orderRepository.updateOrderStatusWithDetails(
-                        orderId,
-                        aggregateStatus,
-                        tx,
-                    );
-                await this.outboxRepository.create(
-                    {
+                            aggregateStatus,
+                        );
+                    await outboxRepository.create({
                         orderId,
                         aggregateType: 'Payment',
                         aggregateId: payment.id,
@@ -501,11 +494,10 @@ export class OrdersService {
                             correlationId: getCorrelationId(),
                         },
                         idempotencyKey: eventKey,
-                    },
-                    tx,
-                );
-                return result;
-            });
+                    });
+                    return result;
+                },
+            );
             await this.ordersQueue.add('process-order', { orderId });
             for (const sellerOrder of updated.sellerOrders) {
                 this.ordersGateway?.emitOrderStatusUpdate(
@@ -548,67 +540,68 @@ export class OrdersService {
         if (existing?.order) return existing.order;
 
         try {
-            const result = await this.prisma.$transaction(async (tx) => {
-                const order =
-                    await this.orderRepository.findOrderForPaymentCancellation(
-                        orderId,
-                        tx,
+            const result = await this.unitOfWork.run(
+                async ({
+                    cartRepository,
+                    orderRepository,
+                    outboxRepository,
+                    productRepository,
+                    auctionRepository,
+                    bidRepository,
+                }) => {
+                    const order =
+                        await orderRepository.findOrderForPaymentCancellation(
+                            orderId,
+                        );
+                    if (!order) throw new NotFoundException('Order not found');
+                    if (order.userId !== userId) {
+                        throw new ForbiddenException(
+                            'You do not have access to this order',
+                        );
+                    }
+                    if (order.status === OrderStatus.CANCELLED) {
+                        throw new BadRequestException(
+                            'Order cancellation was already processed',
+                        );
+                    }
+                    const payment = order.payments.find(
+                        ({ status }) => status === PaymentStatus.PENDING,
                     );
-                if (!order) throw new NotFoundException('Order not found');
-                if (order.userId !== userId) {
-                    throw new ForbiddenException(
-                        'You do not have access to this order',
-                    );
-                }
-                if (order.status === OrderStatus.CANCELLED) {
-                    throw new BadRequestException(
-                        'Order cancellation was already processed',
-                    );
-                }
-                const payment = order.payments.find(
-                    ({ status }) => status === PaymentStatus.PENDING,
-                );
-                if (!payment)
-                    throw new BadRequestException(
-                        'Only pending payments can be cancelled',
-                    );
-                if (
-                    order.sellerOrders.some(
-                        ({ status }) =>
-                            status !== SellerOrderStatus.PAYMENT_PENDING &&
-                            status !== SellerOrderStatus.NEW &&
-                            status !== SellerOrderStatus.CANCELLED,
-                    )
-                ) {
-                    throw new BadRequestException(
-                        'Payment cannot be cancelled after order processing has started',
-                    );
-                }
-                const cancellation = this.mockPayment.cancel(payment.id);
-                await this.orderRepository.updatePayment(
-                    payment.id,
-                    {
+                    if (!payment)
+                        throw new BadRequestException(
+                            'Only pending payments can be cancelled',
+                        );
+                    if (
+                        order.sellerOrders.some(
+                            ({ status }) =>
+                                status !== SellerOrderStatus.PAYMENT_PENDING &&
+                                status !== SellerOrderStatus.NEW &&
+                                status !== SellerOrderStatus.CANCELLED,
+                        )
+                    ) {
+                        throw new BadRequestException(
+                            'Payment cannot be cancelled after order processing has started',
+                        );
+                    }
+                    const cancellation = this.mockPayment.cancel(payment.id);
+                    await orderRepository.updatePayment(payment.id, {
                         status: PaymentStatus.CANCELLED,
                         providerRef: cancellation.providerRef,
-                    },
-                    tx,
-                );
-                for (const sellerOrder of order.sellerOrders) {
-                    if (sellerOrder.status === SellerOrderStatus.CANCELLED)
-                        continue;
-                    const claimed =
-                        await this.orderRepository.claimSellerOrderCancellation(
-                            sellerOrder.id,
-                            [
-                                SellerOrderStatus.PAYMENT_PENDING,
-                                SellerOrderStatus.NEW,
-                            ],
-                            'Payment cancelled',
-                            tx,
-                        );
-                    if (!claimed.count) continue;
-                    await this.orderRepository.createLedgerEntries(
-                        [
+                    });
+                    for (const sellerOrder of order.sellerOrders) {
+                        if (sellerOrder.status === SellerOrderStatus.CANCELLED)
+                            continue;
+                        const claimed =
+                            await orderRepository.claimSellerOrderCancellation(
+                                sellerOrder.id,
+                                [
+                                    SellerOrderStatus.PAYMENT_PENDING,
+                                    SellerOrderStatus.NEW,
+                                ],
+                                'Payment cancelled',
+                            );
+                        if (!claimed.count) continue;
+                        await orderRepository.createLedgerEntries([
                             {
                                 sellerOrderId: sellerOrder.id,
                                 type: LedgerEntryType.ADJUSTMENT,
@@ -621,11 +614,8 @@ export class OrdersService {
                                 amount: sellerOrder.sellerEarnings.neg(),
                                 idempotencyKey: `${eventKey}:earnings:${sellerOrder.id}`,
                             },
-                        ],
-                        tx,
-                    );
-                    await this.outboxRepository.create(
-                        {
+                        ]);
+                        await outboxRepository.create({
                             orderId,
                             sellerOrderId: sellerOrder.id,
                             aggregateType: 'SellerOrder',
@@ -637,17 +627,13 @@ export class OrdersService {
                                 correlationId: getCorrelationId(),
                             },
                             idempotencyKey: `${eventKey}:seller-order:${sellerOrder.id}`,
-                        },
-                        tx,
-                    );
-                    for (const item of sellerOrder.items) {
-                        await this.productRepository.incrementStock(
-                            item.productId,
-                            item.quantity,
-                            tx,
-                        );
-                        await this.outboxRepository.create(
-                            {
+                        });
+                        for (const item of sellerOrder.items) {
+                            await productRepository.incrementStock(
+                                item.productId,
+                                item.quantity,
+                            );
+                            await outboxRepository.create({
                                 orderId,
                                 aggregateType: 'Product',
                                 aggregateId: item.productId,
@@ -658,24 +644,19 @@ export class OrdersService {
                                     correlationId: getCorrelationId(),
                                 },
                                 idempotencyKey: `${eventKey}:stock:${item.productId}`,
-                            },
-                            tx,
-                        );
+                            });
+                        }
                     }
-                }
-                const statuses =
-                    await this.orderRepository.findSellerOrderStatuses(
-                        orderId,
-                        tx,
-                    );
-                const result = await this.orderRepository.updateOrderStatus(
-                    orderId,
-                    deriveOrderStatus(statuses.map(({ status }) => status)),
-                    tx,
-                    true,
-                );
-                await this.outboxRepository.create(
-                    {
+                    const statuses =
+                        await orderRepository.findSellerOrderStatuses(orderId);
+                    const result =
+                        await orderRepository.updateOrderStatusWithDetails(
+                            orderId,
+                            deriveOrderStatus(
+                                statuses.map(({ status }) => status),
+                            ),
+                        );
+                    await outboxRepository.create({
                         orderId,
                         aggregateType: 'Payment',
                         aggregateId: payment.id,
@@ -686,11 +667,10 @@ export class OrdersService {
                             correlationId: getCorrelationId(),
                         },
                         idempotencyKey: eventKey,
-                    },
-                    tx,
-                );
-                return result;
-            });
+                    });
+                    return result;
+                },
+            );
             return result;
         } catch (error: unknown) {
             if (
@@ -712,82 +692,84 @@ export class OrdersService {
             throw new ForbiddenException(
                 'You do not have access to this order',
             );
-        const updated = await this.prisma.$transaction(async (tx) => {
-            const currentOrder =
-                await this.orderRepository.findOrderForCancellation(
-                    orderId,
-                    tx,
-                );
-            if (!currentOrder) throw new NotFoundException('Order not found');
-            if (currentOrder.userId !== userId) {
-                throw new ForbiddenException(
-                    'You do not have access to this order',
-                );
-            }
-            if (
-                currentOrder.status === OrderStatus.COMPLETED ||
-                currentOrder.status === OrderStatus.CANCELLED
-            ) {
-                throw new BadRequestException(
-                    `Order cannot be cancelled in status ${currentOrder.status}`,
-                );
-            }
-            const rootClaim = await this.orderRepository.claimOrderCancellation(
-                orderId,
-                tx,
-            );
-            if (!rootClaim.count) {
-                throw new BadRequestException(
-                    'Order cancellation was already processed',
-                );
-            }
-
-            const payment = currentOrder.payments.find(
-                ({ status }) =>
-                    status === PaymentStatus.PAID ||
-                    status === PaymentStatus.PARTIALLY_REFUNDED,
-            );
-            const pendingPayment = currentOrder.payments.find(
-                ({ status }) => status === PaymentStatus.PENDING,
-            );
-            const now = new Date();
-            for (const sellerOrder of currentOrder.sellerOrders) {
-                const claimed =
-                    await this.orderRepository.claimSellerOrderCancellation(
-                        sellerOrder.id,
-                        [
-                            SellerOrderStatus.NEW,
-                            SellerOrderStatus.PAYMENT_PENDING,
-                            SellerOrderStatus.PROCESSING,
-                            SellerOrderStatus.SHIPPED,
-                        ],
-                        'Cancelled by customer',
-                        tx,
+        const updated = await this.unitOfWork.run(
+            async ({
+                cartRepository,
+                orderRepository,
+                outboxRepository,
+                productRepository,
+                auctionRepository,
+                bidRepository,
+            }) => {
+                const currentOrder =
+                    await orderRepository.findOrderForCancellation(orderId);
+                if (!currentOrder)
+                    throw new NotFoundException('Order not found');
+                if (currentOrder.userId !== userId) {
+                    throw new ForbiddenException(
+                        'You do not have access to this order',
                     );
-                if (!claimed.count) continue;
+                }
+                if (
+                    currentOrder.status === OrderStatus.COMPLETED ||
+                    currentOrder.status === OrderStatus.CANCELLED
+                ) {
+                    throw new BadRequestException(
+                        `Order cannot be cancelled in status ${currentOrder.status}`,
+                    );
+                }
+                const rootClaim =
+                    await orderRepository.claimOrderCancellation(orderId);
+                if (!rootClaim.count) {
+                    throw new BadRequestException(
+                        'Order cancellation was already processed',
+                    );
+                }
 
-                let refundTotal = new Prisma.Decimal(0);
-                let commissionReduction = new Prisma.Decimal(0);
-                for (const item of sellerOrder.items) {
-                    const alreadyRefunded =
-                        await this.orderRepository.sumRefundedQuantity(
-                            item.id,
-                            tx,
+                const payment = currentOrder.payments.find(
+                    ({ status }) =>
+                        status === PaymentStatus.PAID ||
+                        status === PaymentStatus.PARTIALLY_REFUNDED,
+                );
+                const pendingPayment = currentOrder.payments.find(
+                    ({ status }) => status === PaymentStatus.PENDING,
+                );
+                const now = new Date();
+                for (const sellerOrder of currentOrder.sellerOrders) {
+                    const claimed =
+                        await orderRepository.claimSellerOrderCancellation(
+                            sellerOrder.id,
+                            [
+                                SellerOrderStatus.NEW,
+                                SellerOrderStatus.PAYMENT_PENDING,
+                                SellerOrderStatus.PROCESSING,
+                                SellerOrderStatus.SHIPPED,
+                            ],
+                            'Cancelled by customer',
                         );
-                    const refundableQuantity = Math.max(
-                        item.quantity - (alreadyRefunded._sum.quantity ?? 0),
-                        0,
-                    );
-                    if (!refundableQuantity) continue;
-                    const refundAmount = item.unitPrice.mul(refundableQuantity);
-                    const commission = refundAmount.mul(
-                        sellerOrder.commissionRate,
-                    );
-                    refundTotal = refundTotal.add(refundAmount);
-                    commissionReduction = commissionReduction.add(commission);
-                    if (payment) {
-                        await this.orderRepository.createRefund(
-                            {
+                    if (!claimed.count) continue;
+
+                    let refundTotal = new Prisma.Decimal(0);
+                    let commissionReduction = new Prisma.Decimal(0);
+                    for (const item of sellerOrder.items) {
+                        const alreadyRefunded =
+                            await orderRepository.sumRefundedQuantity(item.id);
+                        const refundableQuantity = Math.max(
+                            item.quantity -
+                                (alreadyRefunded._sum.quantity ?? 0),
+                            0,
+                        );
+                        if (!refundableQuantity) continue;
+                        const refundAmount =
+                            item.unitPrice.mul(refundableQuantity);
+                        const commission = refundAmount.mul(
+                            sellerOrder.commissionRate,
+                        );
+                        refundTotal = refundTotal.add(refundAmount);
+                        commissionReduction =
+                            commissionReduction.add(commission);
+                        if (payment) {
+                            await orderRepository.createRefund({
                                 sellerOrderId: sellerOrder.id,
                                 orderItemId: item.id,
                                 paymentId: payment.id,
@@ -804,17 +786,13 @@ export class OrdersService {
                                         idempotencyKey: `customer-cancel:${orderId}:refund-ledger:${item.id}`,
                                     },
                                 },
-                            },
-                            tx,
+                            });
+                        }
+                        await productRepository.incrementStock(
+                            item.productId,
+                            refundableQuantity,
                         );
-                    }
-                    await this.productRepository.incrementStock(
-                        item.productId,
-                        refundableQuantity,
-                        tx,
-                    );
-                    await this.outboxRepository.create(
-                        {
+                        await outboxRepository.create({
                             aggregateType: 'Product',
                             aggregateId: item.productId,
                             type: 'product.stock-changed',
@@ -823,25 +801,20 @@ export class OrdersService {
                                 quantity: item.quantity,
                             },
                             idempotencyKey: `customer-cancel:${orderId}:stock:${item.productId}`,
-                        },
-                        tx,
-                    );
-                }
-                await this.orderRepository.updateSellerOrder(
-                    sellerOrder.id,
-                    {
+                        });
+                    }
+                    await orderRepository.updateSellerOrder(sellerOrder.id, {
                         refundedAmount: {
                             increment: payment ? refundTotal : 0,
                         },
-                        commissionAmount: { decrement: commissionReduction },
+                        commissionAmount: {
+                            decrement: commissionReduction,
+                        },
                         sellerEarnings: {
                             decrement: refundTotal.sub(commissionReduction),
                         },
-                    },
-                    tx,
-                );
-                await this.orderRepository.createLedgerEntries(
-                    [
+                    });
+                    await orderRepository.createLedgerEntries([
                         {
                             sellerOrderId: sellerOrder.id,
                             type: LedgerEntryType.ADJUSTMENT,
@@ -854,53 +827,40 @@ export class OrdersService {
                             amount: refundTotal.sub(commissionReduction).neg(),
                             idempotencyKey: `customer-cancel:${orderId}:earnings:${sellerOrder.id}`,
                         },
-                    ],
-                    tx,
-                );
-            }
-            if (payment) {
-                const refunded = await this.orderRepository.sumProcessedRefunds(
-                    payment.id,
-                    tx,
-                );
-                await this.orderRepository.updatePayment(
-                    payment.id,
-                    {
+                    ]);
+                }
+                if (payment) {
+                    const refunded = await orderRepository.sumProcessedRefunds(
+                        payment.id,
+                    );
+                    await orderRepository.updatePayment(payment.id, {
                         status: (
                             refunded._sum.amount ?? new Prisma.Decimal(0)
                         ).gte(payment.amount)
                             ? PaymentStatus.REFUNDED
                             : PaymentStatus.PARTIALLY_REFUNDED,
-                    },
-                    tx,
-                );
-            }
-            if (pendingPayment) {
-                const cancellation = this.mockPayment.cancel(pendingPayment.id);
-                await this.orderRepository.updatePayment(
-                    pendingPayment.id,
-                    {
+                    });
+                }
+                if (pendingPayment) {
+                    const cancellation = this.mockPayment.cancel(
+                        pendingPayment.id,
+                    );
+                    await orderRepository.updatePayment(pendingPayment.id, {
                         status: PaymentStatus.CANCELLED,
                         providerRef: cancellation.providerRef,
-                    },
-                    tx,
+                    });
+                }
+                const statuses =
+                    await orderRepository.findSellerOrderStatuses(orderId);
+                const nextStatus = deriveOrderStatus(
+                    statuses.map(({ status }) => status),
                 );
-            }
-            const statuses = await this.orderRepository.findSellerOrderStatuses(
-                orderId,
-                tx,
-            );
-            const nextStatus = deriveOrderStatus(
-                statuses.map(({ status }) => status),
-            );
-            const result = await this.orderRepository.updateOrderStatus(
-                orderId,
-                nextStatus,
-                tx,
-                true,
-            );
-            await this.outboxRepository.createMany(
-                [
+                const result =
+                    await orderRepository.updateOrderStatusWithDetails(
+                        orderId,
+                        nextStatus,
+                    );
+                await outboxRepository.createMany([
                     ...currentOrder.sellerOrders
                         .filter(
                             ({ status }) =>
@@ -931,11 +891,10 @@ export class OrdersService {
                         },
                         idempotencyKey: `customer-cancel:${orderId}`,
                     },
-                ],
-                tx,
-            );
-            return result;
-        });
+                ]);
+                return result;
+            },
+        );
         await Promise.all([
             this.redis.delByPattern('products:list:*'),
             this.redis.delByPattern('search:products:*'),
@@ -962,84 +921,89 @@ export class OrdersService {
         if (existing?.sellerOrder) return existing.sellerOrder;
 
         try {
-            const result = await this.prisma.$transaction(async (tx) => {
-                const sellerOrder =
-                    await this.orderRepository.findSellerOrderForCancellation(
-                        sellerOrderId,
-                        tx,
-                    );
-                if (!sellerOrder)
-                    throw new NotFoundException('Seller order not found');
-                if (
-                    customerId
-                        ? sellerOrder.order.userId !== customerId
-                        : sellerOrder.sellerId !== sellerId
-                ) {
-                    throw new ForbiddenException(
-                        'You do not have access to this seller order',
-                    );
-                }
-                const cancellableStatuses: SellerOrderStatus[] = customerId
-                    ? [
-                          SellerOrderStatus.NEW,
-                          SellerOrderStatus.PAYMENT_PENDING,
-                          SellerOrderStatus.PROCESSING,
-                      ]
-                    : [
-                          SellerOrderStatus.NEW,
-                          SellerOrderStatus.PAYMENT_PENDING,
-                          SellerOrderStatus.PROCESSING,
-                          SellerOrderStatus.SHIPPED,
-                      ];
-                if (!cancellableStatuses.includes(sellerOrder.status)) {
-                    throw new BadRequestException(
-                        `Seller order cannot be cancelled in status ${sellerOrder.status}`,
-                    );
-                }
-                const claimed =
-                    await this.orderRepository.claimSellerOrderCancellation(
-                        sellerOrderId,
-                        cancellableStatuses,
-                        reason.trim() ||
-                            (customerId
-                                ? 'Cancelled by customer'
-                                : 'Cancelled by seller'),
-                        tx,
-                    );
-                if (!claimed.count) {
-                    throw new BadRequestException(
-                        'Order cancellation was already processed',
-                    );
-                }
-
-                const payment = sellerOrder.order.payments.find(
-                    ({ status }) =>
-                        status === PaymentStatus.PAID ||
-                        status === PaymentStatus.PARTIALLY_REFUNDED,
-                );
-                const now = new Date();
-                let refundTotal = new Prisma.Decimal(0);
-                let commissionReduction = new Prisma.Decimal(0);
-                for (const item of sellerOrder.items) {
-                    const alreadyRefunded =
-                        await this.orderRepository.sumRefundedQuantity(
-                            item.id,
-                            tx,
+            const result = await this.unitOfWork.run(
+                async ({
+                    cartRepository,
+                    orderRepository,
+                    outboxRepository,
+                    productRepository,
+                    auctionRepository,
+                    bidRepository,
+                }) => {
+                    const sellerOrder =
+                        await orderRepository.findSellerOrderForCancellation(
+                            sellerOrderId,
                         );
-                    const refundableQuantity = Math.max(
-                        item.quantity - (alreadyRefunded._sum.quantity ?? 0),
-                        0,
+                    if (!sellerOrder)
+                        throw new NotFoundException('Seller order not found');
+                    if (
+                        customerId
+                            ? sellerOrder.order.userId !== customerId
+                            : sellerOrder.sellerId !== sellerId
+                    ) {
+                        throw new ForbiddenException(
+                            'You do not have access to this seller order',
+                        );
+                    }
+                    const cancellableStatuses: SellerOrderStatus[] = customerId
+                        ? [
+                              SellerOrderStatus.NEW,
+                              SellerOrderStatus.PAYMENT_PENDING,
+                              SellerOrderStatus.PROCESSING,
+                          ]
+                        : [
+                              SellerOrderStatus.NEW,
+                              SellerOrderStatus.PAYMENT_PENDING,
+                              SellerOrderStatus.PROCESSING,
+                              SellerOrderStatus.SHIPPED,
+                          ];
+                    if (!cancellableStatuses.includes(sellerOrder.status)) {
+                        throw new BadRequestException(
+                            `Seller order cannot be cancelled in status ${sellerOrder.status}`,
+                        );
+                    }
+                    const claimed =
+                        await orderRepository.claimSellerOrderCancellation(
+                            sellerOrderId,
+                            cancellableStatuses,
+                            reason.trim() ||
+                                (customerId
+                                    ? 'Cancelled by customer'
+                                    : 'Cancelled by seller'),
+                        );
+                    if (!claimed.count) {
+                        throw new BadRequestException(
+                            'Order cancellation was already processed',
+                        );
+                    }
+
+                    const payment = sellerOrder.order.payments.find(
+                        ({ status }) =>
+                            status === PaymentStatus.PAID ||
+                            status === PaymentStatus.PARTIALLY_REFUNDED,
                     );
-                    if (!refundableQuantity) continue;
-                    const refundAmount = item.unitPrice.mul(refundableQuantity);
-                    const commission = refundAmount.mul(
-                        sellerOrder.commissionRate,
-                    );
-                    refundTotal = refundTotal.add(refundAmount);
-                    commissionReduction = commissionReduction.add(commission);
-                    if (payment) {
-                        await this.orderRepository.createRefund(
-                            {
+                    const now = new Date();
+                    let refundTotal = new Prisma.Decimal(0);
+                    let commissionReduction = new Prisma.Decimal(0);
+                    for (const item of sellerOrder.items) {
+                        const alreadyRefunded =
+                            await orderRepository.sumRefundedQuantity(item.id);
+                        const refundableQuantity = Math.max(
+                            item.quantity -
+                                (alreadyRefunded._sum.quantity ?? 0),
+                            0,
+                        );
+                        if (!refundableQuantity) continue;
+                        const refundAmount =
+                            item.unitPrice.mul(refundableQuantity);
+                        const commission = refundAmount.mul(
+                            sellerOrder.commissionRate,
+                        );
+                        refundTotal = refundTotal.add(refundAmount);
+                        commissionReduction =
+                            commissionReduction.add(commission);
+                        if (payment) {
+                            await orderRepository.createRefund({
                                 sellerOrderId,
                                 orderItemId: item.id,
                                 paymentId: payment.id,
@@ -1056,17 +1020,13 @@ export class OrdersService {
                                         idempotencyKey: `${idempotencyKey}:refund-ledger:${item.id}`,
                                     },
                                 },
-                            },
-                            tx,
+                            });
+                        }
+                        await productRepository.incrementStock(
+                            item.productId,
+                            refundableQuantity,
                         );
-                    }
-                    await this.productRepository.incrementStock(
-                        item.productId,
-                        refundableQuantity,
-                        tx,
-                    );
-                    await this.outboxRepository.create(
-                        {
+                        await outboxRepository.create({
                             orderId: sellerOrder.orderId,
                             sellerOrderId: sellerOrder.id,
                             aggregateType: 'Product',
@@ -1078,71 +1038,59 @@ export class OrdersService {
                                 correlationId: getCorrelationId(),
                             },
                             idempotencyKey: `${eventKey}:stock:${item.productId}`,
-                        },
-                        tx,
-                    );
-                }
+                        });
+                    }
 
-                const updatedSellerOrder =
-                    await this.orderRepository.updateSellerOrder(
-                        sellerOrderId,
-                        {
-                            status: SellerOrderStatus.CANCELLED,
-                            cancelledAt: now,
-                            cancellationReason:
-                                reason.trim() || 'Cancelled by seller',
-                            refundedAmount: {
-                                increment: payment ? refundTotal : 0,
+                    const updatedSellerOrder =
+                        await orderRepository.updateSellerOrderWithDetails(
+                            sellerOrderId,
+                            {
+                                status: SellerOrderStatus.CANCELLED,
+                                cancelledAt: now,
+                                cancellationReason:
+                                    reason.trim() || 'Cancelled by seller',
+                                refundedAmount: {
+                                    increment: payment ? refundTotal : 0,
+                                },
+                                commissionAmount: {
+                                    decrement: commissionReduction,
+                                },
+                                sellerEarnings: {
+                                    decrement:
+                                        refundTotal.sub(commissionReduction),
+                                },
                             },
-                            commissionAmount: {
-                                decrement: commissionReduction,
-                            },
-                            sellerEarnings: {
-                                decrement: refundTotal.sub(commissionReduction),
-                            },
-                        },
-                        tx,
-                        true,
-                    );
-                const siblingStatuses =
-                    await this.orderRepository.findSellerOrderStatuses(
-                        sellerOrder.orderId,
-                        tx,
-                    );
-                const nextOrderStatus = deriveOrderStatus(
-                    siblingStatuses.map(({ status }) => status),
-                );
-                await this.orderRepository.updateOrderStatus(
-                    sellerOrder.orderId,
-                    nextOrderStatus,
-                    tx,
-                );
-                const order =
-                    await this.orderRepository.findOrderForCancellation(
-                        sellerOrder.orderId,
-                        tx,
-                    );
-                if (!order) throw new NotFoundException('Order not found');
-                if (payment) {
-                    const refunded =
-                        await this.orderRepository.sumProcessedRefunds(
-                            payment.id,
-                            tx,
                         );
-                    const totalRefunded =
-                        refunded._sum.amount ?? new Prisma.Decimal(0);
-                    await this.orderRepository.updatePayment(
-                        payment.id,
-                        {
+                    const siblingStatuses =
+                        await orderRepository.findSellerOrderStatuses(
+                            sellerOrder.orderId,
+                        );
+                    const nextOrderStatus = deriveOrderStatus(
+                        siblingStatuses.map(({ status }) => status),
+                    );
+                    await orderRepository.updateOrderStatus(
+                        sellerOrder.orderId,
+                        nextOrderStatus,
+                    );
+                    const order =
+                        await orderRepository.findOrderForCancellation(
+                            sellerOrder.orderId,
+                        );
+                    if (!order) throw new NotFoundException('Order not found');
+                    if (payment) {
+                        const refunded =
+                            await orderRepository.sumProcessedRefunds(
+                                payment.id,
+                            );
+                        const totalRefunded =
+                            refunded._sum.amount ?? new Prisma.Decimal(0);
+                        await orderRepository.updatePayment(payment.id, {
                             status: totalRefunded.gte(payment.amount)
                                 ? PaymentStatus.REFUNDED
                                 : PaymentStatus.PARTIALLY_REFUNDED,
-                        },
-                        tx,
-                    );
-                }
-                await this.orderRepository.createLedgerEntries(
-                    [
+                        });
+                    }
+                    await orderRepository.createLedgerEntries([
                         {
                             sellerOrderId,
                             type: LedgerEntryType.ADJUSTMENT,
@@ -1155,11 +1103,8 @@ export class OrdersService {
                             amount: refundTotal.sub(commissionReduction).neg(),
                             idempotencyKey: `${idempotencyKey}:earnings-adjustment`,
                         },
-                    ],
-                    tx,
-                );
-                await this.outboxRepository.createMany(
-                    [
+                    ]);
+                    await outboxRepository.createMany([
                         {
                             orderId: order.id,
                             sellerOrderId,
@@ -1185,11 +1130,10 @@ export class OrdersService {
                             },
                             idempotencyKey: `${eventKey}:order-status`,
                         },
-                    ],
-                    tx,
-                );
-                return { sellerOrder: updatedSellerOrder, order };
-            });
+                    ]);
+                    return { sellerOrder: updatedSellerOrder, order };
+                },
+            );
             await Promise.all([
                 this.redis.delByPattern('products:list:*'),
                 this.redis.delByPattern('search:products:*'),
@@ -1268,53 +1212,58 @@ export class OrdersService {
         }
 
         try {
-            const result = await this.prisma.$transaction(async (tx) => {
-                const item = await this.orderRepository.findOrderItemForRefund(
-                    orderItemId,
-                    tx,
-                );
-                if (!item) throw new NotFoundException('Order item not found');
-                if (item.sellerOrder.order.userId !== userId) {
-                    throw new ForbiddenException(
-                        'You do not have access to this order item',
+            const result = await this.unitOfWork.run(
+                async ({
+                    cartRepository,
+                    orderRepository,
+                    outboxRepository,
+                    productRepository,
+                    auctionRepository,
+                    bidRepository,
+                }) => {
+                    const item =
+                        await orderRepository.findOrderItemForRefund(
+                            orderItemId,
+                        );
+                    if (!item)
+                        throw new NotFoundException('Order item not found');
+                    if (item.sellerOrder.order.userId !== userId) {
+                        throw new ForbiddenException(
+                            'You do not have access to this order item',
+                        );
+                    }
+                    if (
+                        item.sellerOrder.status === SellerOrderStatus.NEW ||
+                        item.sellerOrder.status === SellerOrderStatus.CANCELLED
+                    ) {
+                        throw new BadRequestException(
+                            'Order item cannot be refunded in the current status',
+                        );
+                    }
+                    await orderRepository.touchSellerOrder(item.sellerOrderId);
+                    const refunded =
+                        await orderRepository.sumRefundedQuantity(orderItemId);
+                    const refundedQuantity = refunded._sum.quantity ?? 0;
+                    if (refundedQuantity + quantity > item.quantity) {
+                        throw new BadRequestException(
+                            'Refund quantity exceeds the refundable quantity',
+                        );
+                    }
+                    const amount = item.unitPrice.mul(quantity);
+                    const commission = amount.mul(
+                        item.sellerOrder.commissionRate,
                     );
-                }
-                if (
-                    item.sellerOrder.status === SellerOrderStatus.NEW ||
-                    item.sellerOrder.status === SellerOrderStatus.CANCELLED
-                ) {
-                    throw new BadRequestException(
-                        'Order item cannot be refunded in the current status',
+                    const payment = item.sellerOrder.order.payments.find(
+                        ({ status }) =>
+                            status === PaymentStatus.PAID ||
+                            status === PaymentStatus.PARTIALLY_REFUNDED,
                     );
-                }
-                await this.orderRepository.touchSellerOrder(
-                    item.sellerOrderId,
-                    tx,
-                );
-                const refunded = await this.orderRepository.sumRefundedQuantity(
-                    orderItemId,
-                    tx,
-                );
-                const refundedQuantity = refunded._sum.quantity ?? 0;
-                if (refundedQuantity + quantity > item.quantity) {
-                    throw new BadRequestException(
-                        'Refund quantity exceeds the refundable quantity',
-                    );
-                }
-                const amount = item.unitPrice.mul(quantity);
-                const commission = amount.mul(item.sellerOrder.commissionRate);
-                const payment = item.sellerOrder.order.payments.find(
-                    ({ status }) =>
-                        status === PaymentStatus.PAID ||
-                        status === PaymentStatus.PARTIALLY_REFUNDED,
-                );
-                if (!payment) {
-                    throw new BadRequestException(
-                        'Order has no successful payment to refund',
-                    );
-                }
-                const refund = await this.orderRepository.createRefund(
-                    {
+                    if (!payment) {
+                        throw new BadRequestException(
+                            'Order has no successful payment to refund',
+                        );
+                    }
+                    const refund = await orderRepository.createRefund({
                         sellerOrderId: item.sellerOrderId,
                         orderItemId,
                         paymentId: payment.id,
@@ -1331,59 +1280,48 @@ export class OrdersService {
                                 idempotencyKey: `${idempotencyKey}:refund-ledger`,
                             },
                         },
-                    },
-                    tx,
-                );
-                const updatedSellerOrder =
-                    await this.orderRepository.updateSellerOrderRefunds(
-                        item.sellerOrderId,
-                        amount,
-                        commission,
-                        tx,
-                    );
-                if (item.sellerOrder.status === SellerOrderStatus.PROCESSING) {
-                    await this.productRepository.incrementStock(
-                        item.productId,
-                        quantity,
-                        tx,
-                    );
-                }
-                if (payment) {
-                    const paymentRefunds =
-                        await this.orderRepository.sumProcessedRefunds(
-                            payment.id,
-                            tx,
+                    });
+                    const updatedSellerOrder =
+                        await orderRepository.updateSellerOrderRefunds(
+                            item.sellerOrderId,
+                            amount,
+                            commission,
                         );
-                    const totalRefunded =
-                        paymentRefunds._sum.amount ?? new Prisma.Decimal(0);
-                    await this.orderRepository.updatePaymentStatus(
-                        payment.id,
-                        totalRefunded.gte(payment.amount)
-                            ? PaymentStatus.REFUNDED
-                            : PaymentStatus.PARTIALLY_REFUNDED,
-                        tx,
-                    );
-                }
-                await this.orderRepository.createLedgerEntry(
-                    {
+                    if (
+                        item.sellerOrder.status === SellerOrderStatus.PROCESSING
+                    ) {
+                        await productRepository.incrementStock(
+                            item.productId,
+                            quantity,
+                        );
+                    }
+                    if (payment) {
+                        const paymentRefunds =
+                            await orderRepository.sumProcessedRefunds(
+                                payment.id,
+                            );
+                        const totalRefunded =
+                            paymentRefunds._sum.amount ?? new Prisma.Decimal(0);
+                        await orderRepository.updatePaymentStatus(
+                            payment.id,
+                            totalRefunded.gte(payment.amount)
+                                ? PaymentStatus.REFUNDED
+                                : PaymentStatus.PARTIALLY_REFUNDED,
+                        );
+                    }
+                    await orderRepository.createLedgerEntry({
                         sellerOrderId: item.sellerOrderId,
                         type: LedgerEntryType.ADJUSTMENT,
                         amount: commission.neg(),
                         idempotencyKey: `${idempotencyKey}:commission-adjustment`,
-                    },
-                    tx,
-                );
-                await this.orderRepository.createLedgerEntry(
-                    {
+                    });
+                    await orderRepository.createLedgerEntry({
                         sellerOrderId: item.sellerOrderId,
                         type: LedgerEntryType.ADJUSTMENT,
                         amount: amount.sub(commission).neg(),
                         idempotencyKey: `${idempotencyKey}:earnings-adjustment`,
-                    },
-                    tx,
-                );
-                await this.outboxRepository.create(
-                    {
+                    });
+                    await outboxRepository.create({
                         orderId: item.sellerOrder.orderId,
                         sellerOrderId: item.sellerOrderId,
                         aggregateType: 'SellerOrder',
@@ -1396,11 +1334,10 @@ export class OrdersService {
                             correlationId: getCorrelationId(),
                         },
                         idempotencyKey: `${idempotencyKey}:refund-event`,
-                    },
-                    tx,
-                );
-                return { refund, sellerOrder: updatedSellerOrder };
-            });
+                    });
+                    return { refund, sellerOrder: updatedSellerOrder };
+                },
+            );
             await Promise.all([
                 this.redis.delByPattern('products:list:*'),
                 this.redis.delByPattern('search:products:*'),
@@ -1478,59 +1415,65 @@ export class OrdersService {
         sellerOrderId: string,
         dto: UpdateSellerOrderStatusDto,
     ) {
-        const result = await this.prisma.$transaction(async (tx) => {
-            const sellerOrder =
-                await this.orderRepository.findSellerOrderForCancellation(
-                    sellerOrderId,
-                    tx,
-                );
-            if (!sellerOrder)
-                throw new NotFoundException('Seller order not found');
-            if (sellerOrder.sellerId !== sellerId) {
-                throw new ForbiddenException(
-                    'You do not have access to this seller order',
-                );
-            }
+        const result = await this.unitOfWork.run(
+            async ({
+                cartRepository,
+                orderRepository,
+                outboxRepository,
+                productRepository,
+                auctionRepository,
+                bidRepository,
+            }) => {
+                const sellerOrder =
+                    await orderRepository.findSellerOrderForCancellation(
+                        sellerOrderId,
+                    );
+                if (!sellerOrder)
+                    throw new NotFoundException('Seller order not found');
+                if (sellerOrder.sellerId !== sellerId) {
+                    throw new ForbiddenException(
+                        'You do not have access to this seller order',
+                    );
+                }
 
-            this.assertSellerOrderTransition(sellerOrder.status, dto.status);
-            const now = new Date();
-            const updatedSellerOrder =
-                await this.orderRepository.updateSellerOrder(
-                    sellerOrderId,
-                    {
-                        status: dto.status,
-                        ...(dto.status === SellerOrderStatus.SHIPPED && {
-                            ...(dto.trackingNumber?.trim() && {
-                                trackingNumber: dto.trackingNumber.trim(),
+                this.assertSellerOrderTransition(
+                    sellerOrder.status,
+                    dto.status,
+                );
+                const now = new Date();
+                const updatedSellerOrder =
+                    await orderRepository.updateSellerOrderWithDetails(
+                        sellerOrderId,
+                        {
+                            status: dto.status,
+                            ...(dto.status === SellerOrderStatus.SHIPPED && {
+                                ...(dto.trackingNumber?.trim() && {
+                                    trackingNumber: dto.trackingNumber.trim(),
+                                }),
+                                shippedAt: now,
                             }),
-                            shippedAt: now,
-                        }),
-                        ...(dto.status === SellerOrderStatus.COMPLETED && {
-                            completedAt: now,
-                        }),
-                    },
-                    tx,
-                    true,
+                            ...(dto.status === SellerOrderStatus.COMPLETED && {
+                                completedAt: now,
+                            }),
+                        },
+                    );
+                const siblingStatuses =
+                    await orderRepository.findSellerOrderStatuses(
+                        sellerOrder.orderId,
+                    );
+                const nextOrderStatus = deriveOrderStatus(
+                    siblingStatuses.map(({ status }) => status),
                 );
-            const siblingStatuses =
-                await this.orderRepository.findSellerOrderStatuses(
-                    sellerOrder.orderId,
-                    tx,
-                );
-            const nextOrderStatus = deriveOrderStatus(
-                siblingStatuses.map(({ status }) => status),
-            );
-            const parentChanged = sellerOrder.order.status !== nextOrderStatus;
-            const order = parentChanged
-                ? await this.orderRepository.updateOrderStatus(
-                      sellerOrder.orderId,
-                      nextOrderStatus,
-                      tx,
-                  )
-                : sellerOrder.order;
+                const parentChanged =
+                    sellerOrder.order.status !== nextOrderStatus;
+                const order = parentChanged
+                    ? await orderRepository.updateOrderStatus(
+                          sellerOrder.orderId,
+                          nextOrderStatus,
+                      )
+                    : sellerOrder.order;
 
-            await this.outboxRepository.createMany(
-                [
+                await outboxRepository.createMany([
                     {
                         orderId: order.id,
                         sellerOrderId: updatedSellerOrder.id,
@@ -1561,11 +1504,10 @@ export class OrdersService {
                               },
                           ]
                         : []),
-                ],
-                tx,
-            );
-            return { sellerOrder: updatedSellerOrder, order };
-        });
+                ]);
+                return { sellerOrder: updatedSellerOrder, order };
+            },
+        );
 
         this.logger.log(
             OrdersService.name,
@@ -1598,16 +1540,16 @@ export class OrdersService {
     async findAll(query: QueryOrderDto) {
         const { status, page, limit } = query;
         const where: Prisma.OrderWhereInput = { ...(status && { status }) };
-        const [items, total] = await this.prisma.$transaction(async (tx) =>
-            Promise.all([
-                this.orderRepository.listOrders(
-                    where,
-                    (page - 1) * limit,
-                    limit,
-                    tx,
-                ),
-                this.orderRepository.countOrders(where, tx),
-            ]),
+        const [items, total] = await this.unitOfWork.run(
+            async ({ orderRepository }) =>
+                Promise.all([
+                    orderRepository.listOrders(
+                        where,
+                        (page - 1) * limit,
+                        limit,
+                    ),
+                    orderRepository.countOrders(where),
+                ]),
         );
         return {
             items,

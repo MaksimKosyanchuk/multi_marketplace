@@ -19,6 +19,7 @@ import {
     OrderRepository,
     OutboxRepository,
     ProductRepository,
+    UnitOfWork,
 } from '../database';
 
 describe('OrdersService checkout', () => {
@@ -78,6 +79,7 @@ describe('OrdersService checkout', () => {
                 OrderRepository,
                 OutboxRepository,
                 ProductRepository,
+                UnitOfWork,
             ],
         }).compile();
         service = module.get(OrdersService);

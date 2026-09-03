@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { OrderStatus, Prisma, SellerOrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { DatabaseClient } from './database.types';
@@ -20,7 +20,9 @@ const sellerOrderDetails = {
 
 @Injectable()
 export class OrderRepository {
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        @Inject(PrismaService) private readonly prisma: DatabaseClient,
+    ) {}
 
     findByPaymentIdempotencyKey(
         idempotencyKey: string,
@@ -429,6 +431,18 @@ export class OrderRepository {
             where: { id: sellerOrderId },
             data,
             ...(includeDetails ? { include: sellerOrderDetails } : {}),
+        });
+    }
+
+    updateSellerOrderWithDetails(
+        sellerOrderId: string,
+        data: Prisma.SellerOrderUpdateArgs['data'],
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.sellerOrder.update({
+            where: { id: sellerOrderId },
+            data,
+            include: sellerOrderDetails,
         });
     }
 

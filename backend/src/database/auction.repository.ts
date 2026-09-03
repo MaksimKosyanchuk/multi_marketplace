@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
     AuctionStatus,
     BidStatus,
@@ -16,7 +16,9 @@ const auctionDetails = {
 
 @Injectable()
 export class AuctionRepository {
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        @Inject(PrismaService) private readonly prisma: DatabaseClient,
+    ) {}
 
     findById(id: string, db: DatabaseClient = this.prisma) {
         return db.auction.findUnique({ where: { id } });
@@ -166,7 +168,9 @@ export class AuctionRepository {
 
 @Injectable()
 export class BidRepository {
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        @Inject(PrismaService) private readonly prisma: DatabaseClient,
+    ) {}
 
     findByIdempotencyKey(
         idempotencyKey: string,

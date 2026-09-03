@@ -13,6 +13,7 @@ import {
     OrderRepository,
     OutboxRepository,
     ProductRepository,
+    UnitOfWork,
 } from '../database';
 
 describe('BiddingService critical auction flows', () => {
@@ -38,7 +39,7 @@ describe('BiddingService critical auction flows', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         service = new BiddingService(
-            prisma as never,
+            new UnitOfWork(prisma as never),
             queue as never,
             logger as never,
             new AuctionRepository(prisma as never),

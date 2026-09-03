@@ -6,6 +6,7 @@ import {
     CartRepository,
     OutboxRepository,
     ProductRepository,
+    UnitOfWork,
 } from '../database';
 
 describe('ProductsService moderation', () => {
@@ -39,7 +40,7 @@ describe('ProductsService moderation', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         service = new ProductsService(
-            prisma as never,
+            new UnitOfWork(prisma as never),
             redis as never,
             logger as never,
             new ProductRepository(prisma as never),

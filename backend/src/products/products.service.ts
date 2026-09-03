@@ -4,7 +4,6 @@ import {
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -23,6 +22,7 @@ import {
     CartRepository,
     OutboxRepository,
     ProductRepository,
+    UnitOfWork,
 } from '../database';
 
 interface ProductWithCategory {
@@ -60,7 +60,7 @@ export class ProductsService {
     private readonly DETAIL_CACHE_PREFIX = 'products:detail:';
 
     constructor(
-        private prisma: PrismaService,
+        private readonly unitOfWork: UnitOfWork,
         private redis: RedisService,
         private logger: LoggerService,
         private readonly productRepository: ProductRepository,
@@ -113,20 +113,23 @@ export class ProductsService {
                   ? { price: 'desc' }
                   : { createdAt: 'desc' };
 
-        const [items, total] = await this.prisma.$transaction([
-            this.productRepository.findCatalog(
-                where,
-                orderBy,
-                (page - 1) * limit,
-                limit,
-                {
-                    category: true,
-                    auction: { select: { id: true, status: true } },
-                    reviews: { select: { rating: true } },
-                },
-            ),
-            this.productRepository.count(where),
-        ]);
+        const [items, total] = await this.unitOfWork.run(
+            async ({ productRepository }) =>
+                Promise.all([
+                    productRepository.findCatalog(
+                        where,
+                        orderBy,
+                        (page - 1) * limit,
+                        limit,
+                        {
+                            category: true,
+                            auction: { select: { id: true, status: true } },
+                            reviews: { select: { rating: true } },
+                        },
+                    ),
+                    productRepository.count(where),
+                ]),
+        );
 
         const result: PaginatedProductsResult = {
             items: items.map((item) => {
@@ -186,20 +189,23 @@ export class ProductsService {
                 : sort === ProductSort.PRICE_DESC
                   ? { price: 'desc' }
                   : { createdAt: 'desc' };
-        const [items, total] = await this.prisma.$transaction([
-            this.productRepository.findCatalog(
-                where,
-                orderBy,
-                (page - 1) * limit,
-                limit,
-                {
-                    category: true,
-                    auction: { select: { id: true } },
-                    reviews: { select: { rating: true } },
-                },
-            ),
-            this.productRepository.count(where),
-        ]);
+        const [items, total] = await this.unitOfWork.run(
+            async ({ productRepository }) =>
+                Promise.all([
+                    productRepository.findCatalog(
+                        where,
+                        orderBy,
+                        (page - 1) * limit,
+                        limit,
+                        {
+                            category: true,
+                            auction: { select: { id: true } },
+                            reviews: { select: { rating: true } },
+                        },
+                    ),
+                    productRepository.count(where),
+                ]),
+        );
         return {
             items: items.map((item) => {
                 const { reviews, ...result } = item as ProductWithCategory & {
@@ -224,33 +230,35 @@ export class ProductsService {
 
     async submitForApproval(id: string, sellerId: string) {
         await this.findOwnedProduct(id, sellerId);
-        const product = await this.prisma.$transaction(async (tx) => {
-            const claimed = await this.productRepository.claimStatus(
-                id,
-                {
-                    sellerId,
-                    status: ProductStatus.DRAFT,
-                    isArchived: false,
-                },
-                { status: ProductStatus.PENDING_APPROVAL },
-                tx,
-            );
-            if (!claimed.count) {
-                throw new BadRequestException(
-                    'Only non-archived draft products can be submitted for approval',
-                );
-            }
-            const submitted =
-                await this.productRepository.findOrThrowWithDetails(
+        const product = await this.unitOfWork.run(
+            async ({
+                cartRepository,
+                orderRepository,
+                outboxRepository,
+                productRepository,
+                auctionRepository,
+                bidRepository,
+            }) => {
+                const claimed = await productRepository.claimStatus(
                     id,
                     {
+                        sellerId,
+                        status: ProductStatus.DRAFT,
+                        isArchived: false,
+                    },
+                    { status: ProductStatus.PENDING_APPROVAL },
+                );
+                if (!claimed.count) {
+                    throw new BadRequestException(
+                        'Only non-archived draft products can be submitted for approval',
+                    );
+                }
+                const submitted =
+                    await productRepository.findOrThrowWithDetails(id, {
                         category: true,
                         auction: { select: { id: true, status: true } },
-                    },
-                    tx,
-                );
-            await this.outboxRepository.create(
-                {
+                    });
+                await outboxRepository.create({
                     aggregateType: 'Product',
                     aggregateId: id,
                     type: 'product.submitted_for_approval',
@@ -260,11 +268,10 @@ export class ProductsService {
                         correlationId: getCorrelationId(),
                     },
                     idempotencyKey: `product-submitted-for-approval:${id}:${submitted.version}`,
-                },
-                tx,
-            );
-            return submitted;
-        });
+                });
+                return submitted;
+            },
+        );
         await this.invalidateProductCaches(id);
         return product;
     }
@@ -297,19 +304,22 @@ export class ProductsService {
                 : sort === ProductSort.PRICE_DESC
                   ? { price: 'desc' }
                   : { createdAt: 'asc' };
-        const [items, total] = await this.prisma.$transaction([
-            this.productRepository.findCatalog(
-                where,
-                orderBy,
-                (page - 1) * limit,
-                limit,
-                {
-                    category: true,
-                    auction: { select: { id: true, status: true } },
-                },
-            ),
-            this.productRepository.count(where),
-        ]);
+        const [items, total] = await this.unitOfWork.run(
+            async ({ productRepository }) =>
+                Promise.all([
+                    productRepository.findCatalog(
+                        where,
+                        orderBy,
+                        (page - 1) * limit,
+                        limit,
+                        {
+                            category: true,
+                            auction: { select: { id: true, status: true } },
+                        },
+                    ),
+                    productRepository.count(where),
+                ]),
+        );
         return {
             items,
             meta: { total, page, limit, pageCount: Math.ceil(total / limit) },
@@ -341,41 +351,45 @@ export class ProductsService {
             );
         }
 
-        const product = await this.prisma.$transaction(async (tx) => {
-            const claimed = await this.productRepository.claimStatus(
-                id,
-                {
-                    status: ProductStatus.PENDING_APPROVAL,
-                    isArchived: false,
-                },
-                {
-                    status,
-                    version: { increment: 1 },
-                },
-                tx,
-            );
-            if (!claimed.count) {
-                throw new BadRequestException(
-                    'Product was already processed by another administrator',
+        const product = await this.unitOfWork.run(
+            async ({
+                cartRepository,
+                orderRepository,
+                outboxRepository,
+                productRepository,
+                auctionRepository,
+                bidRepository,
+            }) => {
+                const claimed = await productRepository.claimStatus(
+                    id,
+                    {
+                        status: ProductStatus.PENDING_APPROVAL,
+                        isArchived: false,
+                    },
+                    {
+                        status,
+                        version: { increment: 1 },
+                    },
                 );
-            }
-            const updated = await this.productRepository.findOrThrowWithDetails(
-                id,
-                { category: true, auction: true },
-                tx,
-            );
-            if (
-                status === ProductStatus.ACTIVE &&
-                updated.type === ProductType.AUCTION &&
-                updated.auction
-            ) {
-                await this.auctionRepository.activateDraftIfStarted(
-                    updated.auction.id,
-                    tx,
+                if (!claimed.count) {
+                    throw new BadRequestException(
+                        'Product was already processed by another administrator',
+                    );
+                }
+                const updated = await productRepository.findOrThrowWithDetails(
+                    id,
+                    { category: true, auction: true },
                 );
-            }
-            await this.outboxRepository.create(
-                {
+                if (
+                    status === ProductStatus.ACTIVE &&
+                    updated.type === ProductType.AUCTION &&
+                    updated.auction
+                ) {
+                    await auctionRepository.activateDraftIfStarted(
+                        updated.auction.id,
+                    );
+                }
+                await outboxRepository.create({
                     aggregateType: 'Product',
                     aggregateId: id,
                     type:
@@ -390,11 +404,10 @@ export class ProductsService {
                         correlationId: getCorrelationId(),
                     },
                     idempotencyKey: `product-moderated:${id}:${updated.version}:${status}`,
-                },
-                tx,
-            );
-            return updated;
-        });
+                });
+                return updated;
+            },
+        );
         await this.invalidateProductCaches(id);
         return product;
     }
@@ -454,19 +467,23 @@ export class ProductsService {
 
             const imageUrl = uploadedFilePath ?? dto.imageUrl ?? null;
 
-            const product = await this.prisma.$transaction(async (tx) => {
-                const created = await this.productRepository.create(
-                    {
+            const product = await this.unitOfWork.run(
+                async ({
+                    cartRepository,
+                    orderRepository,
+                    outboxRepository,
+                    productRepository,
+                    auctionRepository,
+                    bidRepository,
+                }) => {
+                    const created = await productRepository.create({
                         ...productData,
                         sellerId,
                         slug: this.createSlug(dto.name),
                         description: dto.description ?? '',
                         imageUrl,
-                    },
-                    tx,
-                );
-                await this.outboxRepository.create(
-                    {
+                    });
+                    await outboxRepository.create({
                         aggregateType: 'Product',
                         aggregateId: created.id,
                         type: 'product.created',
@@ -475,11 +492,10 @@ export class ProductsService {
                             correlationId: getCorrelationId(),
                         },
                         idempotencyKey: `product-created:${created.id}:${created.version}`,
-                    },
-                    tx,
-                );
-                return created;
-            });
+                    });
+                    return created;
+                },
+            );
 
             await this.invalidateProductCaches(product.id);
 
@@ -534,30 +550,23 @@ export class ProductsService {
         }
 
         try {
-            const updatedProduct = await this.prisma.$transaction(
-                async (tx) => {
-                    const updated = await this.productRepository.update(
-                        id,
-                        {
-                            ...productData,
-                            imageUrl: newImageUrl,
-                            version: { increment: 1 },
+            const updatedProduct = await this.unitOfWork.run(
+                async ({ productRepository, outboxRepository }) => {
+                    const updated = await productRepository.update(id, {
+                        ...productData,
+                        imageUrl: newImageUrl,
+                        version: { increment: 1 },
+                    });
+                    await outboxRepository.create({
+                        aggregateType: 'Product',
+                        aggregateId: updated.id,
+                        type: 'product.updated',
+                        payload: {
+                            productId: updated.id,
+                            correlationId: getCorrelationId(),
                         },
-                        tx,
-                    );
-                    await this.outboxRepository.create(
-                        {
-                            aggregateType: 'Product',
-                            aggregateId: updated.id,
-                            type: 'product.updated',
-                            payload: {
-                                productId: updated.id,
-                                correlationId: getCorrelationId(),
-                            },
-                            idempotencyKey: `product-updated:${updated.id}:${updated.version}`,
-                        },
-                        tx,
-                    );
+                        idempotencyKey: `product-updated:${updated.id}:${updated.version}`,
+                    });
                     return updated;
                 },
             );
@@ -590,31 +599,35 @@ export class ProductsService {
     async remove(id: string, sellerId: string) {
         const existingProduct = await this.findOwnedProduct(id, sellerId);
 
-        await this.prisma.$transaction(async (tx) => {
-            const claimed = await this.productRepository.claimStatus(
-                id,
-                { sellerId, isArchived: false },
-                {
-                    isArchived: true,
-                    status: ProductStatus.ARCHIVED,
-                    version: { increment: 1 },
-                },
-                tx,
-            );
-            if (!claimed.count) {
-                throw new BadRequestException('Product is already archived');
-            }
-            if (existingProduct.type === 'AUCTION') {
-                await this.auctionRepository.cancelForProduct(id, tx);
-            }
-            const archived = await this.productRepository.findOrThrow(
-                id,
-                {},
-                tx,
-            );
-            await this.cartRepository.removeProduct(id, tx);
-            await this.outboxRepository.create(
-                {
+        await this.unitOfWork.run(
+            async ({
+                cartRepository,
+                orderRepository,
+                outboxRepository,
+                productRepository,
+                auctionRepository,
+                bidRepository,
+            }) => {
+                const claimed = await productRepository.claimStatus(
+                    id,
+                    { sellerId, isArchived: false },
+                    {
+                        isArchived: true,
+                        status: ProductStatus.ARCHIVED,
+                        version: { increment: 1 },
+                    },
+                );
+                if (!claimed.count) {
+                    throw new BadRequestException(
+                        'Product is already archived',
+                    );
+                }
+                if (existingProduct.type === 'AUCTION') {
+                    await auctionRepository.cancelForProduct(id);
+                }
+                const archived = await productRepository.findOrThrow(id, {});
+                await cartRepository.removeProduct(id);
+                await outboxRepository.create({
                     aggregateType: 'Product',
                     aggregateId: id,
                     type: 'product.archived',
@@ -623,10 +636,9 @@ export class ProductsService {
                         correlationId: getCorrelationId(),
                     },
                     idempotencyKey: `product-archived:${archived.id}:${archived.version}`,
-                },
-                tx,
-            );
-        });
+                });
+            },
+        );
 
         await this.invalidateProductCaches(id);
         await this.redis.delByPattern(`cart:*`);
@@ -649,29 +661,31 @@ export class ProductsService {
     async restore(id: string, sellerId: string) {
         await this.findOwnedProduct(id, sellerId);
 
-        const product = await this.prisma.$transaction(async (tx) => {
-            const claimed = await this.productRepository.claimStatus(
-                id,
-                { sellerId, isArchived: true },
-                {
-                    isArchived: false,
-                    status: ProductStatus.DRAFT,
-                    version: { increment: 1 },
-                },
-                tx,
-            );
-            if (!claimed.count) {
-                throw new BadRequestException(
-                    'Only archived products can be restored',
+        const product = await this.unitOfWork.run(
+            async ({
+                cartRepository,
+                orderRepository,
+                outboxRepository,
+                productRepository,
+                auctionRepository,
+                bidRepository,
+            }) => {
+                const claimed = await productRepository.claimStatus(
+                    id,
+                    { sellerId, isArchived: true },
+                    {
+                        isArchived: false,
+                        status: ProductStatus.DRAFT,
+                        version: { increment: 1 },
+                    },
                 );
-            }
-            const restored = await this.productRepository.findOrThrow(
-                id,
-                {},
-                tx,
-            );
-            await this.outboxRepository.create(
-                {
+                if (!claimed.count) {
+                    throw new BadRequestException(
+                        'Only archived products can be restored',
+                    );
+                }
+                const restored = await productRepository.findOrThrow(id, {});
+                await outboxRepository.create({
                     aggregateType: 'Product',
                     aggregateId: id,
                     type: 'product.restored',
@@ -681,11 +695,10 @@ export class ProductsService {
                         correlationId: getCorrelationId(),
                     },
                     idempotencyKey: `product-restored:${restored.id}:${restored.version}`,
-                },
-                tx,
-            );
-            return restored;
-        });
+                });
+                return restored;
+            },
+        );
 
         await this.invalidateProductCaches(id);
 

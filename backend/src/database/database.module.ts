@@ -5,6 +5,7 @@ import { OrderRepository } from './order.repository';
 import { OutboxRepository } from './outbox.repository';
 import { ProductRepository } from './product.repository';
 import { AuctionRepository, BidRepository } from './auction.repository';
+import { UnitOfWork } from './unit-of-work';
 
 @Global()
 @Module({
@@ -16,6 +17,7 @@ import { AuctionRepository, BidRepository } from './auction.repository';
         ProductRepository,
         AuctionRepository,
         BidRepository,
+        UnitOfWork,
     ],
     exports: [
         CartRepository,
@@ -24,6 +26,7 @@ import { AuctionRepository, BidRepository } from './auction.repository';
         ProductRepository,
         AuctionRepository,
         BidRepository,
+        UnitOfWork,
     ],
 })
 export class DatabaseModule {}
