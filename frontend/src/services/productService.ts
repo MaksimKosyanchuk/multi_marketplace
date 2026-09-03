@@ -50,6 +50,20 @@ export const productService = {
         const { data } = await api.get<Product>(`/products/${id}`);
         return data;
     },
+    getPendingApproval: async (): Promise<Product[]> => {
+        const { data } = await api.get<ProductsResponse>('/products/admin/pending-approval', {
+            params: { limit: 100 },
+        });
+        return data.items;
+    },
+    approveProduct: async (id: string): Promise<Product> => {
+        const { data } = await api.patch<Product>(`/products/${id}/approve`, {});
+        return data;
+    },
+    rejectProduct: async (id: string, comment = 'Відхилено адміністратором'): Promise<Product> => {
+        const { data } = await api.patch<Product>(`/products/${id}/reject`, { comment });
+        return data;
+    },
 
     createProduct: async (
         data: FormData | Record<string, unknown>,

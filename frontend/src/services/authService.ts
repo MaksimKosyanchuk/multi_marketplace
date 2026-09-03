@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { api } from './api';
 import type { AuthResponse, LoginDto, RegisterDto, User } from '../types/index';
 
@@ -26,6 +27,14 @@ export const authService = {
     async getMe(): Promise<User> {
         const response = await api.get<User>('/auth/me');
         return response.data;
+    },
+    async refreshAccessToken(): Promise<string> {
+        const response = await axios.post<AuthResponse>(
+            `${api.defaults.baseURL}/auth/refresh`,
+            undefined,
+            { withCredentials: true },
+        );
+        return response.data.accessToken;
     },
 
     async loginWithGoogle(accessToken: string): Promise<GoogleLoginResponse> {

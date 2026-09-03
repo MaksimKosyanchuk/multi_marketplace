@@ -13,6 +13,22 @@ export const sellerService = {
         });
         return data;
     },
+    async listPendingApplications(): Promise<unknown[]> {
+        const { data } = await api.get<unknown[]>('/sellers/applications', {
+            params: { status: 'PENDING' },
+        });
+        return data;
+    },
+    async approveApplication(id: string): Promise<unknown> {
+        const { data } = await api.patch(`/sellers/applications/${id}/approve`);
+        return data;
+    },
+    async rejectApplication(id: string, reason = 'Відхилено адміністратором'): Promise<unknown> {
+        const { data } = await api.patch(`/sellers/applications/${id}/reject`, {
+            reason,
+        });
+        return data;
+    },
     async analytics(params?: {
         from?: string;
         to?: string;

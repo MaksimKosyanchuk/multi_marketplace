@@ -18,6 +18,8 @@ interface ProductCardProps {
     onDelete?: (product: Product) => void;
     onRestore?: (product: Product) => Promise<void> | void;
     onPublish?: (product: Product) => Promise<void> | void;
+    onApprove?: (product: Product) => Promise<void> | void;
+    onReject?: (product: Product) => Promise<void> | void;
     onAddToCart?: (product: Product) => Promise<void> | void;
 }
 
@@ -48,6 +50,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     onDelete,
     onRestore,
     onPublish,
+    onApprove,
+    onReject,
     onAddToCart,
 }) => {
     const navigate = useNavigate();
@@ -140,6 +144,18 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
     const renderActionButton = () => {
         if (isAdmin) {
+            if (product.status === 'PENDING_APPROVAL') {
+                return (
+                    <div className={styles.footer}>
+                        <Button variant="primary" size="medium" onClick={() => onApprove?.(product)}>
+                            Одобрити
+                        </Button>
+                        <Button variant="secondary" size="medium" onClick={() => onReject?.(product)}>
+                            Відхилити
+                        </Button>
+                    </div>
+                );
+            }
             if (isArchived) {
                 return product.type === 'AUCTION' && product.auctionId ? (
                     <Button

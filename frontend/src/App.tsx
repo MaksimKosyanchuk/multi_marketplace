@@ -23,8 +23,8 @@ import AuctionPage from './pages/AuctionPage/AuctionPage';
 // Admin Pages
 import DashboardPage from './pages/AdminPage/DashboardPage/DashboardPage';
 import OrdersPage from './pages/AdminPage/OrdersPage/OrdersPage';
-import ProductsPage from './pages/AdminPage/ProductsPage/ProductsPage';
 import CategoriesPage from './pages/AdminPage/CategoriesPage/CategoriesPage';
+import ApprovalsPage from './pages/AdminPage/ApprovalsPage/ApprovalsPage';
 
 import NotFoundPage from './pages/NotFoundPage/NotFoundPage';
 
@@ -65,7 +65,7 @@ export function App() {
                                 index
                                 element={<Navigate to="dashboard" replace />}
                             />
-                            <Route path="products" element={<ProductsPage />} />
+                            <Route path="approvals" element={<ApprovalsPage />} />
                             <Route
                                 path="categories"
                                 element={<CategoriesPage />}

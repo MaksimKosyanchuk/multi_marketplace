@@ -14,6 +14,7 @@ import {
 } from '../../services/categoryService';
 import { productService } from '../../services/productService';
 import { auctionService } from '../../services/auctionService';
+import { sellerService } from '../../services/sellerService';
 import { OrderItemCard } from '../../components/Orderitem/OrderItem';
 import { Modal } from '../../components/Modal/Modal';
 import { Button } from '../../components/Ui/Button/Button';
@@ -50,6 +51,7 @@ export const ProfilePage: React.FC = () => {
     const [isLoadingOrders, setIsLoadingOrders] = useState<boolean>(false);
     const [isLoadingSales, setIsLoadingSales] = useState<boolean>(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [sellerApplicationStatus, setSellerApplicationStatus] = useState<string | null>(null);
 
     const fetchOrders = useCallback(async () => {
         setIsLoadingOrders(true);
@@ -117,6 +119,29 @@ export const ProfilePage: React.FC = () => {
         }
     }, [isSeller]);
 
+    const fetchSellerApplication = useCallback(async () => {
+        if (!isCustomer) return;
+        try {
+            const application = (await sellerService.getMine()) as { status?: string };
+            setSellerApplicationStatus(application.status ?? null);
+        } catch {
+            setSellerApplicationStatus(null);
+        }
+    }, [isCustomer]);
+
+    const applyForSeller = async () => {
+        try {
+            const application = (await sellerService.apply(
+                user?.nickName ?? '',
+                'Заявка на статус продавця',
+            )) as { status?: string };
+            setSellerApplicationStatus(application.status ?? 'PENDING');
+        } catch (err) {
+            console.error('Помилка подачі заявки продавця:', err);
+            setErrorMessage('Не вдалося подати заявку продавця.');
+        }
+    };
+
     const handleTabChange = (tab: ActiveTab) => {
         setActiveTab(tab);
 
@@ -182,7 +207,8 @@ export const ProfilePage: React.FC = () => {
 
     useEffect(() => {
         void fetchCategories();
-    }, [fetchCategories]);
+        void fetchSellerApplication();
+    }, [fetchCategories, fetchSellerApplication]);
 
     const handlePayOrder = async (orderId: string) => {
         try {
@@ -478,9 +504,20 @@ export const ProfilePage: React.FC = () => {
                         </div>
 
                         {isCustomer && (
-                            <div className={styles.profileHint}>
-                                Ви можете купувати товари в каталозі.
-                            </div>
+                            <>
+                                <div className={styles.profileHint}>
+                                    Ви можете купувати товари в каталозі.
+                                </div>
+                                {sellerApplicationStatus === 'PENDING' ? (
+                                    <div className={styles.profileHint}>
+                                        Заявка на статус продавця вже подана та очікує перевірки.
+                                    </div>
+                                ) : sellerApplicationStatus !== 'APPROVED' ? (
+                                    <Button type="button" onClick={() => void applyForSeller()}>
+                                        Подати заявку на продавця
+                                    </Button>
+                                ) : null}
+                            </>
                         )}
                         {isSeller && (
                             <div className={styles.profileHint}>

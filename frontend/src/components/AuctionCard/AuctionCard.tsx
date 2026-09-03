@@ -12,6 +12,8 @@ interface AuctionCardProps {
     onEdit?: (product: Product) => void;
     onDelete?: (product: Product) => void;
     onPublish?: (product: Product) => Promise<void> | void;
+    onApprove?: (product: Product) => Promise<void> | void;
+    onReject?: (product: Product) => Promise<void> | void;
 }
 
 const labels: Record<string, string> = {
@@ -29,6 +31,8 @@ export const AuctionCard: React.FC<AuctionCardProps> = ({
     onEdit,
     onDelete,
     onPublish,
+    onApprove,
+    onReject,
 }) => {
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -68,6 +72,16 @@ export const AuctionCard: React.FC<AuctionCardProps> = ({
                     {labels[status] ?? status}
                 </span>
                 <div className={styles.footer}>
+                    {isSellerManagement && status === 'PENDING_APPROVAL' && (
+                        <>
+                            <Button variant="primary" size="medium" onClick={() => onApprove?.(product)}>
+                                Одобрити
+                            </Button>
+                            <Button variant="secondary" size="medium" onClick={() => onReject?.(product)}>
+                                Відхилити
+                            </Button>
+                        </>
+                    )}
                     {product.auctionId &&
                         (status === 'ACTIVE' || finished) && (
                         <Button
@@ -110,7 +124,7 @@ export const AuctionCard: React.FC<AuctionCardProps> = ({
                             </Button>
                         </>
                     )}
-                    {isSellerManagement && status === 'PENDING_APPROVAL' && (
+                    {isSellerManagement && status === 'PENDING_APPROVAL' && !onApprove && (
                             <Button
                                 variant="secondary"
                                 size="medium"

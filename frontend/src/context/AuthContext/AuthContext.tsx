@@ -16,9 +16,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
     const syncUser = async () => {
         try {
+            const accessToken = await authService.refreshAccessToken();
+            localStorage.setItem('accessToken', accessToken);
             setUser(await authService.getMe());
         } catch {
-            setUser(null);
+            try {
+                setUser(await authService.getMe());
+            } catch {
+                setUser(null);
+            }
         }
     };
 
