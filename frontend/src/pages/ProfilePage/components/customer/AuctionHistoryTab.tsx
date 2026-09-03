@@ -1,7 +1,7 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
 import styles from '../../ProfilePage.module.css';
-import type { Auction } from '../../../../types';
+import { AuctionCard } from '../../../../components/AuctionCard/AuctionCard';
+import type { Auction, Product } from '../../../../types';
 
 interface AuctionHistoryTabProps {
     auctionHistory: Auction[];
@@ -17,21 +17,30 @@ export const AuctionHistoryTab: React.FC<AuctionHistoryTabProps> = ({
         ) : (
             <div className={styles.ordersList}>
                 {auctionHistory.map((auction) => (
-                    <div key={auction.id} className={styles.saleItemRow}>
-                        <span>
-                            {auction.product?.name ?? 'Аукціон'} —{' '}
-                            {auction.status} — $
-                            {Number(auction.currentPrice).toFixed(2)}
-                        </span>
-                        <Link
-                            to={`/auction/${auction.id}`}
-                            className={styles.adminLink}
-                        >
-                            Перейти
-                        </Link>
-                    </div>
+                    <AuctionCard
+                        key={auction.id}
+                        product={toAuctionProduct(auction)}
+                    />
                 ))}
             </div>
         )}
     </div>
 );
+
+const toAuctionProduct = (auction: Auction): Product => ({
+    ...(auction.product ?? {
+        id: auction.productId,
+        name: 'Аукціон',
+        description: '',
+        sellerId: '',
+        price: Number(auction.currentPrice),
+        stock: 1,
+        categoryId: '',
+        createdAt: '',
+        updatedAt: '',
+        isArchived: false,
+    }),
+    type: 'AUCTION',
+    auctionId: auction.id,
+    auctionStatus: auction.status,
+});
