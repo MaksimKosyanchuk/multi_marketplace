@@ -9,7 +9,7 @@ import { RedisService } from '../redis/redis.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductSort, QueryProductDto } from './dto/query-product.dto';
-import { AuctionStatus, Prisma, ProductStatus } from '@prisma/client';
+import { AuctionStatus, Prisma, ProductStatus, ProductType } from '@prisma/client';
 import { deleteFile } from '../common/utils/file';
 import { LoggerService } from '../logger/logger.service';
 import { getCorrelationId } from '../common/correlation/correlation.context';
@@ -181,7 +181,7 @@ export class ProductsService {
             }
             const submitted = await tx.product.findUniqueOrThrow({
                 where: { id },
-                include: { category: true },
+                include: { category: true, auction: { select: { id: true, status: true } } },
             });
             await tx.outboxEvent.create({
                 data: {
@@ -229,7 +229,7 @@ export class ProductsService {
                 orderBy,
                 skip: (page - 1) * limit,
                 take: limit,
-                include: { category: true },
+                include: { category: true, auction: { select: { id: true, status: true } } },
             }),
             this.prisma.product.count({ where }),
         ]);
@@ -283,8 +283,18 @@ export class ProductsService {
             }
             const updated = await tx.product.findUniqueOrThrow({
                 where: { id },
-                include: { category: true },
+                include: { category: true, auction: true },
             });
+            if (status === ProductStatus.ACTIVE && updated.type === ProductType.AUCTION && updated.auction) {
+                await tx.auction.updateMany({
+                    where: {
+                        id: updated.auction.id,
+                        status: AuctionStatus.DRAFT,
+                        startsAt: { lte: new Date() },
+                    },
+                    data: { status: AuctionStatus.ACTIVE },
+                });
+            }
             await tx.outboxEvent.create({
                 data: {
                     aggregateType: 'Product',

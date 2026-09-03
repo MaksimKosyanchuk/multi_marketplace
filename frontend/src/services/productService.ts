@@ -54,7 +54,15 @@ export const productService = {
         const { data } = await api.get<ProductsResponse>('/products/admin/pending-approval', {
             params: { limit: 100 },
         });
-        return data.items;
+        return data.items.map((product) => ({
+            ...product,
+            auctionId:
+                (product as Product & { auction?: { id: string } }).auction?.id ??
+                product.auctionId,
+            auctionStatus:
+                (product as Product & { auction?: { status: Product['auctionStatus'] } })
+                    .auction?.status ?? product.auctionStatus,
+        }));
     },
     approveProduct: async (id: string): Promise<Product> => {
         const { data } = await api.patch<Product>(`/products/${id}/approve`, {});

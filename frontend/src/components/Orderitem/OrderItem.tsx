@@ -24,7 +24,7 @@ const VALID_STATUSES: OrderStatus[] = [
 const statusLabels: Record<OrderStatus, { text: string; className: string }> = {
     NEW: { text: 'Очікує оплати', className: styles.statusNew },
     PAYMENT_PENDING: { text: 'Оплата обробляється', className: styles.statusPending },
-    PROCESSING: { text: 'Обробляється', className: styles.statusProcessing },
+    PROCESSING: { text: 'Оплачено', className: styles.statusProcessing },
     SHIPPED: { text: 'Відправлено', className: styles.statusShipped },
     COMPLETED: { text: 'Завершено', className: styles.statusCompleted },
     CANCELLED: { text: 'Скасовано', className: styles.statusCancelled },

@@ -24,6 +24,7 @@ const labels: Record<string, string> = {
     EXPIRED: 'Завершений без ставок',
     ENDED: 'Завершений',
     CANCELLED: 'Скасований',
+    REJECTED: 'Відхилений',
 };
 
 export const AuctionCard: React.FC<AuctionCardProps> = ({
@@ -38,8 +39,13 @@ export const AuctionCard: React.FC<AuctionCardProps> = ({
     const { user } = useAuth();
     const isSellerManagement =
         user?.role === Role.SELLER || user?.role === Role.ADMIN;
-    const status = product.auctionStatus ?? product.status ?? 'DRAFT';
-    const finished = ['SOLD', 'EXPIRED', 'ENDED', 'CANCELLED'].includes(status);
+    const isAdmin = user?.role === Role.ADMIN;
+    const status =
+        product.auctionStatus === 'DRAFT' &&
+        product.status === 'PENDING_APPROVAL'
+            ? 'PENDING_APPROVAL'
+            : product.auctionStatus ?? product.status ?? 'DRAFT';
+    const finished = ['SOLD', 'EXPIRED', 'ENDED', 'CANCELLED', 'REJECTED'].includes(status);
     const imageUrl = product.imageUrl ? getImageUrl(product.imageUrl) : null;
 
     return (
@@ -72,7 +78,7 @@ export const AuctionCard: React.FC<AuctionCardProps> = ({
                     {labels[status] ?? status}
                 </span>
                 <div className={styles.footer}>
-                    {isSellerManagement && status === 'PENDING_APPROVAL' && (
+                    {isAdmin && status === 'PENDING_APPROVAL' && (
                         <>
                             <Button variant="primary" size="medium" onClick={() => onApprove?.(product)}>
                                 Одобрити
@@ -124,7 +130,7 @@ export const AuctionCard: React.FC<AuctionCardProps> = ({
                             </Button>
                         </>
                     )}
-                    {isSellerManagement && status === 'PENDING_APPROVAL' && !onApprove && (
+                    {isSellerManagement && status === 'PENDING_APPROVAL' && !isAdmin && (
                             <Button
                                 variant="secondary"
                                 size="medium"

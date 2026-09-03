@@ -54,12 +54,12 @@ export class BiddingService {
             if (
                 product.type !== ProductType.AUCTION ||
                 product.status !== ProductStatus.DRAFT &&
-                product.status !== ProductStatus.PENDING_APPROVAL &&
-                product.status !== ProductStatus.ACTIVE ||
+                    product.status !== ProductStatus.PENDING_APPROVAL &&
+                    product.status !== ProductStatus.ACTIVE ||
                 product.isArchived
             ) {
                 throw new BadRequestException(
-                    'Only an active auction product can be listed',
+                    'Only a draft, pending, or active auction product can be listed',
                 );
             }
             if (product.stock < 1)
@@ -80,10 +80,7 @@ export class BiddingService {
                     minBidIncrement: new Prisma.Decimal(dto.minBidIncrement),
                     startsAt,
                     endsAt,
-                    status:
-                        startsAt <= new Date()
-                            ? AuctionStatus.ACTIVE
-                            : AuctionStatus.DRAFT,
+                    status: AuctionStatus.DRAFT,
                 },
                 include: auctionDetails,
             });
@@ -127,15 +124,8 @@ export class BiddingService {
             const product = await tx.product.findUnique({
                 where: { id: auction.productId },
             });
-            if (product?.status === ProductStatus.SOLD && product.stock === 0) {
-                await tx.product.update({
-                    where: { id: product.id },
-                    data: {
-                        stock: { increment: 1 },
-                        status: ProductStatus.ACTIVE,
-                        version: { increment: 1 },
-                    },
-                });
+            if (product?.status !== ProductStatus.ACTIVE) {
+                return auction;
             }
             const result = await tx.auction.update({
                 where: { id: auctionId },
@@ -149,6 +139,18 @@ export class BiddingService {
                     type: 'auction.started',
                     payload: { auctionId, correlationId: getCorrelationId() },
                     idempotencyKey: `auction-started:${auctionId}`,
+                },
+            });
+            await tx.outboxEvent.create({
+                data: {
+                    aggregateType: 'Product',
+                    aggregateId: auction.productId,
+                    type: 'product.auction-status-changed',
+                    payload: {
+                        productId: auction.productId,
+                        correlationId: getCorrelationId(),
+                    },
+                    idempotencyKey: `product-auction-status:${auctionId}:${status}`,
                 },
             });
             return result;

@@ -22,6 +22,7 @@ type SearchDocument = {
     rating: number;
     createdAt: string;
     auctionId?: string;
+    auctionStatus?: string;
 };
 
 @Injectable()
@@ -105,7 +106,11 @@ export class SearchService implements OnModuleInit {
                 offset: (query.page - 1) * query.limit,
                 facets: ['categoryId', 'sellerId', 'type'],
             };
-            const filters = ['status = ACTIVE', 'isArchived = false'];
+            const filters = [
+                'status = ACTIVE',
+                'isArchived = false',
+                '(type = FIXED_PRICE OR auctionStatus = ACTIVE)',
+            ];
             if (query.categoryId)
                 filters.push(`categoryId = ${query.categoryId}`);
             if (query.sellerId) filters.push(`sellerId = ${query.sellerId}`);
@@ -188,7 +193,7 @@ export class SearchService implements OnModuleInit {
             where: { id: productId },
             include: {
                 reviews: { select: { rating: true } },
-                auction: { select: { id: true } },
+                auction: { select: { id: true, status: true } },
             },
         });
         if (!product) return;
@@ -209,7 +214,7 @@ export class SearchService implements OnModuleInit {
         const products = await this.prisma.product.findMany({
             include: {
                 reviews: { select: { rating: true } },
-                auction: { select: { id: true } },
+                auction: { select: { id: true, status: true } },
             },
         });
         if (!products.length) return;
@@ -262,7 +267,7 @@ export class SearchService implements OnModuleInit {
             status: ProductStatus;
             isArchived: boolean;
             createdAt: Date;
-            auction?: { id: string } | null;
+            auction?: { id: string; status: string } | null;
         },
         rating: number,
     ): SearchDocument {
@@ -280,6 +285,7 @@ export class SearchService implements OnModuleInit {
             rating,
             createdAt: product.createdAt.toISOString(),
             ...(product.auction ? { auctionId: product.auction.id } : {}),
+            ...(product.auction ? { auctionStatus: product.auction.status } : {}),
         };
     }
 
@@ -304,6 +310,10 @@ export class SearchService implements OnModuleInit {
         const where: Prisma.ProductWhereInput = {
             status: ProductStatus.ACTIVE,
             isArchived: false,
+            OR: [
+                { type: ProductType.FIXED_PRICE },
+                { type: ProductType.AUCTION, auction: { status: 'ACTIVE' } },
+            ],
             ...(query.search && {
                 OR: [
                     { name: { contains: query.search, mode: 'insensitive' } },
@@ -342,6 +352,7 @@ export class SearchService implements OnModuleInit {
                         include: {
                             category: true,
                             reviews: { select: { rating: true } },
+                            auction: { select: { id: true, status: true } },
                         },
                         orderBy:
                             query.sort === 'price_asc'
@@ -372,6 +383,12 @@ export class SearchService implements OnModuleInit {
             return {
                 hits: hits.map((product) => ({
                     ...product,
+                    ...(product.auction
+                        ? {
+                              auctionId: product.auction.id,
+                              auctionStatus: product.auction.status,
+                          }
+                        : {}),
                     rating: product.reviews.length
                         ? product.reviews.reduce(
                               (sum, review) => sum + review.rating,

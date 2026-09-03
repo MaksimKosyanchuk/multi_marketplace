@@ -1277,11 +1277,30 @@ export class OrdersService {
         }
     }
 
-    findMyOrders(userId: string) {
-        return this.prisma.order.findMany({
+    async findMyOrders(userId: string) {
+        const orders = await this.prisma.order.findMany({
             where: { userId },
-            include: orderDetails,
+            include: {
+                ...orderDetails,
+                payments: { select: { status: true } },
+            },
             orderBy: { createdAt: 'desc' },
+        });
+
+        return orders.map(({ payments, ...order }) => {
+            const hasPaidPayment = payments.some(
+                (payment) => payment.status === PaymentStatus.PAID,
+            );
+
+            if (
+                hasPaidPayment &&
+                (order.status === OrderStatus.NEW ||
+                    order.status === OrderStatus.PAYMENT_PENDING)
+            ) {
+                return { ...order, status: OrderStatus.PROCESSING };
+            }
+
+            return order;
         });
     }
 

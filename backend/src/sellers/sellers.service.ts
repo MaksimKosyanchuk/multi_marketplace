@@ -40,7 +40,6 @@ export class SellersService {
         const profile = await this.prisma.sellerProfile.findUnique({
             where: { userId },
         });
-        if (!profile) throw new NotFoundException('Seller application not found');
         return profile;
     }
 

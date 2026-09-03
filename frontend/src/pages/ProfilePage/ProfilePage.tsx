@@ -212,7 +212,15 @@ export const ProfilePage: React.FC = () => {
 
     const handlePayOrder = async (orderId: string) => {
         try {
+            await new Promise((resolve) => window.setTimeout(resolve, 5000));
             await orderService.payOrder(orderId);
+            setOrders((current) =>
+                current.map((order) =>
+                    order.id === orderId
+                        ? { ...order, status: 'PROCESSING' }
+                        : order,
+                ),
+            );
             await fetchOrders();
         } catch (err) {
             if (err instanceof AxiosError && err.response?.data?.message) {
@@ -388,9 +396,14 @@ export const ProfilePage: React.FC = () => {
             setIsCreateAuctionOpen(false);
             await fetchAuctionHistory();
         } catch (err) {
+            console.error('Помилка створення аукціону:', err);
+            const responseMessage =
+                err instanceof AxiosError ? err.response?.data?.message : undefined;
             setErrorMessage(
-                err instanceof AxiosError && err.response?.data?.message
-                    ? String(err.response.data.message)
+                responseMessage
+                    ? Array.isArray(responseMessage)
+                        ? responseMessage.join(', ')
+                        : String(responseMessage)
                     : 'Не вдалося створити аукціон.',
             );
         } finally {
@@ -405,6 +418,16 @@ export const ProfilePage: React.FC = () => {
         } catch (err) {
             console.error('Помилка скасування аукціону:', err);
             setErrorMessage('Не вдалося скасувати аукціон.');
+        }
+    };
+
+    const handlePublishAuction = async (product: { id: string }) => {
+        try {
+            await productService.submitForApproval(product.id);
+            await fetchAuctionHistory();
+        } catch (err) {
+            console.error('Помилка публікації аукціону:', err);
+            setErrorMessage('Не вдалося відправити аукціон на модерацію.');
         }
     };
 
@@ -441,6 +464,7 @@ export const ProfilePage: React.FC = () => {
                                 auctionStatus: auction.status,
                             }}
                             onDelete={handleDeleteAuction}
+                            onPublish={handlePublishAuction}
                         />
                     ))}
                 </div>
