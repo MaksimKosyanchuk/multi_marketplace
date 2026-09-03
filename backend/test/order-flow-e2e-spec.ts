@@ -113,8 +113,7 @@ describe('Critical marketplace flows (integration)', () => {
     }
 
     it('creates one SellerOrder per seller and decrements every product atomically', async () => {
-        const { user: customer, token } =
-            await createCustomerThroughHttp('customer');
+        const { token } = await createCustomerThroughHttp('customer');
         const sellerA = await createUser(Role.SELLER, 'seller-a');
         const sellerB = await createUser(Role.SELLER, 'seller-b');
         const category = await prisma.category.create({

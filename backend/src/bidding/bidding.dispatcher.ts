@@ -51,17 +51,23 @@ export class BiddingDispatcher implements OnModuleInit, OnModuleDestroy {
                 take: 50,
             });
             await Promise.all(
-                events.map((event) =>
-                    this.auctionsQueue.add(
+                events.map((event) => {
+                    const payload = event.payload as Record<
+                        string,
+                        unknown
+                    > | null;
+                    const rawCorrelationId = payload?.correlationId;
+                    const correlationId =
+                        typeof rawCorrelationId === 'string' ||
+                        typeof rawCorrelationId === 'number'
+                            ? String(rawCorrelationId)
+                            : undefined;
+
+                    return this.auctionsQueue.add(
                         'deliver-auction-event',
                         {
                             outboxEventId: event.id,
-                            correlationId:
-                                typeof event.payload === 'object' &&
-                                event.payload !== null &&
-                                'correlationId' in event.payload
-                                    ? String(event.payload.correlationId)
-                                    : undefined,
+                            correlationId,
                         },
                         {
                             jobId: `auction-outbox-${event.id}`,
@@ -70,10 +76,10 @@ export class BiddingDispatcher implements OnModuleInit, OnModuleDestroy {
                             removeOnComplete: true,
                             removeOnFail: true,
                         },
-                    ),
-                ),
+                    );
+                }),
             );
-            void this.logger.debug(
+            this.logger.debug(
                 BiddingDispatcher.name,
                 'Auction events dispatched',
                 {
@@ -82,7 +88,7 @@ export class BiddingDispatcher implements OnModuleInit, OnModuleDestroy {
                 },
             );
         } catch (error: unknown) {
-            void this.logger.error(
+            this.logger.error(
                 BiddingDispatcher.name,
                 'Auction dispatch failed',
                 {

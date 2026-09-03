@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+    Injectable,
+    Logger,
+    OnModuleDestroy,
+    OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 
@@ -101,7 +106,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    async setCache(key: string, value: string, ttlSeconds: number): Promise<void> {
+    async setCache(
+        key: string,
+        value: string,
+        ttlSeconds: number,
+    ): Promise<void> {
         try {
             await this.set(key, value, ttlSeconds);
         } catch (error: unknown) {

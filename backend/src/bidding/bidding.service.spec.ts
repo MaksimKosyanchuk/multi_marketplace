@@ -47,8 +47,8 @@ describe('BiddingService critical auction flows', () => {
                 }),
             },
         };
-        prisma.$transaction.mockImplementation((callback: Function) =>
-            callback(tx),
+        prisma.$transaction.mockImplementation(
+            (callback: (txContext: typeof tx) => unknown) => callback(tx),
         );
 
         await expect(
@@ -76,8 +76,8 @@ describe('BiddingService critical auction flows', () => {
             },
             outboxEvent: { create: jest.fn() },
         };
-        prisma.$transaction.mockImplementation((callback: Function) =>
-            callback(tx),
+        prisma.$transaction.mockImplementation(
+            (callback: (txContext: typeof tx) => unknown) => callback(tx),
         );
 
         await service.placeBid('bidder-1', 'auction-1', 110, 'bid-key-1');
@@ -107,8 +107,8 @@ describe('BiddingService critical auction flows', () => {
                 updateMany: jest.fn().mockResolvedValue({ count: 0 }),
             },
         };
-        prisma.$transaction.mockImplementation((callback: Function) =>
-            callback(tx),
+        prisma.$transaction.mockImplementation(
+            (callback: (txContext: typeof tx) => unknown) => callback(tx),
         );
 
         await expect(
@@ -144,8 +144,8 @@ describe('BiddingService critical auction flows', () => {
             },
             outboxEvent: { create: jest.fn() },
         };
-        prisma.$transaction.mockImplementation((callback: Function) =>
-            callback(tx),
+        prisma.$transaction.mockImplementation(
+            (callback: (txContext: typeof tx) => unknown) => callback(tx),
         );
 
         await service.endAuction('auction-1');
@@ -183,8 +183,8 @@ describe('BiddingService critical auction flows', () => {
                 }),
             },
         };
-        prisma.$transaction.mockImplementation((callback: Function) =>
-            callback(tx),
+        prisma.$transaction.mockImplementation(
+            (callback: (txContext: typeof tx) => unknown) => callback(tx),
         );
 
         await service.createAuction('seller-1', {

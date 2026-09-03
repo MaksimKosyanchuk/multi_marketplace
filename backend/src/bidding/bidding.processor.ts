@@ -167,7 +167,11 @@ export class BiddingProcessor extends WorkerHost {
                     typeof event.payload === 'object' && event.payload !== null
                         ? (event.payload as Record<string, unknown>)
                         : {};
-                this.gateway.emitAuctionEvent(event.type, eventPayload, event.id);
+                this.gateway.emitAuctionEvent(
+                    event.type,
+                    eventPayload,
+                    event.id,
+                );
             }
             await this.prisma.eventConsumerReceipt.create({
                 data: { eventId: event.id, consumerName: 'auction-websocket' },

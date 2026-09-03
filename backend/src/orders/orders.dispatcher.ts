@@ -50,17 +50,23 @@ export class OrdersDispatcher implements OnModuleInit, OnModuleDestroy {
                 take: 50,
             });
             await Promise.all(
-                events.map((event) =>
-                    this.ordersQueue.add(
+                events.map((event) => {
+                    const payload = event.payload as Record<
+                        string,
+                        unknown
+                    > | null;
+                    const rawCorrelationId = payload?.correlationId;
+                    const correlationId =
+                        typeof rawCorrelationId === 'string' ||
+                        typeof rawCorrelationId === 'number'
+                            ? String(rawCorrelationId)
+                            : undefined;
+
+                    return this.ordersQueue.add(
                         'deliver-outbox-event',
                         {
                             outboxEventId: event.id,
-                            correlationId:
-                                typeof event.payload === 'object' &&
-                                event.payload !== null &&
-                                'correlationId' in event.payload
-                                    ? String(event.payload.correlationId)
-                                    : undefined,
+                            correlationId,
                         },
                         {
                             jobId: `outbox-${event.id}`,
@@ -69,8 +75,8 @@ export class OrdersDispatcher implements OnModuleInit, OnModuleDestroy {
                             removeOnComplete: true,
                             removeOnFail: true,
                         },
-                    ),
-                ),
+                    );
+                }),
             );
             void this.logger.debug(
                 OrdersDispatcher.name,

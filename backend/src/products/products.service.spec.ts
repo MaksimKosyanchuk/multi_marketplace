@@ -144,12 +144,16 @@ describe('ProductsService', () => {
         jest.resetAllMocks();
 
         mockPrismaService.$transaction.mockImplementation(
-            async (transaction: unknown) => {
+            async <T>(
+                transaction:
+                    | ((tx: typeof mockTransactionPrisma) => Promise<T>)
+                    | Promise<T>[],
+            ): Promise<T> => {
                 if (typeof transaction === 'function') {
                     return transaction(mockTransactionPrisma);
                 }
 
-                return Promise.all(transaction);
+                return Promise.all(transaction) as unknown as T;
             },
         );
     });
@@ -349,7 +353,10 @@ describe('ProductsService', () => {
                 },
             });
 
-            expect(mockTransactionPrisma.product.create).toHaveBeenCalledWith({
+            const productCreateCall = mockTransactionPrisma.product.create.mock
+                .calls[0] as unknown[];
+            const productCreateArg = productCreateCall[0] as { data: unknown };
+            expect(productCreateArg).toEqual({
                 data: expect.objectContaining({
                     name: 'Smartphone',
                     price: 999,
@@ -362,9 +369,10 @@ describe('ProductsService', () => {
                 }),
             });
 
-            expect(
-                mockTransactionPrisma.outboxEvent.create,
-            ).toHaveBeenCalledWith({
+            const outboxCreateCall = mockTransactionPrisma.outboxEvent.create
+                .mock.calls[0] as unknown[];
+            const outboxCreateArg = outboxCreateCall[0] as { data: unknown };
+            expect(outboxCreateArg).toEqual({
                 data: expect.objectContaining({
                     aggregateType: 'Product',
                     aggregateId: 'prod-1',
@@ -437,7 +445,10 @@ describe('ProductsService', () => {
 
             const result = await service.update('prod-1', dto, 'seller-1');
 
-            expect(mockTransactionPrisma.product.update).toHaveBeenCalledWith({
+            const productUpdateCall = mockTransactionPrisma.product.update.mock
+                .calls[0] as unknown[];
+            const productUpdateArg = productUpdateCall[0] as { data: unknown };
+            expect(productUpdateArg).toEqual({
                 where: {
                     id: 'prod-1',
                 },
@@ -447,9 +458,10 @@ describe('ProductsService', () => {
                 }),
             });
 
-            expect(
-                mockTransactionPrisma.outboxEvent.create,
-            ).toHaveBeenCalledWith({
+            const outboxUpdateCall = mockTransactionPrisma.outboxEvent.create
+                .mock.calls[0] as unknown[];
+            const outboxUpdateArg = outboxUpdateCall[0] as { data: unknown };
+            expect(outboxUpdateArg).toEqual({
                 data: expect.objectContaining({
                     aggregateType: 'Product',
                     aggregateId: 'prod-1',
@@ -549,9 +561,13 @@ describe('ProductsService', () => {
 
             const result = await service.remove('prod-1', 'seller-1');
 
-            expect(
-                mockTransactionPrisma.product.updateMany,
-            ).toHaveBeenCalledWith({
+            const updateManyCall = mockTransactionPrisma.product.updateMany.mock
+                .calls[0] as unknown[];
+            const updateManyArg = updateManyCall[0] as {
+                where: unknown;
+                data: unknown;
+            };
+            expect(updateManyArg).toEqual({
                 where: {
                     id: 'prod-1',
                     sellerId: 'seller-1',
@@ -566,17 +582,19 @@ describe('ProductsService', () => {
                 },
             });
 
-            expect(
-                mockTransactionPrisma.cartItem.deleteMany,
-            ).toHaveBeenCalledWith({
+            const deleteManyCall = mockTransactionPrisma.cartItem.deleteMany
+                .mock.calls[0] as unknown[];
+            const deleteManyArg = deleteManyCall[0] as { where: unknown };
+            expect(deleteManyArg).toEqual({
                 where: {
                     productId: 'prod-1',
                 },
             });
 
-            expect(
-                mockTransactionPrisma.outboxEvent.create,
-            ).toHaveBeenCalledWith({
+            const outboxRemoveCall = mockTransactionPrisma.outboxEvent.create
+                .mock.calls[0] as unknown[];
+            const outboxRemoveArg = outboxRemoveCall[0] as { data: unknown };
+            expect(outboxRemoveArg).toEqual({
                 data: expect.objectContaining({
                     aggregateType: 'Product',
                     aggregateId: 'prod-1',
@@ -669,9 +687,13 @@ describe('ProductsService', () => {
 
             const result = await service.restore('prod-1', 'seller-1');
 
-            expect(
-                mockTransactionPrisma.product.updateMany,
-            ).toHaveBeenCalledWith({
+            const restoreUpdateCall = mockTransactionPrisma.product.updateMany
+                .mock.calls[0] as unknown[];
+            const restoreUpdateArg = restoreUpdateCall[0] as {
+                where: unknown;
+                data: unknown;
+            };
+            expect(restoreUpdateArg).toEqual({
                 where: {
                     id: 'prod-1',
                     sellerId: 'seller-1',
@@ -686,17 +708,19 @@ describe('ProductsService', () => {
                 },
             });
 
-            expect(
-                mockTransactionPrisma.product.findUniqueOrThrow,
-            ).toHaveBeenCalledWith({
+            const findOrThrowCall = mockTransactionPrisma.product
+                .findUniqueOrThrow.mock.calls[0] as unknown[];
+            const findOrThrowArg = findOrThrowCall[0] as { where: unknown };
+            expect(findOrThrowArg).toEqual({
                 where: {
                     id: 'prod-1',
                 },
             });
 
-            expect(
-                mockTransactionPrisma.outboxEvent.create,
-            ).toHaveBeenCalledWith({
+            const outboxRestoreCall = mockTransactionPrisma.outboxEvent.create
+                .mock.calls[0] as unknown[];
+            const outboxRestoreArg = outboxRestoreCall[0] as { data: unknown };
+            expect(outboxRestoreArg).toEqual({
                 data: expect.objectContaining({
                     aggregateType: 'Product',
                     aggregateId: 'prod-1',
@@ -827,9 +851,13 @@ describe('ProductsService', () => {
                 'seller-1',
             );
 
-            expect(
-                mockTransactionPrisma.product.updateMany,
-            ).toHaveBeenCalledWith({
+            const submitUpdateCall = mockTransactionPrisma.product.updateMany
+                .mock.calls[0] as unknown[];
+            const submitUpdateArg = submitUpdateCall[0] as {
+                where: unknown;
+                data: unknown;
+            };
+            expect(submitUpdateArg).toEqual({
                 where: {
                     id: 'prod-1',
                     sellerId: 'seller-1',
@@ -841,9 +869,10 @@ describe('ProductsService', () => {
                 },
             });
 
-            expect(
-                mockTransactionPrisma.outboxEvent.create,
-            ).toHaveBeenCalledWith({
+            const outboxSubmitCall = mockTransactionPrisma.outboxEvent.create
+                .mock.calls[0] as unknown[];
+            const outboxSubmitArg = outboxSubmitCall[0] as { data: unknown };
+            expect(outboxSubmitArg).toEqual({
                 data: expect.objectContaining({
                     aggregateType: 'Product',
                     aggregateId: 'prod-1',

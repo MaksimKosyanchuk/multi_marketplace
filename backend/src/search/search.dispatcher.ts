@@ -62,7 +62,13 @@ export class SearchDispatcher implements OnModuleInit, OnModuleDestroy {
                             typeof event.payload === 'object' &&
                             event.payload !== null &&
                             'productId' in event.payload
-                                ? { productId: String(event.payload.productId) }
+                                ? {
+                                      productId:
+                                          typeof event.payload.productId ===
+                                          'string'
+                                              ? event.payload.productId
+                                              : event.aggregateId,
+                                  }
                                 : {}),
                             action:
                                 event.type === 'product.archived'
@@ -72,7 +78,10 @@ export class SearchDispatcher implements OnModuleInit, OnModuleDestroy {
                                 typeof event.payload === 'object' &&
                                 event.payload !== null &&
                                 'correlationId' in event.payload
-                                    ? String(event.payload.correlationId)
+                                    ? typeof event.payload.correlationId ===
+                                      'string'
+                                        ? event.payload.correlationId
+                                        : undefined
                                     : undefined,
                         },
                         {

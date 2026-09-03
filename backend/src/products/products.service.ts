@@ -119,15 +119,13 @@ export class ProductsService {
 
         const result: PaginatedProductsResult = {
             items: items.map((item) => {
-                const reviews = (
-                    item as ProductWithCategory & {
-                        reviews?: { rating: number }[];
-                    }
-                ).reviews;
-                if (!reviews) return item;
-                const { reviews: _reviews, ...withoutReviews } = item;
+                const reviews = item.reviews;
+                const result = { ...item };
+
+                delete result.reviews;
+
                 return {
-                    ...withoutReviews,
+                    ...result,
                     rating: reviews.length
                         ? reviews.reduce(
                               (sum, review) => sum + review.rating,
@@ -140,7 +138,11 @@ export class ProductsService {
         };
 
         try {
-            await this.redis.set(cacheKey, JSON.stringify(result), this.CACHE_TTL);
+            await this.redis.set(
+                cacheKey,
+                JSON.stringify(result),
+                this.CACHE_TTL,
+            );
         } catch {
             // Cache write failures must not fail a product read.
         }
@@ -197,10 +199,14 @@ export class ProductsService {
                         reviews?: { rating: number }[];
                     }
                 ).reviews;
+
                 if (!reviews) return item;
-                const { reviews: _reviews, ...withoutReviews } = item;
+
+                const result = { ...item };
+                delete result.reviews;
+
                 return {
-                    ...withoutReviews,
+                    ...result,
                     rating: reviews.length
                         ? reviews.reduce(
                               (sum, review) => sum + review.rating,
@@ -422,7 +428,11 @@ export class ProductsService {
                 : 0,
         };
         try {
-            await this.redis.set(cacheKey, JSON.stringify(result), this.CACHE_TTL);
+            await this.redis.set(
+                cacheKey,
+                JSON.stringify(result),
+                this.CACHE_TTL,
+            );
         } catch {
             // Cache write failures must not fail a product read.
         }
@@ -469,7 +479,7 @@ export class ProductsService {
 
             await this.invalidateProductCaches(product.id);
 
-            await this.logger.log(ProductsService.name, 'Product created', {
+            this.logger.log(ProductsService.name, 'Product created', {
                 productId: product.id,
                 sellerId,
                 productName: product.name,
@@ -555,7 +565,8 @@ export class ProductsService {
             }
 
             await this.invalidateProductCaches(id);
-            await this.logger.log(ProductsService.name, 'Product updated', {
+
+            this.logger.log(ProductsService.name, 'Product updated', {
                 productId: updatedProduct.id,
                 sellerId,
                 productName: updatedProduct.name,
@@ -617,7 +628,7 @@ export class ProductsService {
         await this.invalidateProductCaches(id);
         await this.redis.delByPattern(`cart:*`);
 
-        await this.logger.log(ProductsService.name, 'Product archived', {
+        this.logger.log(ProductsService.name, 'Product archived', {
             productId: id,
             sellerId,
             operation: 'product.archive',
@@ -671,7 +682,7 @@ export class ProductsService {
 
         await this.invalidateProductCaches(id);
 
-        await this.logger.log(ProductsService.name, 'Product restored', {
+        this.logger.log(ProductsService.name, 'Product restored', {
             productId: product.id,
             sellerId,
             operation: 'product.restore',

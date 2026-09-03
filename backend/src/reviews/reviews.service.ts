@@ -5,7 +5,7 @@ import {
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, type Review } from '@prisma/client';
 import { getCorrelationId } from '../common/correlation/correlation.context';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -24,74 +24,77 @@ export class ReviewsService {
                 'Rating must be an integer from 1 to 5',
             );
         }
-        const review = await this.prisma.$transaction(async (tx) => {
-            const orderItem = await tx.orderItem.findUnique({
-                where: { id: dto.orderItemId },
-                include: { sellerOrder: { include: { order: true } } },
-            });
-
-            if (!orderItem) throw new NotFoundException('Order item not found');
-            if (orderItem.sellerOrder.order.userId !== authorId) {
-                throw new ForbiddenException(
-                    'You can only review your own purchases',
-                );
-            }
-            if (orderItem.sellerOrder.status !== 'COMPLETED') {
-                throw new ConflictException(
-                    'A review requires a completed seller order',
-                );
-            }
-            if (
-                await tx.review.findUnique({
-                    where: { orderItemId: dto.orderItemId },
-                })
-            ) {
-                throw new ConflictException(
-                    'This order item has already been reviewed',
-                );
-            }
-
-            let review;
-            try {
-                review = await tx.review.create({
-                    data: {
-                        orderItemId: dto.orderItemId,
-                        productId: orderItem.productId,
-                        authorId,
-                        rating: dto.rating,
-                        comment: dto.comment?.trim() || null,
-                    },
+        const review = await this.prisma.$transaction(
+            async (tx: Prisma.TransactionClient): Promise<Review> => {
+                const orderItem = await tx.orderItem.findUnique({
+                    where: { id: dto.orderItemId },
+                    include: { sellerOrder: { include: { order: true } } },
                 });
-            } catch (error) {
+
+                if (!orderItem)
+                    throw new NotFoundException('Order item not found');
+                if (orderItem.sellerOrder.order.userId !== authorId) {
+                    throw new ForbiddenException(
+                        'You can only review your own purchases',
+                    );
+                }
+                if (orderItem.sellerOrder.status !== 'COMPLETED') {
+                    throw new ConflictException(
+                        'A review requires a completed seller order',
+                    );
+                }
                 if (
-                    error instanceof Prisma.PrismaClientKnownRequestError &&
-                    error.code === 'P2002'
+                    await tx.review.findUnique({
+                        where: { orderItemId: dto.orderItemId },
+                    })
                 ) {
                     throw new ConflictException(
                         'This order item has already been reviewed',
                     );
                 }
-                throw error;
-            }
 
-            await tx.outboxEvent.create({
-                data: {
-                    aggregateType: 'Review',
-                    aggregateId: review.id,
-                    type: 'review.created',
-                    payload: {
-                        reviewId: review.id,
-                        productId: review.productId,
-                        orderItemId: review.orderItemId,
-                        authorId,
-                        rating: review.rating,
-                        correlationId: getCorrelationId(),
+                let review: Review;
+                try {
+                    review = await tx.review.create({
+                        data: {
+                            orderItemId: dto.orderItemId,
+                            productId: orderItem.productId,
+                            authorId,
+                            rating: dto.rating,
+                            comment: dto.comment?.trim() || null,
+                        },
+                    });
+                } catch (error) {
+                    if (
+                        error instanceof Prisma.PrismaClientKnownRequestError &&
+                        error.code === 'P2002'
+                    ) {
+                        throw new ConflictException(
+                            'This order item has already been reviewed',
+                        );
+                    }
+                    throw error;
+                }
+
+                await tx.outboxEvent.create({
+                    data: {
+                        aggregateType: 'Review',
+                        aggregateId: review.id,
+                        type: 'review.created',
+                        payload: {
+                            reviewId: review.id,
+                            productId: review.productId,
+                            orderItemId: review.orderItemId,
+                            authorId,
+                            rating: review.rating,
+                            correlationId: getCorrelationId(),
+                        },
+                        idempotencyKey: `review-created:${review.id}`,
                     },
-                    idempotencyKey: `review-created:${review.id}`,
-                },
-            });
-            return review;
-        });
+                });
+                return review;
+            },
+        );
         await Promise.all([
             this.redis.delByPattern('products:list:*'),
             this.redis.delByPattern('search:products:*'),

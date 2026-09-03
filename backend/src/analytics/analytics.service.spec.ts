@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { LedgerEntryType, OrderStatus, Prisma } from '@prisma/client';
+import { OrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AnalyticsService } from './analytics.service';
 

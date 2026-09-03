@@ -273,7 +273,7 @@ export class OrdersService {
                 this.redis.delByPattern('search:products:*'),
                 this.redis.delByPattern('products:detail:*'),
             ]);
-            await this.logger.log(OrdersService.name, 'Order created', {
+            this.logger.log(OrdersService.name, 'Order created', {
                 userId,
                 totalAmount: order.totalAmount.toString(),
                 orderId: order.id,
@@ -474,7 +474,7 @@ export class OrdersService {
                     if (sellerOrder.status === SellerOrderStatus.CANCELLED) {
                         continue;
                     }
-                    await this.logger.log(
+                    this.logger.log(
                         OrdersService.name,
                         'Seller payment allocated',
                         {
@@ -1634,7 +1634,7 @@ export class OrdersService {
             return { sellerOrder: updatedSellerOrder, order };
         });
 
-        await this.logger.log(
+        this.logger.log(
             OrdersService.name,
             `Seller order status changed: ${sellerOrderId}`,
             {

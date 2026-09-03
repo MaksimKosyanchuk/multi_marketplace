@@ -26,6 +26,18 @@ type SearchDocument = {
     auctionStatus?: string;
 };
 
+type SearchResult = {
+    hits: unknown[];
+    estimatedTotalHits: number;
+    page?: number;
+    limit?: number;
+    facetDistribution?: {
+        categoryId?: Record<string, number>;
+        sellerId?: Record<string, number>;
+        type?: Record<string, number>;
+    };
+};
+
 @Injectable()
 export class SearchService implements OnModuleInit {
     private readonly logger = new Logger(SearchService.name);
@@ -99,10 +111,10 @@ export class SearchService implements OnModuleInit {
         }
     }
 
-    async search(query: QueryProductDto) {
+    async search(query: QueryProductDto): Promise<SearchResult> {
         const cacheKey = this.cachePrefix + JSON.stringify(query);
         const cached = await this.readCache(cacheKey);
-        if (cached) return JSON.parse(cached);
+        if (cached) return JSON.parse(cached) as SearchResult;
 
         try {
             const body: Record<string, unknown> = {
@@ -385,9 +397,9 @@ export class SearchService implements OnModuleInit {
                             auction: { select: { id: true, status: true } },
                         },
                         orderBy:
-                            query.sort === 'price_asc'
+                            query.sort === ProductSort.PRICE_ASC
                                 ? { price: 'asc' }
-                                : query.sort === 'price_desc'
+                                : query.sort === ProductSort.PRICE_DESC
                                   ? { price: 'desc' }
                                   : { createdAt: 'desc' },
                         skip: (query.page - 1) * query.limit,

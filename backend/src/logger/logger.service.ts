@@ -9,69 +9,36 @@ export type LogMetadata = Record<string, unknown>;
 export class LoggerService {
     constructor(private readonly prisma: PrismaService) {}
 
-    async log(
-        context: string,
-        message: string,
-        meta?: Prisma.InputJsonValue,
-    ): Promise<void> {
-        await this.saveToDb(
-            'INFO',
-            context,
-            message,
-            this.withCorrelation(meta),
-        );
+    log(context: string, message: string, meta?: Prisma.InputJsonValue): void {
+        this.saveToDb('INFO', context, message, this.withCorrelation(meta));
     }
 
-    async warn(
-        context: string,
-        message: string,
-        meta?: Prisma.InputJsonValue,
-    ): Promise<void> {
-        await this.saveToDb(
-            'WARN',
-            context,
-            message,
-            this.withCorrelation(meta),
-        );
+    warn(context: string, message: string, meta?: Prisma.InputJsonValue): void {
+        this.saveToDb('WARN', context, message, this.withCorrelation(meta));
     }
 
-    async error(
+    error(
         context: string,
         message: string,
         meta?: Prisma.InputJsonValue,
-    ): Promise<void> {
-        await this.saveToDb(
-            'ERROR',
-            context,
-            message,
-            this.withCorrelation(meta),
-        );
+    ): void {
+        this.saveToDb('ERROR', context, message, this.withCorrelation(meta));
     }
 
-    async debug(
+    debug(
         context: string,
         message: string,
         meta?: Prisma.InputJsonValue,
-    ): Promise<void> {
-        await this.saveToDb(
-            'DEBUG',
-            context,
-            message,
-            this.withCorrelation(meta),
-        );
+    ): void {
+        this.saveToDb('DEBUG', context, message, this.withCorrelation(meta));
     }
 
-    async audit(
+    audit(
         context: string,
         message: string,
         meta?: Prisma.InputJsonValue,
-    ): Promise<void> {
-        await this.saveToDb(
-            'AUDIT',
-            context,
-            message,
-            this.withCorrelation(meta),
-        );
+    ): void {
+        this.saveToDb('AUDIT', context, message, this.withCorrelation(meta));
     }
 
     private withCorrelation(
