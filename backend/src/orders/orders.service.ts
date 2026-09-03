@@ -277,7 +277,11 @@ export class OrdersService {
                 return order;
             });
 
-            await this.redis.delByPattern('products:list:*');
+            await Promise.all([
+                this.redis.delByPattern('products:list:*'),
+                this.redis.delByPattern('search:products:*'),
+                this.redis.delByPattern('products:detail:*'),
+            ]);
             await this.logger.log(
                 OrdersService.name,
                 `Order created: ${order.id}`,
@@ -809,7 +813,11 @@ export class OrdersService {
             });
             return result;
         });
-        await this.redis.delByPattern('products:list:*');
+        await Promise.all([
+            this.redis.delByPattern('products:list:*'),
+            this.redis.delByPattern('search:products:*'),
+            this.redis.delByPattern('products:detail:*'),
+        ]);
         return updated;
     }
 
@@ -1037,7 +1045,11 @@ export class OrdersService {
                 });
                 return { sellerOrder: updatedSellerOrder, order };
             });
-            await this.redis.delByPattern('products:list:*');
+            await Promise.all([
+                this.redis.delByPattern('products:list:*'),
+                this.redis.delByPattern('search:products:*'),
+                this.redis.delByPattern('products:detail:*'),
+            ]);
             const event = await this.prisma.outboxEvent.findUnique({
                 where: { idempotencyKey: eventKey },
                 select: { id: true },
@@ -1231,7 +1243,11 @@ export class OrdersService {
                 });
                 return { refund, sellerOrder: updatedSellerOrder };
             });
-            await this.redis.delByPattern('products:list:*');
+            await Promise.all([
+                this.redis.delByPattern('products:list:*'),
+                this.redis.delByPattern('search:products:*'),
+                this.redis.delByPattern('products:detail:*'),
+            ]);
             const event = await this.prisma.outboxEvent.findUnique({
                 where: { idempotencyKey: `${idempotencyKey}:refund-event` },
                 select: { id: true },

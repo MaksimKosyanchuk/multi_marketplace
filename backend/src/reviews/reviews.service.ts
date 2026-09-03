@@ -8,17 +8,21 @@ import {
 import { Prisma } from '@prisma/client';
 import { getCorrelationId } from '../common/correlation/correlation.context';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import { CreateReviewDto } from './dto/create-review.dto';
 
 @Injectable()
 export class ReviewsService {
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly redis: RedisService,
+    ) {}
 
     async create(authorId: string, dto: CreateReviewDto) {
         if (!Number.isInteger(dto.rating) || dto.rating < 1 || dto.rating > 5) {
             throw new BadRequestException('Rating must be an integer from 1 to 5');
         }
-        return this.prisma.$transaction(async (tx) => {
+        const review = await this.prisma.$transaction(async (tx) => {
             const orderItem = await tx.orderItem.findUnique({
                 where: { id: dto.orderItemId },
                 include: { sellerOrder: { include: { order: true } } },
@@ -78,6 +82,12 @@ export class ReviewsService {
             });
             return review;
         });
+        await Promise.all([
+            this.redis.delByPattern('products:list:*'),
+            this.redis.delByPattern('search:products:*'),
+            this.redis.delByPattern(`products:detail:${review.productId}`),
+        ]);
+        return review;
     }
 
     async findByProduct(productId: string) {

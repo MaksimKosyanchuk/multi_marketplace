@@ -26,7 +26,7 @@ export class SearchDispatcher implements OnModuleInit, OnModuleDestroy {
             const now = new Date();
             await this.prisma.outboxEvent.updateMany({
                 where: {
-                    aggregateType: 'Product',
+                    aggregateType: { in: ['Product', 'Review'] },
                     status: OutboxStatus.PROCESSING,
                     availableAt: { lte: now },
                     attempts: { lt: 5 },
@@ -35,7 +35,7 @@ export class SearchDispatcher implements OnModuleInit, OnModuleDestroy {
             });
             const events = await this.prisma.outboxEvent.findMany({
                 where: {
-                    aggregateType: 'Product',
+                    aggregateType: { in: ['Product', 'Review'] },
                     status: OutboxStatus.PENDING,
                     availableAt: { lte: now },
                     attempts: { lt: 5 },
@@ -54,7 +54,14 @@ export class SearchDispatcher implements OnModuleInit, OnModuleDestroy {
                     this.queue.add(
                         'index-product',
                         {
+                            eventId: event.id,
                             productId: event.aggregateId,
+                            ...(event.type === 'review.created' &&
+                            typeof event.payload === 'object' &&
+                            event.payload !== null &&
+                            'productId' in event.payload
+                                ? { productId: String(event.payload.productId) }
+                                : {}),
                             action:
                                 event.type === 'product.archived'
                                     ? 'delete'

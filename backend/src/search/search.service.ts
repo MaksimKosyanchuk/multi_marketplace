@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, ProductStatus, ProductType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import {
     ProductSort,
     QueryProductDto,
@@ -19,6 +20,7 @@ type SearchDocument = {
     status: ProductStatus;
     isArchived: boolean;
     rating: number;
+    createdAt: string;
 };
 
 @Injectable()
@@ -26,10 +28,15 @@ export class SearchService implements OnModuleInit {
     private readonly logger = new Logger(SearchService.name);
     private readonly host: string;
     private readonly index = 'products';
+    private readonly cachePrefix = 'search:products:';
+    private readonly cacheTtl = 30;
+    private reindexPromise?: Promise<void>;
+    private lastRecoveryWarningAt = 0;
 
     constructor(
         private readonly prisma: PrismaService,
         config: ConfigService,
+        private readonly redis: RedisService,
     ) {
         this.host = config.get<string>(
             'MEILISEARCH_URL',
@@ -66,6 +73,11 @@ export class SearchService implements OnModuleInit {
                 'PUT',
                 ['price', 'rating', 'createdAt'],
             );
+            await this.request(
+                '/indexes/products/settings/faceting',
+                'PUT',
+                ['categoryId', 'sellerId', 'type', 'rating', 'price', 'stock'],
+            );
         } catch (error: unknown) {
             this.logger.warn(
                 `Meilisearch settings unavailable: ${error instanceof Error ? error.message : 'unknown error'}`,
@@ -81,6 +93,10 @@ export class SearchService implements OnModuleInit {
     }
 
     async search(query: QueryProductDto) {
+        const cacheKey = this.cachePrefix + JSON.stringify(query);
+        const cached = await this.readCache(cacheKey);
+        if (cached) return JSON.parse(cached);
+
         try {
             const body: Record<string, unknown> = {
                 q: query.search ?? '',
@@ -124,18 +140,46 @@ export class SearchService implements OnModuleInit {
                     where: { status: ProductStatus.ACTIVE, isArchived: false },
                 })) > 0
             ) {
-                this.logger.warn(
-                    'Meilisearch returned no products while PostgreSQL has active products; using PostgreSQL fallback',
-                );
-                return this.fallback(query);
+                this.recoverEmptyIndex();
+                const fallback = await this.fallback(query);
+                await this.writeCache(cacheKey, fallback);
+                return fallback;
             }
+            await this.writeCache(cacheKey, result);
             return result;
         } catch (error: unknown) {
             this.logger.warn(
                 `Search unavailable, using PostgreSQL fallback: ${error instanceof Error ? error.message : 'unknown error'}`,
             );
-            return this.fallback(query);
+            const fallback = await this.fallback(query);
+            await this.writeCache(cacheKey, fallback);
+            return fallback;
         }
+    }
+
+    private async readCache(key: string): Promise<string | null> {
+        try {
+            return await this.redis.get(key);
+        } catch (error: unknown) {
+            this.logger.warn(
+                `Search cache read unavailable: ${error instanceof Error ? error.message : 'unknown error'}`,
+            );
+            return null;
+        }
+    }
+
+    private async writeCache(key: string, value: unknown): Promise<void> {
+        try {
+            await this.redis.set(key, JSON.stringify(value), this.cacheTtl);
+        } catch (error: unknown) {
+            this.logger.warn(
+                `Search cache write unavailable: ${error instanceof Error ? error.message : 'unknown error'}`,
+            );
+        }
+    }
+
+    async invalidateProductCaches(): Promise<void> {
+        await this.redis.delByPattern(`${this.cachePrefix}*`);
     }
 
     async indexProduct(productId: string): Promise<void> {
@@ -148,9 +192,13 @@ export class SearchService implements OnModuleInit {
             ? product.reviews.reduce((sum, review) => sum + review.rating, 0) /
               product.reviews.length
             : 0;
-        await this.request(`/indexes/${this.index}/documents`, 'POST', [
+        await this.request(
+            `/indexes/${this.index}/documents?primaryKey=id`,
+            'POST',
+            [
             this.toSearchDocument(product, rating),
-        ]);
+            ],
+        );
     }
 
     private async reindexAllProducts(): Promise<void> {
@@ -160,7 +208,7 @@ export class SearchService implements OnModuleInit {
         if (!products.length) return;
 
         await this.request(
-            `/indexes/${this.index}/documents`,
+            `/indexes/${this.index}/documents?primaryKey=id`,
             'POST',
             products.map((product) => {
                 const rating = product.reviews.length
@@ -175,6 +223,25 @@ export class SearchService implements OnModuleInit {
         this.logger.log(`Indexed ${products.length} existing products`);
     }
 
+    private recoverEmptyIndex(): void {
+        const now = Date.now();
+        if (now - this.lastRecoveryWarningAt >= 60_000) {
+            this.lastRecoveryWarningAt = now;
+            this.logger.warn(
+                'Meilisearch is empty while PostgreSQL has active products; using PostgreSQL fallback and scheduling reindex',
+            );
+        }
+        if (this.reindexPromise) return;
+
+        this.reindexPromise = this.reindexAllProducts().catch((error: unknown) => {
+            this.logger.warn(
+                `Meilisearch recovery failed: ${error instanceof Error ? error.message : 'unknown error'}`,
+            );
+        }).finally(() => {
+            this.reindexPromise = undefined;
+        });
+    }
+
     private toSearchDocument(
         product: {
             id: string;
@@ -187,6 +254,7 @@ export class SearchService implements OnModuleInit {
             type: ProductType;
             status: ProductStatus;
             isArchived: boolean;
+            createdAt: Date;
         },
         rating: number,
     ): SearchDocument {
@@ -202,6 +270,7 @@ export class SearchService implements OnModuleInit {
             status: product.status,
             isArchived: product.isArchived,
             rating,
+            createdAt: product.createdAt.toISOString(),
         };
     }
 

@@ -28,6 +28,7 @@ interface ProductWithCategory {
     createdAt: Date;
     updatedAt: Date;
     category?: unknown;
+    rating?: number;
 }
 
 interface PaginatedProductsResult {
@@ -44,6 +45,7 @@ interface PaginatedProductsResult {
 export class ProductsService {
     private readonly CACHE_PREFIX = 'products:list:';
     private readonly CACHE_TTL = 60;
+    private readonly DETAIL_CACHE_PREFIX = 'products:detail:';
 
     constructor(
         private prisma: PrismaService,
@@ -193,7 +195,7 @@ export class ProductsService {
             });
             return submitted;
         });
-        await this.redis.delByPattern(`${this.CACHE_PREFIX}*`);
+        await this.invalidateProductCaches(id);
         return product;
     }
 
@@ -299,21 +301,36 @@ export class ProductsService {
             });
             return updated;
         });
-        await this.redis.delByPattern(`${this.CACHE_PREFIX}*`);
+        await this.invalidateProductCaches(id);
         return product;
     }
 
     async findOne(id: string): Promise<ProductWithCategory> {
+        const cacheKey = `${this.DETAIL_CACHE_PREFIX}${id}`;
+        const cached = await this.redis.get(cacheKey);
+        if (cached) return JSON.parse(cached) as ProductWithCategory;
+
         const product = await this.prisma.product.findUnique({
             where: { id, status: ProductStatus.ACTIVE, isArchived: false },
-            include: { category: true },
+            include: {
+                category: true,
+                reviews: { select: { rating: true } },
+            },
         });
 
         if (!product) {
             throw new NotFoundException('Product not found');
         }
 
-        return product;
+        const result = {
+            ...product,
+            rating: product.reviews.length
+                ? product.reviews.reduce((sum, review) => sum + review.rating, 0) /
+                  product.reviews.length
+                : 0,
+        };
+        await this.redis.set(cacheKey, JSON.stringify(result), this.CACHE_TTL);
+        return result;
     }
 
     async create(
@@ -351,7 +368,7 @@ export class ProductsService {
                 return created;
             });
 
-            await this.redis.delByPattern(`products:list:*`);
+            await this.invalidateProductCaches(product.id);
 
             await this.logger.log(
                 ProductsService.name,
@@ -424,7 +441,7 @@ export class ProductsService {
                 await deleteFile(existingProduct.imageUrl);
             }
 
-            await this.redis.delByPattern('products:list:*');
+            await this.invalidateProductCaches(id);
             await this.logger.log(
                 ProductsService.name,
                 `Product updated: ${updatedProduct.id}`,
@@ -469,7 +486,7 @@ export class ProductsService {
             });
         });
 
-        await this.redis.delByPattern(`products:list:*`);
+        await this.invalidateProductCaches(id);
         await this.redis.delByPattern(`cart:*`);
 
         await this.logger.log(ProductsService.name, `Product archived: ${id}`);
@@ -518,7 +535,7 @@ export class ProductsService {
             return restored;
         });
 
-        await this.redis.delByPattern(`products:list:*`);
+        await this.invalidateProductCaches(id);
 
         await this.logger.log(
             ProductsService.name,
@@ -537,6 +554,14 @@ export class ProductsService {
             throw new ForbiddenException('You do not own this product');
         }
         return product;
+    }
+
+    private async invalidateProductCaches(productId: string): Promise<void> {
+        await Promise.all([
+            this.redis.delByPattern(`${this.CACHE_PREFIX}*`),
+            this.redis.delByPattern('search:products:*'),
+            this.redis.delByPattern(`${this.DETAIL_CACHE_PREFIX}${productId}`),
+        ]);
     }
 
     private createSlug(name: string): string {

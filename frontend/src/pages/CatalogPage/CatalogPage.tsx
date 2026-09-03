@@ -43,6 +43,16 @@ export const CatalogPage: React.FC = () => {
     const [sort, setSort] = useState<ProductSort>(ProductSort.NEWEST);
     const [page, setPage] = useState(1);
     const [pageCount, setPageCount] = useState(1);
+    const [facets, setFacets] = useState<
+        Record<string, Record<string, number>>
+    >({});
+    const [categoryId, setCategoryId] = useState('');
+    const [sellerId, setSellerId] = useState('');
+    const [type, setType] = useState<QueryProductParams['type']>();
+    const [inStock, setInStock] = useState(false);
+    const [minRating, setMinRating] = useState<number>();
+    const [minPrice, setMinPrice] = useState<number>();
+    const [maxPrice, setMaxPrice] = useState<number>();
 
     const fetchCart = useCallback(async () => {
         if (!isAuthenticated) {
@@ -75,18 +85,37 @@ export const CatalogPage: React.FC = () => {
                 ...(search.trim() && {
                     search: search.trim(),
                 }),
+                ...(categoryId && { categoryId }),
+                ...(sellerId && { sellerId }),
+                ...(type && { type }),
+                ...(inStock && { inStock: true }),
+                ...(minRating !== undefined && { minRating }),
+                ...(minPrice !== undefined && { minPrice }),
+                ...(maxPrice !== undefined && { maxPrice }),
             };
 
             const data = await productService.getAll(params);
 
             setProducts(data.items);
             setPageCount(data.meta.pageCount);
+            setFacets(data.facetDistribution ?? {});
         } catch {
             setError('Не вдалося завантажити товари');
         } finally {
             setIsLoading(false);
         }
-    }, [page, sort, search]);
+    }, [
+        page,
+        sort,
+        search,
+        categoryId,
+        sellerId,
+        type,
+        inStock,
+        minRating,
+        minPrice,
+        maxPrice,
+    ]);
 
     useEffect(() => {
         const loadData = async () => {
@@ -219,6 +248,112 @@ export const CatalogPage: React.FC = () => {
                         </option>
                     </select>
                 </div>
+                <select
+                    value={categoryId}
+                    onChange={(e) => {
+                        setCategoryId(e.target.value);
+                        setPage(1);
+                    }}
+                    className={styles.select}
+                    aria-label="Категорія"
+                >
+                    <option value="">Усі категорії</option>
+                    {Object.entries(facets.categoryId ?? {}).map(
+                        ([id, count]) => (
+                            <option key={id} value={id}>
+                                {id} ({count})
+                            </option>
+                        ),
+                    )}
+                </select>
+                <select
+                    value={sellerId}
+                    onChange={(e) => {
+                        setSellerId(e.target.value);
+                        setPage(1);
+                    }}
+                    className={styles.select}
+                    aria-label="Продавець"
+                >
+                    <option value="">Усі продавці</option>
+                    {Object.entries(facets.sellerId ?? {}).map(
+                        ([id, count]) => (
+                            <option key={id} value={id}>
+                                {id} ({count})
+                            </option>
+                        ),
+                    )}
+                </select>
+                <select
+                    value={type ?? ''}
+                    onChange={(e) => {
+                        setType(
+                            (e.target.value || undefined) as QueryProductParams['type'],
+                        );
+                        setPage(1);
+                    }}
+                    className={styles.select}
+                    aria-label="Тип товару"
+                >
+                    <option value="">Усі типи</option>
+                    <option value="FIXED_PRICE">Фіксована ціна</option>
+                    <option value="AUCTION">Аукціон</option>
+                </select>
+                <label>
+                    <input
+                        type="checkbox"
+                        checked={inStock}
+                        onChange={(e) => {
+                            setInStock(e.target.checked);
+                            setPage(1);
+                        }}
+                    />
+                    У наявності
+                </label>
+                <select
+                    value={minRating ?? ''}
+                    onChange={(e) => {
+                        setMinRating(
+                            e.target.value ? Number(e.target.value) : undefined,
+                        );
+                        setPage(1);
+                    }}
+                    className={styles.select}
+                    aria-label="Мінімальний рейтинг"
+                >
+                    <option value="">Будь-який рейтинг</option>
+                    {[4, 3, 2, 1].map((rating) => (
+                        <option key={rating} value={rating}>
+                            Від {rating} зірок
+                        </option>
+                    ))}
+                </select>
+                <input
+                    type="number"
+                    min="0"
+                    placeholder="Ціна від"
+                    value={minPrice ?? ''}
+                    onChange={(e) => {
+                        setMinPrice(
+                            e.target.value ? Number(e.target.value) : undefined,
+                        );
+                        setPage(1);
+                    }}
+                    className={styles.select}
+                />
+                <input
+                    type="number"
+                    min="0"
+                    placeholder="Ціна до"
+                    value={maxPrice ?? ''}
+                    onChange={(e) => {
+                        setMaxPrice(
+                            e.target.value ? Number(e.target.value) : undefined,
+                        );
+                        setPage(1);
+                    }}
+                    className={styles.select}
+                />
             </div>
 
             {isLoading ? (

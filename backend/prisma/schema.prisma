@@ -122,28 +122,28 @@ enum OutboxStatus {
 }
 
 model User {
-  id                     String          @id @default(uuid())
-  email                  String          @unique
+  id                     String           @id @default(uuid())
+  email                  String           @unique
   passwordHash           String?
   nickName               String
-  role                   Role            @default(CUSTOMER)
+  role                   Role             @default(CUSTOMER)
   cart                   Cart?
   orders                 Order[]
   refreshTokens          RefreshToken[]
   sellerProfile          SellerProfile?
-  reviewedSellerProfiles SellerProfile[] @relation("SellerProfileReviewer")
-  products               Product[]       @relation("ProductSeller")
-  sellerOrders           SellerOrder[]   @relation("SellerOrderSeller")
+  reviewedSellerProfiles SellerProfile[]  @relation("SellerProfileReviewer")
+  products               Product[]        @relation("ProductSeller")
+  sellerOrders           SellerOrder[]    @relation("SellerOrderSeller")
   bids                   Bid[]
   reviews                Review[]
-  openedDisputes         Dispute[]       @relation("DisputeOpenedBy")
-  resolvedDisputes       Dispute[]       @relation("DisputeResolvedBy")
+  openedDisputes         Dispute[]        @relation("DisputeOpenedBy")
+  resolvedDisputes       Dispute[]        @relation("DisputeResolvedBy")
   disputeHistory         DisputeHistory[] @relation("DisputeHistoryActor")
   payouts                Payout[]
-  auctionWins            Auction[]       @relation("AuctionWinner")
+  auctionWins            Auction[]        @relation("AuctionWinner")
   notifications          Notification[]
-  createdAt              DateTime        @default(now())
-  updatedAt              DateTime        @updatedAt
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
 
   @@index([role])
   @@index([createdAt])
@@ -213,8 +213,11 @@ model Product {
 
   @@index([sellerId, status])
   @@index([categoryId, status])
+  @@index([sellerId, status, isArchived])
+  @@index([categoryId, status, isArchived])
   @@index([type, status])
   @@index([status, createdAt])
+  @@index([status, isArchived, createdAt])
   @@index([price])
   @@index([stock])
 }
@@ -242,15 +245,15 @@ model Auction {
 }
 
 model Bid {
-  id        String    @id @default(uuid())
-  auctionId String
-  bidderId  String
-  amount    Decimal   @db.Decimal(12, 2)
-  status    BidStatus @default(ACTIVE)
-  idempotencyKey String? @unique
-  auction   Auction   @relation(fields: [auctionId], references: [id], onDelete: Cascade)
-  bidder    User      @relation(fields: [bidderId], references: [id], onDelete: Restrict)
-  createdAt DateTime  @default(now())
+  id             String    @id @default(uuid())
+  auctionId      String
+  bidderId       String
+  amount         Decimal   @db.Decimal(12, 2)
+  status         BidStatus @default(ACTIVE)
+  idempotencyKey String?   @unique
+  auction        Auction   @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidder         User      @relation(fields: [bidderId], references: [id], onDelete: Restrict)
+  createdAt      DateTime  @default(now())
 
   @@index([auctionId, amount(sort: Desc)])
   @@index([auctionId, createdAt])
@@ -450,56 +453,56 @@ model Review {
 }
 
 model Dispute {
-  id            String        @id @default(uuid())
+  id            String           @id @default(uuid())
   sellerOrderId String
   openedById    String
   resolvedById  String?
-  status        DisputeStatus @default(OPEN)
+  status        DisputeStatus    @default(OPEN)
   subject       String
   description   String
   resolution    String?
   resolvedAt    DateTime?
-  sellerOrder   SellerOrder   @relation(fields: [sellerOrderId], references: [id], onDelete: Restrict)
-  openedBy      User          @relation("DisputeOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
-  resolvedBy    User?         @relation("DisputeResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  history        DisputeHistory[]
+  sellerOrder   SellerOrder      @relation(fields: [sellerOrderId], references: [id], onDelete: Restrict)
+  openedBy      User             @relation("DisputeOpenedBy", fields: [openedById], references: [id], onDelete: Restrict)
+  resolvedBy    User?            @relation("DisputeResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  history       DisputeHistory[]
 
   @@index([sellerOrderId, status])
   @@index([openedById, status])
 }
 
 model DisputeHistory {
-  id         String        @id @default(uuid())
-  disputeId  String
-  actorId    String
-  status     DisputeStatus
-  note       String?
-  createdAt  DateTime      @default(now())
-  dispute    Dispute       @relation(fields: [disputeId], references: [id], onDelete: Cascade)
-  actor      User          @relation("DisputeHistoryActor", fields: [actorId], references: [id], onDelete: Restrict)
+  id        String        @id @default(uuid())
+  disputeId String
+  actorId   String
+  status    DisputeStatus
+  note      String?
+  createdAt DateTime      @default(now())
+  dispute   Dispute       @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  actor     User          @relation("DisputeHistoryActor", fields: [actorId], references: [id], onDelete: Restrict)
 
   @@index([disputeId, createdAt])
 }
 
 model OutboxEvent {
-  id             String       @id @default(uuid())
-  orderId        String?
-  sellerOrderId  String?
-  aggregateType  String
-  aggregateId    String
-  type           String
-  payload        Json
-  status         OutboxStatus @default(PENDING)
-  idempotencyKey String       @unique
-  attempts       Int          @default(0)
-  availableAt    DateTime     @default(now())
-  processedAt    DateTime?
-  lastError      String?
-  order          Order?       @relation("OrderOutboxEvents", fields: [orderId], references: [id], onDelete: Cascade)
-  sellerOrder    SellerOrder? @relation("SellerOrderOutboxEvents", fields: [sellerOrderId], references: [id], onDelete: Cascade)
-  createdAt      DateTime     @default(now())
+  id               String                 @id @default(uuid())
+  orderId          String?
+  sellerOrderId    String?
+  aggregateType    String
+  aggregateId      String
+  type             String
+  payload          Json
+  status           OutboxStatus           @default(PENDING)
+  idempotencyKey   String                 @unique
+  attempts         Int                    @default(0)
+  availableAt      DateTime               @default(now())
+  processedAt      DateTime?
+  lastError        String?
+  order            Order?                 @relation("OrderOutboxEvents", fields: [orderId], references: [id], onDelete: Cascade)
+  sellerOrder      SellerOrder?           @relation("SellerOrderOutboxEvents", fields: [sellerOrderId], references: [id], onDelete: Cascade)
+  createdAt        DateTime               @default(now())
   consumerReceipts EventConsumerReceipt[]
 
   @@index([status, availableAt])
@@ -507,31 +510,30 @@ model OutboxEvent {
   @@index([type, createdAt])
 }
 
-
 model EventConsumerReceipt {
-  id            String   @id @default(uuid())
-  eventId       String
-  consumerName  String
-  processedAt   DateTime @default(now())
-  completedAt   DateTime?
-  leaseUntil    DateTime?
-  attempts      Int      @default(0)
-  lastError     String?
-  event         OutboxEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  id           String      @id @default(uuid())
+  eventId      String
+  consumerName String
+  processedAt  DateTime    @default(now())
+  completedAt  DateTime?
+  leaseUntil   DateTime?
+  attempts     Int         @default(0)
+  lastError    String?
+  event        OutboxEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@unique([eventId, consumerName])
   @@index([consumerName, processedAt])
 }
 
 model Notification {
-  id          String   @id @default(uuid())
-  userId      String
-  eventId     String
-  type        String
-  payload     Json
-  readAt      DateTime?
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
+  id        String    @id @default(uuid())
+  userId    String
+  eventId   String
+  type      String
+  payload   Json
+  readAt    DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
 
   @@unique([userId, eventId])
   @@index([userId, createdAt])

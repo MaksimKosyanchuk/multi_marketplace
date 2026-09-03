@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { runWithCorrelationId } from '../common/correlation/correlation.context';
 
 interface SearchJob {
+    eventId: string;
     productId: string;
     action: 'index' | 'delete';
     correlationId?: string;
@@ -32,11 +33,11 @@ export class SearchProcessor extends WorkerHost {
     }
 
     private async processJob(job: Job<SearchJob>): Promise<void> {
-        const eventId = String(job.id).replace('search:', '');
+        const eventId = job.data.eventId;
         const claimed = await this.prisma.outboxEvent.updateMany({
             where: {
                 id: eventId,
-                aggregateType: 'Product',
+                aggregateType: { in: ['Product', 'Review'] },
                 status: OutboxStatus.PENDING,
                 availableAt: { lte: new Date() },
             },
