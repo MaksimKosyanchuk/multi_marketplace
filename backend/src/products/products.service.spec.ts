@@ -65,6 +65,7 @@ describe('ProductsService', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
         category: mockCategory,
+        rating: 0, // Убедитесь, что здесь нет поля reviews
     };
 
     const mockPrismaService = {
@@ -204,10 +205,15 @@ describe('ProductsService', () => {
         it('should fetch from database and set cache if Redis cache misses', async () => {
             redis.get.mockResolvedValue(null);
 
-            prisma.product.findMany.mockResolvedValue([mockProduct]);
+            prisma.product.findMany.mockResolvedValue([
+                { ...mockProduct, reviews: [] },
+            ]);
             prisma.product.count.mockResolvedValue(1);
 
-            prisma.$transaction.mockResolvedValue([[mockProduct], 1]);
+            prisma.$transaction.mockResolvedValue([
+                [{ ...mockProduct, reviews: [] }],
+                1,
+            ]);
 
             const result = await service.findAll(query);
 
@@ -801,11 +807,16 @@ describe('ProductsService', () => {
         };
 
         it('should return seller products', async () => {
-            prisma.product.findMany.mockResolvedValue([mockProduct]);
+            prisma.product.findMany.mockResolvedValue([
+                { ...mockProduct, reviews: [] },
+            ]);
 
             prisma.product.count.mockResolvedValue(1);
 
-            prisma.$transaction.mockResolvedValue([[mockProduct], 1]);
+            prisma.$transaction.mockResolvedValue([
+                [{ ...mockProduct, reviews: [] }],
+                1,
+            ]);
 
             const result = await service.findSellerProducts('seller-1', query);
 
