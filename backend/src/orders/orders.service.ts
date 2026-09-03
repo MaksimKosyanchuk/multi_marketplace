@@ -1257,8 +1257,6 @@ export class OrdersService {
                         backoff: { type: 'exponential', delay: 1000 },
                     },
                 );
-            // Preserve the SellerOrder response shape expected by the seller
-            // UI and include the updated parent aggregate for refreshes.
             return { ...result.sellerOrder, order: result.order };
         } catch (error: unknown) {
             if (
@@ -1528,8 +1526,6 @@ export class OrdersService {
 
     findMySellerOrders(sellerId: string) {
         return this.prisma.sellerOrder.findMany({
-            // Sellers need active sub-orders here to be able to fulfil or
-            // cancel them; completed and cancelled orders remain in history.
             where: { sellerId },
             include: sellerOrderDetails,
             orderBy: { createdAt: 'desc' },

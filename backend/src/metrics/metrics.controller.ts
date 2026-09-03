@@ -9,9 +9,9 @@ export class MetricsController {
 
     @Get('metrics')
     @Header('Content-Type', 'text/plain; version=0.0.4')
-    @ApiOperation({ summary: 'Получить метрики Prometheus' })
+    @ApiOperation({ summary: 'Get Prometheus metrics' })
     @ApiProduces('text/plain')
-    @ApiResponse({ status: 200, description: 'Метрики приложения в формате Prometheus', schema: { type: 'string' } })
+    @ApiResponse({ status: 200, description: 'Application metrics in Prometheus format', schema: { type: 'string' } })
     getMetrics(): string {
         return this.metrics.snapshot();
     }

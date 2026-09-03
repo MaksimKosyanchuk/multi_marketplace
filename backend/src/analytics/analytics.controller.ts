@@ -25,22 +25,22 @@ export class AnalyticsController {
 
     @Get('dashboard')
     @ApiOperation({
-        summary: 'Получить сводку аналитики (KPI, Top 5 товаров, Timeline)',
+        summary: 'Get the analytics dashboard (KPI, top 5 products, timeline)',
         description:
-            'Доступно только пользователям с ролью ADMIN. Возвращает финансовую статистику за выбранный период.',
+            'Available only to users with the ADMIN role. Returns financial statistics for the selected period.',
     })
     @ApiResponse({
         status: 200,
-        description: 'Успешное получение данных дашборда',
+        description: 'Dashboard data retrieved successfully',
         type: DashboardResponseDto,
     })
     @ApiResponse({
         status: 401,
-        description: 'Неавторизован (отсутствует или невалиден JWT)',
+        description: 'Unauthorized (JWT is missing or invalid)',
     })
     @ApiResponse({
         status: 403,
-        description: 'Доступ запрещен (требуется роль ADMIN)',
+        description: 'Forbidden (ADMIN role required)',
     })
     async getDashboard(@Query() query: DateFilterDto) {
         return this.analyticsService.getDashboardData(query);
@@ -48,22 +48,22 @@ export class AnalyticsController {
 
     @Get('export/csv')
     @ApiOperation({
-        summary: 'Экспортировать отчет по заказам в CSV',
+        summary: 'Export the order report as CSV',
         description:
-            'Скачивает CSV-файл со списком заказов за выбранный интервал дат.',
+            'Downloads a CSV file containing orders for the selected date range.',
     })
     @ApiProduces('text/csv')
     @ApiResponse({
         status: 200,
         description:
-            'CSV-файл успешно сгенерирован и отправлен в виде скачиваемого вложения.',
+            'CSV file generated successfully and sent as a downloadable attachment.',
         schema: {
             type: 'string',
             format: 'binary',
         },
     })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 403, description: 'Доступ запрещен' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 403, description: 'Forbidden' })
     async exportCsv(@Res() res: Response, @Query() query: DateFilterDto) {
         const csvData = await this.analyticsService.generateOrdersCsv(query);
         const filename = `sales_report_${new Date().toISOString().slice(0, 10)}.csv`;
@@ -78,10 +78,10 @@ export class AnalyticsController {
 
     @Get('seller')
     @Roles('SELLER')
-    @ApiOperation({ summary: 'Получить аналитику текущего продавца' })
-    @ApiResponse({ status: 200, description: 'Аналитика продавца' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 403, description: 'Требуется роль SELLER' })
+    @ApiOperation({ summary: 'Get analytics for the current seller' })
+    @ApiResponse({ status: 200, description: 'Seller analytics' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 403, description: 'SELLER role required' })
     async sellerAnalytics(
         @Req() req: Request & { user: { id: string } },
         @Query() query: DateFilterDto,
@@ -91,10 +91,10 @@ export class AnalyticsController {
 
     @Get('seller/comparison')
     @Roles('SELLER')
-    @ApiOperation({ summary: 'Сравнить показатели текущего продавца' })
-    @ApiResponse({ status: 200, description: 'Сравнительная аналитика' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 403, description: 'Требуется роль SELLER' })
+    @ApiOperation({ summary: 'Compare metrics for the current seller' })
+    @ApiResponse({ status: 200, description: 'Comparative analytics' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 403, description: 'SELLER role required' })
     async sellerComparison(
         @Req() req: Request & { user: { id: string } },
         @Query() query: DateFilterDto,
@@ -104,10 +104,10 @@ export class AnalyticsController {
 
     @Get('seller/timeline')
     @Roles('SELLER')
-    @ApiOperation({ summary: 'Получить временную шкалу продаж продавца' })
-    @ApiResponse({ status: 200, description: 'Временная шкала' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 403, description: 'Требуется роль SELLER' })
+    @ApiOperation({ summary: 'Get the seller sales timeline' })
+    @ApiResponse({ status: 200, description: 'Timeline' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 403, description: 'SELLER role required' })
     async sellerTimeline(
         @Req() req: Request & { user: { id: string } },
         @Query() query: DateFilterDto,
@@ -117,10 +117,10 @@ export class AnalyticsController {
 
     @Get('rankings')
     @Roles('ADMIN')
-    @ApiOperation({ summary: 'Получить рейтинг продавцов' })
-    @ApiResponse({ status: 200, description: 'Рейтинг продавцов' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 403, description: 'Требуется роль ADMIN' })
+    @ApiOperation({ summary: 'Get seller rankings' })
+    @ApiResponse({ status: 200, description: 'Seller rankings' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 403, description: 'ADMIN role required' })
     async sellerRankings(@Query() query: DateFilterDto) {
         return this.analyticsService.getSellerRankings(query);
     }
@@ -128,10 +128,10 @@ export class AnalyticsController {
     @Get('export/json')
     @Roles('ADMIN')
     @ApiProduces('application/json')
-    @ApiOperation({ summary: 'Экспортировать аналитику в JSON' })
-    @ApiResponse({ status: 200, description: 'JSON-файл аналитики', schema: { type: 'object' } })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 403, description: 'Требуется роль ADMIN' })
+    @ApiOperation({ summary: 'Export analytics as JSON' })
+    @ApiResponse({ status: 200, description: 'Analytics JSON file', schema: { type: 'object' } })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 403, description: 'ADMIN role required' })
     async exportJson(@Res() res: Response, @Query() query: DateFilterDto) {
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
         res.setHeader(

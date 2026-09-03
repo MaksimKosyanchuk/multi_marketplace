@@ -3,8 +3,8 @@ import { IsString, MinLength, MaxLength } from 'class-validator';
 
 export class CreateCategoryDto {
     @ApiProperty({
-        example: 'Электроника',
-        description: 'Название категории (от 2 до 50 символов)',
+        example: 'Electronics',
+        description: 'Category name (2 to 50 characters)',
         minLength: 2,
         maxLength: 50,
     })

@@ -28,12 +28,12 @@ export class DisputesController {
     @Post()
     @UseGuards(RolesGuard)
     @Roles(Role.CUSTOMER)
-    @ApiOperation({ summary: 'Открыть спор по завершённому seller order' })
+    @ApiOperation({ summary: 'Open a dispute for a completed seller order' })
     @ApiBody({ type: CreateDisputeDto })
-    @ApiResponse({ status: 201, description: 'Спор открыт' })
-    @ApiResponse({ status: 400, description: 'Невалидные данные' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 403, description: 'Требуется роль CUSTOMER' })
+    @ApiResponse({ status: 201, description: 'Dispute opened' })
+    @ApiResponse({ status: 400, description: 'Invalid data' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 403, description: 'CUSTOMER role required' })
     open(
         @Req() req: Request & { user: { id: string } },
         @Body() dto: CreateDisputeDto,
@@ -42,9 +42,9 @@ export class DisputesController {
     }
 
     @Get('my')
-    @ApiOperation({ summary: 'Получить свои споры' })
-    @ApiResponse({ status: 200, description: 'Список споров пользователя' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiOperation({ summary: 'Get the current user disputes' })
+    @ApiResponse({ status: 200, description: 'User dispute list' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
     list(@Req() req: Request & { user: { id: string; role: Role } }) {
         return this.disputes.listForUser(req.user.id, req.user.role);
     }
@@ -52,10 +52,10 @@ export class DisputesController {
     @UseGuards(RolesGuard)
     @Roles(Role.CUSTOMER)
     @Get('customer')
-    @ApiOperation({ summary: 'Список споров покупателя' })
-    @ApiResponse({ status: 200, description: 'Список споров покупателя' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 403, description: 'Требуется роль CUSTOMER' })
+    @ApiOperation({ summary: 'Get customer disputes' })
+    @ApiResponse({ status: 200, description: 'Customer dispute list' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 403, description: 'CUSTOMER role required' })
     listCustomer(@Req() req: Request & { user: { id: string } }) {
         return this.disputes.listForCustomer(req.user.id);
     }
@@ -63,10 +63,10 @@ export class DisputesController {
     @UseGuards(RolesGuard)
     @Roles(Role.SELLER)
     @Get('seller')
-    @ApiOperation({ summary: 'Список споров продавца' })
-    @ApiResponse({ status: 200, description: 'Список споров продавца' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 403, description: 'Требуется роль SELLER' })
+    @ApiOperation({ summary: 'Get seller disputes' })
+    @ApiResponse({ status: 200, description: 'Seller dispute list' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 403, description: 'SELLER role required' })
     listSeller(@Req() req: Request & { user: { id: string } }) {
         return this.disputes.listForSeller(req.user.id);
     }
@@ -74,10 +74,10 @@ export class DisputesController {
     @UseGuards(RolesGuard)
     @Roles(Role.ADMIN)
     @Get('admin')
-    @ApiOperation({ summary: 'Все споры для администратора' })
-    @ApiResponse({ status: 200, description: 'Все споры' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 403, description: 'Требуется роль ADMIN' })
+    @ApiOperation({ summary: 'Get all disputes for the administrator' })
+    @ApiResponse({ status: 200, description: 'All disputes' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 403, description: 'ADMIN role required' })
     listAdmin() {
         return this.disputes.listForAdmin();
     }
@@ -85,14 +85,14 @@ export class DisputesController {
     @UseGuards(RolesGuard)
     @Roles(Role.ADMIN)
     @Patch(':id/resolve')
-    @ApiOperation({ summary: 'Разрешить спор (ADMIN)' })
-    @ApiParam({ name: 'id', description: 'ID спора' })
+    @ApiOperation({ summary: 'Resolve a dispute (ADMIN)' })
+    @ApiParam({ name: 'id', description: 'Dispute ID' })
     @ApiBody({ type: ResolveDisputeDto })
-    @ApiResponse({ status: 200, description: 'Спор разрешён' })
-    @ApiResponse({ status: 400, description: 'Невалидные данные' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 403, description: 'Требуется роль ADMIN' })
-    @ApiResponse({ status: 404, description: 'Спор не найден' })
+    @ApiResponse({ status: 200, description: 'Dispute resolved' })
+    @ApiResponse({ status: 400, description: 'Invalid data' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 403, description: 'ADMIN role required' })
+    @ApiResponse({ status: 404, description: 'Dispute was not found' })
     resolve(
         @Req() req: Request & { user: { id: string } },
         @Param('id') id: string,

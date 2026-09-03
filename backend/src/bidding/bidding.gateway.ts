@@ -80,7 +80,7 @@ export class BiddingGateway implements OnGatewayInit, OnGatewayConnection, OnGat
                 userId: client.data.userId,
             },
         );
-    }   
+    }
 
     @SubscribeMessage('auction_subscribe')
     async subscribe(

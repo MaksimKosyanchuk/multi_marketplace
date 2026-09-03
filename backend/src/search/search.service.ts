@@ -55,7 +55,7 @@ export class SearchService implements OnModuleInit {
                 primaryKey: 'id',
             });
         } catch {
-            // The index already exists; settings are still applied below.
+            //
         }
         try {
             await this.request(

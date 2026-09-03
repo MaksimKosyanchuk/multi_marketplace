@@ -8,8 +8,8 @@ export class AppController {
     constructor(private readonly appService: AppService) {}
 
     @Get()
-    @ApiOperation({ summary: 'Проверка доступности приложения' })
-    @ApiResponse({ status: 200, description: 'Приложение работает' })
+    @ApiOperation({ summary: 'Check application availability' })
+    @ApiResponse({ status: 200, description: 'Application is running' })
     getHello(): string {
         return this.appService.getHello();
     }

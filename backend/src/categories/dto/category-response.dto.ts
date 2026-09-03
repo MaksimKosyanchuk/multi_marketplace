@@ -1,21 +1,21 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CategoryResponseDto {
-    @ApiProperty({ example: 'cat_123abc456', description: 'ID категории' })
+    @ApiProperty({ example: 'cat_123abc456', description: 'Category ID' })
     id: string;
 
-    @ApiProperty({ example: 'Электроника', description: 'Название категории' })
+    @ApiProperty({ example: 'Electronics', description: 'Category name' })
     name: string;
 
     @ApiProperty({
         example: '2026-08-01T10:00:00.000Z',
-        description: 'Дата создания',
+        description: 'Creation date',
     })
     createdAt: Date;
 
     @ApiProperty({
         example: '2026-08-01T10:00:00.000Z',
-        description: 'Дата обновления',
+        description: 'Last update date',
     })
     updatedAt: Date;
 }

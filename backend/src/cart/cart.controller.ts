@@ -34,13 +34,13 @@ export class CartController {
     constructor(private readonly cartService: CartService) {}
 
     @Get()
-    @ApiOperation({ summary: 'Получить корзину текущего пользователя' })
+    @ApiOperation({ summary: 'Get the current user cart' })
     @ApiResponse({
         status: 200,
-        description: 'Данные корзины успешно получены',
+        description: 'Cart data retrieved successfully',
         type: CartResponseDto,
     })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
     getCart(@Req() req: Request & { user: { id: string } }) {
         return this.cartService.getCart(req.user.id);
     }
@@ -48,18 +48,18 @@ export class CartController {
     @Post('items')
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(Role.CUSTOMER)
-    @ApiOperation({ summary: 'Добавить товар в корзину' })
+    @ApiOperation({ summary: 'Add a product to the cart' })
     @ApiResponse({
         status: 201,
-        description: 'Товар успешно добавлен в корзину',
+        description: 'Product added to cart successfully',
         type: CartItemDto,
     })
     @ApiResponse({
         status: 400,
-        description: 'Невалидный UUID или количество < 1',
+        description: 'Invalid UUID or quantity less than 1',
     })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 404, description: 'Товар с таким ID не найден' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 404, description: 'Product with the specified ID was not found' })
     addItem(
         @Req() req: Request & { user: { id: string } },
         @Body() dto: AddToCartDto,
@@ -70,20 +70,20 @@ export class CartController {
     @Patch('items/:id')
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(Role.CUSTOMER)
-    @ApiOperation({ summary: 'Изменить количество товара в корзине' })
+    @ApiOperation({ summary: 'Update product quantity in the cart' })
     @ApiParam({
         name: 'id',
-        description: 'ID элемента корзины (CartItem ID)',
+        description: 'Cart item ID',
         example: 'b5f928c1-1234-5678-9abc-def123456789',
     })
     @ApiResponse({
         status: 200,
-        description: 'Количество товара успешно обновлено',
+        description: 'Product quantity updated successfully',
         type: CartItemDto,
     })
-    @ApiResponse({ status: 400, description: 'Невалидные данные' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 404, description: 'Элемент корзины не найден' })
+    @ApiResponse({ status: 400, description: 'Invalid data' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 404, description: 'Cart item was not found' })
     updateItem(
         @Req() req: Request & { user: { id: string } },
         @Param('id') id: string,
@@ -95,18 +95,18 @@ export class CartController {
     @Delete('items/:id')
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(Role.CUSTOMER)
-    @ApiOperation({ summary: 'Удалить конкретный товар из корзины' })
+    @ApiOperation({ summary: 'Remove a specific product from the cart' })
     @ApiParam({
         name: 'id',
-        description: 'ID элемента корзины (CartItem ID)',
+        description: 'Cart item ID',
         example: 'b5f928c1-1234-5678-9abc-def123456789',
     })
     @ApiResponse({
         status: 200,
-        description: 'Элемент удален из корзины',
+        description: 'Cart item removed successfully',
     })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 404, description: 'Элемент корзины не найден' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 404, description: 'Cart item was not found' })
     removeItem(
         @Req() req: Request & { user: { id: string } },
         @Param('id') id: string,
@@ -117,12 +117,12 @@ export class CartController {
     @Delete()
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(Role.CUSTOMER)
-    @ApiOperation({ summary: 'Очистить всю корзину' })
+    @ApiOperation({ summary: 'Clear the entire cart' })
     @ApiResponse({
         status: 200,
-        description: 'Корзина успешно очищена',
+        description: 'Cart cleared successfully',
     })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
     clearCart(@Req() req: Request & { user: { id: string } }) {
         return this.cartService.clearCart(req.user.id);
     }

@@ -2,57 +2,57 @@ import { ApiProperty } from '@nestjs/swagger';
 import { OrderStatus } from '@prisma/client';
 
 export class OrderItemResponseDto {
-    @ApiProperty({ example: 'item_123abc', description: 'ID позиции заказа' })
+    @ApiProperty({ example: 'item_123abc', description: 'Order item ID' })
     id: string;
 
-    @ApiProperty({ example: 'prod_456def', description: 'ID товара' })
+    @ApiProperty({ example: 'prod_456def', description: 'Product ID' })
     productId: string;
 
     @ApiProperty({
         example: 'Беспроводная мышь',
-        description: 'Название товара на момент заказа',
+        description: 'Product name at the time of ordering',
     })
     productName: string;
 
-    @ApiProperty({ example: 49.99, description: 'Цена за единицу товара' })
+    @ApiProperty({ example: 49.99, description: 'Price per product unit' })
     price: number;
 
-    @ApiProperty({ example: 2, description: 'Количество' })
+    @ApiProperty({ example: 2, description: 'Quantity' })
     quantity: number;
 }
 
 export class OrderResponseDto {
-    @ApiProperty({ example: 'ord_789ghi', description: 'ID заказа' })
+    @ApiProperty({ example: 'ord_789ghi', description: 'Order ID' })
     id: string;
 
-    @ApiProperty({ example: 'user_123abc', description: 'ID покупателя' })
+    @ApiProperty({ example: 'user_123abc', description: 'Customer ID' })
     userId: string;
 
     @ApiProperty({
         enum: OrderStatus,
         example: OrderStatus.NEW,
-        description: 'Текущий статус заказа',
+        description: 'Current order status',
     })
     status: OrderStatus;
 
-    @ApiProperty({ example: 99.98, description: 'Общая сумма заказа' })
+    @ApiProperty({ example: 99.98, description: 'Total order amount' })
     totalAmount: number;
 
     @ApiProperty({
         type: [OrderItemResponseDto],
-        description: 'Содержимое заказа',
+        description: 'Order contents',
     })
     items: OrderItemResponseDto[];
 
     @ApiProperty({
         example: '2026-08-01T12:00:00.000Z',
-        description: 'Дата создания',
+        description: 'Creation date',
     })
     createdAt: Date;
 
     @ApiProperty({
         example: '2026-08-01T12:00:00.000Z',
-        description: 'Дата обновления',
+        description: 'Last update date',
     })
     updatedAt: Date;
 }
@@ -61,15 +61,15 @@ export class PaginatedOrdersResponseDto {
     @ApiProperty({ type: [OrderResponseDto] })
     data: OrderResponseDto[];
 
-    @ApiProperty({ example: 100, description: 'Всего элементов' })
+    @ApiProperty({ example: 100, description: 'Total items' })
     total: number;
 
-    @ApiProperty({ example: 1, description: 'Текущая страница' })
+    @ApiProperty({ example: 1, description: 'Current page' })
     page: number;
 
-    @ApiProperty({ example: 20, description: 'Размер страницы' })
+    @ApiProperty({ example: 20, description: 'Page size' })
     limit: number;
 
-    @ApiProperty({ example: 5, description: 'Всего страниц' })
+    @ApiProperty({ example: 5, description: 'Total pages' })
     totalPages: number;
 }

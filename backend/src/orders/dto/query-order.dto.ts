@@ -6,7 +6,7 @@ import { OrderStatus } from '@prisma/client';
 export class QueryOrderDto {
     @ApiPropertyOptional({
         enum: OrderStatus,
-        description: 'Фильтр по статусу заказа',
+        description: 'Filter by order status',
         example: OrderStatus.NEW,
     })
     @IsOptional()
@@ -14,7 +14,7 @@ export class QueryOrderDto {
     status?: OrderStatus;
 
     @ApiPropertyOptional({
-        description: 'Номер страницы (пагинация)',
+        description: 'Page number (pagination)',
         default: 1,
         minimum: 1,
     })
@@ -25,7 +25,7 @@ export class QueryOrderDto {
     page: number = 1;
 
     @ApiPropertyOptional({
-        description: 'Количество элементов на странице (максимум 100)',
+        description: 'Number of items per page (maximum 100)',
         default: 20,
         minimum: 1,
         maximum: 100,

@@ -49,21 +49,21 @@ export class OrdersController {
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(Role.CUSTOMER)
     @ApiOperation({
-        summary: 'Оформить заказ из текущей корзины пользователя',
+        summary: 'Create an order from the current user cart',
     })
     @ApiHeader({ name: 'idempotency-key', required: false })
     @ApiResponse({
         status: 201,
-        description: 'Заказ успешно создан, корзина очищена',
+        description: 'Order created successfully; cart cleared',
         type: OrderResponseDto,
     })
     @ApiResponse({
         status: 400,
-        description: 'Корзина пуста',
+        description: 'Cart is empty',
     })
     @ApiResponse({
         status: 401,
-        description: 'Неавторизован',
+        description: 'Unauthorized',
     })
     checkout(
         @Req() req: Request & { user: { id: string } },
@@ -76,29 +76,29 @@ export class OrdersController {
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(Role.CUSTOMER)
     @ApiOperation({
-        summary: 'Оплатить заказ по ID',
+        summary: 'Pay for an order by ID',
     })
     @ApiParam({
         name: 'id',
-        description: 'ID заказа',
+        description: 'Order ID',
         example: 'ord_789ghi',
     })
     @ApiResponse({
         status: 200,
-        description: 'Статус заказа обновлен (Оплачен)',
+        description: 'Order status updated (paid)',
         type: OrderResponseDto,
     })
     @ApiResponse({
         status: 400,
-        description: 'Нельзя оплатить заказ в текущем статусе',
+        description: 'The order cannot be paid in its current status',
     })
     @ApiResponse({
         status: 401,
-        description: 'Неавторизован',
+        description: 'Unauthorized',
     })
     @ApiResponse({
         status: 404,
-        description: 'Заказ не найден',
+        description: 'Order was not found',
     })
     payOrder(
         @Req() req: Request & { user: { id: string } },
@@ -118,12 +118,12 @@ export class OrdersController {
     }
 
     @Post(':id/payment/cancel')
-    @ApiOperation({ summary: 'Отменить pending mock-платеж и заказ' })
-    @ApiParam({ name: 'id', description: 'ID заказа' })
+    @ApiOperation({ summary: 'Cancel a pending mock payment and order' })
+    @ApiParam({ name: 'id', description: 'Order ID' })
     @ApiHeader({ name: 'idempotency-key', required: false })
-    @ApiResponse({ status: 200, description: 'Платёж отменён', type: OrderResponseDto })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 404, description: 'Заказ не найден' })
+    @ApiResponse({ status: 200, description: 'Payment cancelled', type: OrderResponseDto })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 404, description: 'Order was not found' })
     cancelPayment(
         @Req() req: Request & { user: { id: string } },
         @Param('id') id: string,
@@ -138,29 +138,29 @@ export class OrdersController {
 
     @Post(':id/cancel')
     @ApiOperation({
-        summary: 'Отменить заказ по ID',
+        summary: 'Cancel an order by ID',
     })
     @ApiParam({
         name: 'id',
-        description: 'ID заказа',
+        description: 'Order ID',
         example: 'ord_789ghi',
     })
     @ApiResponse({
         status: 200,
-        description: 'Заказ успешно отменен',
+        description: 'Order cancelled successfully',
         type: OrderResponseDto,
     })
     @ApiResponse({
         status: 400,
-        description: 'Нельзя отменить выполняемый или уже завершенный заказ',
+        description: 'An in-progress or completed order cannot be cancelled',
     })
     @ApiResponse({
         status: 401,
-        description: 'Неавторизован',
+        description: 'Unauthorized',
     })
     @ApiResponse({
         status: 404,
-        description: 'Заказ не найден',
+        description: 'Order was not found',
     })
     cancelOrder(
         @Req() req: Request & { user: { id: string } },
@@ -171,16 +171,16 @@ export class OrdersController {
 
     @Get('my')
     @ApiOperation({
-        summary: 'Получить историю заказов текущего пользователя',
+        summary: 'Get the current user order history',
     })
     @ApiResponse({
         status: 200,
-        description: 'Список заказов пользователя',
+        description: 'User order list',
         type: [OrderResponseDto],
     })
     @ApiResponse({
         status: 401,
-        description: 'Неавторизован',
+        description: 'Unauthorized',
     })
     findMyOrders(
         @Req() req: Request & { user: { id: string } },
@@ -189,9 +189,9 @@ export class OrdersController {
     }
 
     @Get('resync')
-    @ApiOperation({ summary: 'REST resync заказов после reconnect WebSocket' })
-    @ApiResponse({ status: 200, description: 'Актуальные заказы пользователя', type: [OrderResponseDto] })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiOperation({ summary: 'REST-resync orders after a WebSocket reconnect' })
+    @ApiResponse({ status: 200, description: 'Current user orders', type: [OrderResponseDto] })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
     resyncOrders(
         @Req() req: Request & { user: { id: string } },
     ): ReturnType<OrdersService['findMyOrders']> {
@@ -201,10 +201,10 @@ export class OrdersController {
     @UseGuards(RolesGuard)
     @Roles(Role.SELLER)
     @Get('seller/me')
-    @ApiOperation({ summary: 'Получить sub-заказы текущего продавца' })
-    @ApiResponse({ status: 200, description: 'Sub-заказы продавца' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 403, description: 'Требуется роль SELLER' })
+    @ApiOperation({ summary: 'Get sub-orders for the current seller' })
+    @ApiResponse({ status: 200, description: 'Seller sub-orders' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 403, description: 'SELLER role required' })
     findMySellerOrders(
         @Req() req: Request & { user: { id: string } },
     ): ReturnType<OrdersService['findMySellerOrders']> {
@@ -214,12 +214,12 @@ export class OrdersController {
     @UseGuards(RolesGuard)
     @Roles(Role.SELLER)
     @Get('seller/:sellerOrderId')
-    @ApiOperation({ summary: 'Получить свой sub-заказ продавца' })
-    @ApiParam({ name: 'sellerOrderId', description: 'ID sub-заказа' })
-    @ApiResponse({ status: 200, description: 'Sub-заказ продавца' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 403, description: 'Требуется роль SELLER' })
-    @ApiResponse({ status: 404, description: 'Sub-заказ не найден' })
+    @ApiOperation({ summary: 'Get a seller sub-order owned by the current seller' })
+    @ApiParam({ name: 'sellerOrderId', description: 'Sub-order ID' })
+    @ApiResponse({ status: 200, description: 'Seller sub-order' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 403, description: 'SELLER role required' })
+    @ApiResponse({ status: 404, description: 'Sub-order was not found' })
     findSellerOrder(
         @Req() req: Request & { user: { id: string } },
         @Param('sellerOrderId') sellerOrderId: string,
@@ -230,14 +230,14 @@ export class OrdersController {
     @UseGuards(RolesGuard)
     @Roles(Role.SELLER)
     @Patch('seller/:sellerOrderId/status')
-    @ApiOperation({ summary: 'Изменить статус своего sub-заказа' })
-    @ApiParam({ name: 'sellerOrderId', description: 'ID sub-заказа' })
+    @ApiOperation({ summary: 'Update the status of a seller sub-order' })
+    @ApiParam({ name: 'sellerOrderId', description: 'Sub-order ID' })
     @ApiBody({ type: UpdateSellerOrderStatusDto })
-    @ApiResponse({ status: 200, description: 'Статус обновлён' })
-    @ApiResponse({ status: 400, description: 'Недопустимый статус' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 403, description: 'Требуется роль SELLER' })
-    @ApiResponse({ status: 404, description: 'Sub-заказ не найден' })
+    @ApiResponse({ status: 200, description: 'Status updated' })
+    @ApiResponse({ status: 400, description: 'Invalid status' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 403, description: 'SELLER role required' })
+    @ApiResponse({ status: 404, description: 'Sub-order was not found' })
     updateSellerOrderStatus(
         @Req() req: Request & { user: { id: string } },
         @Param('sellerOrderId') sellerOrderId: string,
@@ -253,15 +253,15 @@ export class OrdersController {
     @UseGuards(RolesGuard)
     @Roles(Role.SELLER)
     @Post('seller/:sellerOrderId/cancel')
-    @ApiOperation({ summary: 'Отменить свой sub-заказ с возвратом средств' })
-    @ApiParam({ name: 'sellerOrderId', description: 'ID sub-заказа' })
+    @ApiOperation({ summary: 'Cancel a seller sub-order with a refund' })
+    @ApiParam({ name: 'sellerOrderId', description: 'Sub-order ID' })
     @ApiHeader({ name: 'idempotency-key', required: false })
     @ApiBody({ type: CancelSellerOrderDto })
-    @ApiResponse({ status: 200, description: 'Sub-заказ отменён' })
-    @ApiResponse({ status: 400, description: 'Отмена невозможна' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 403, description: 'Требуется роль SELLER' })
-    @ApiResponse({ status: 404, description: 'Sub-заказ не найден' })
+    @ApiResponse({ status: 200, description: 'Sub-order cancelled' })
+    @ApiResponse({ status: 400, description: 'Cancellation is not allowed' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 403, description: 'SELLER role required' })
+    @ApiResponse({ status: 404, description: 'Sub-order was not found' })
     cancelSellerOrder(
         @Req() req: Request & { user: { id: string } },
         @Param('sellerOrderId') sellerOrderId: string,
@@ -280,16 +280,16 @@ export class OrdersController {
     @Roles(Role.CUSTOMER)
     @Post('suborders/:sellerOrderId/cancel')
     @ApiOperation({
-        summary: 'Отменить sub-заказ покупателем с возвратом средств',
+        summary: 'Cancel a sub-order as the customer with a refund',
     })
-    @ApiParam({ name: 'sellerOrderId', description: 'ID sub-заказа' })
+    @ApiParam({ name: 'sellerOrderId', description: 'Sub-order ID' })
     @ApiHeader({ name: 'idempotency-key', required: false })
     @ApiBody({ type: CancelSellerOrderDto })
-    @ApiResponse({ status: 200, description: 'Sub-заказ отменён' })
-    @ApiResponse({ status: 400, description: 'Отмена невозможна' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 403, description: 'Требуется роль CUSTOMER' })
-    @ApiResponse({ status: 404, description: 'Sub-заказ не найден' })
+    @ApiResponse({ status: 200, description: 'Sub-order cancelled' })
+    @ApiResponse({ status: 400, description: 'Cancellation is not allowed' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 403, description: 'CUSTOMER role required' })
+    @ApiResponse({ status: 404, description: 'Sub-order was not found' })
     cancelCustomerSuborder(
         @Req() req: Request & { user: { id: string } },
         @Param('sellerOrderId') sellerOrderId: string,
@@ -305,14 +305,14 @@ export class OrdersController {
     }
 
     @Post('items/:orderItemId/refund')
-    @ApiOperation({ summary: 'Вернуть часть количества конкретного товара' })
-    @ApiParam({ name: 'orderItemId', description: 'ID позиции заказа' })
+    @ApiOperation({ summary: 'Refund part of a specific order item quantity' })
+    @ApiParam({ name: 'orderItemId', description: 'Order item ID' })
     @ApiHeader({ name: 'idempotency-key', required: false })
     @ApiBody({ type: RefundOrderItemDto })
-    @ApiResponse({ status: 200, description: 'Возврат оформлен' })
-    @ApiResponse({ status: 400, description: 'Недопустимое количество или статус' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 404, description: 'Позиция заказа не найдена' })
+    @ApiResponse({ status: 200, description: 'Refund processed' })
+    @ApiResponse({ status: 400, description: 'Invalid quantity or status' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 404, description: 'Order item was not found' })
     refundOrderItem(
         @Req() req: Request & { user: { id: string } },
         @Param('orderItemId') orderItemId: string,
@@ -330,29 +330,29 @@ export class OrdersController {
 
     @Get(':id')
     @ApiOperation({
-        summary: 'Получить детальную информацию о заказе',
+        summary: 'Get detailed order information',
     })
     @ApiParam({
         name: 'id',
-        description: 'ID заказа',
+        description: 'Order ID',
         example: 'ord_789ghi',
     })
     @ApiResponse({
         status: 200,
-        description: 'Данные о заказе получены',
+        description: 'Order data retrieved successfully',
         type: OrderResponseDto,
     })
     @ApiResponse({
         status: 401,
-        description: 'Неавторизован',
+        description: 'Unauthorized',
     })
     @ApiResponse({
         status: 403,
-        description: 'Доступ к чужому заказу запрещен',
+        description: 'Access to another user order is forbidden',
     })
     @ApiResponse({
         status: 404,
-        description: 'Заказ не найден',
+        description: 'Order was not found',
     })
     findOne(
         @Req()
@@ -368,20 +368,20 @@ export class OrdersController {
     @Roles(Role.ADMIN)
     @Get()
     @ApiOperation({
-        summary: 'Получить список всех заказов в системе (Только ADMIN)',
+        summary: 'Get all orders in the system (ADMIN only)',
     })
     @ApiResponse({
         status: 200,
-        description: 'Пагинированный список заказов',
+        description: 'Paginated order list',
         type: PaginatedOrdersResponseDto,
     })
     @ApiResponse({
         status: 401,
-        description: 'Неавторизован',
+        description: 'Unauthorized',
     })
     @ApiResponse({
         status: 403,
-        description: 'Доступ запрещен (Требуется роль ADMIN)',
+        description: 'Forbidden (ADMIN role required)',
     })
     findAll(
         @Query() query: QueryOrderDto,

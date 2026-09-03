@@ -20,10 +20,10 @@ export class NotificationsController {
     constructor(private readonly notifications: NotificationsService) {}
 
     @Get()
-    @ApiOperation({ summary: 'Получить уведомления текущего пользователя' })
-    @ApiQuery({ name: 'unreadOnly', required: false, type: Boolean, description: 'Только непрочитанные уведомления' })
-    @ApiResponse({ status: 200, description: 'Список уведомлений' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiOperation({ summary: 'Get notifications for the current user' })
+    @ApiQuery({ name: 'unreadOnly', required: false, type: Boolean, description: 'Only unread notifications' })
+    @ApiResponse({ status: 200, description: 'Notification list' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
     list(
         @CurrentUser() user: AuthUser,
         @Query('unreadOnly') unreadOnly?: string,
@@ -32,11 +32,11 @@ export class NotificationsController {
     }
 
     @Patch(':id/read')
-    @ApiOperation({ summary: 'Отметить уведомление прочитанным' })
-    @ApiParam({ name: 'id', description: 'ID уведомления' })
-    @ApiResponse({ status: 200, description: 'Уведомление отмечено прочитанным' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 404, description: 'Уведомление не найдено' })
+    @ApiOperation({ summary: 'Mark a notification as read' })
+    @ApiParam({ name: 'id', description: 'Notification ID' })
+    @ApiResponse({ status: 200, description: 'Notification marked as read' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 404, description: 'Notification was not found' })
     markRead(@CurrentUser() user: AuthUser, @Param('id') id: string) {
         return this.notifications.markRead(user.id, id);
     }

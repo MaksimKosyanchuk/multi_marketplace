@@ -30,10 +30,10 @@ export class CategoriesController {
     constructor(private readonly categoriesService: CategoriesService) {}
 
     @Get()
-    @ApiOperation({ summary: 'Получить список всех категорий' })
+    @ApiOperation({ summary: 'Get all categories' })
     @ApiResponse({
         status: 200,
-        description: 'Список категорий успешно получен',
+        description: 'Category list retrieved successfully',
         type: [CategoryResponseDto],
     })
     findAll() {
@@ -41,18 +41,18 @@ export class CategoriesController {
     }
 
     @Get(':id')
-    @ApiOperation({ summary: 'Получить категорию по ID' })
+    @ApiOperation({ summary: 'Get a category by ID' })
     @ApiParam({
         name: 'id',
-        description: 'ID категории',
+        description: 'Category ID',
         example: 'cat_123abc456',
     })
     @ApiResponse({
         status: 200,
-        description: 'Категория найдена',
+        description: 'Category found',
         type: CategoryResponseDto,
     })
-    @ApiResponse({ status: 404, description: 'Категория не найдена' })
+    @ApiResponse({ status: 404, description: 'Category was not found' })
     findOne(@Param('id') id: string) {
         return this.categoriesService.findOne(id);
     }
@@ -61,21 +61,21 @@ export class CategoriesController {
     @Roles(Role.ADMIN)
     @Post()
     @ApiBearerAuth('JWT-auth')
-    @ApiOperation({ summary: 'Создать новую категорию (Только ADMIN)' })
+    @ApiOperation({ summary: 'Create a new category (ADMIN only)' })
     @ApiResponse({
         status: 201,
-        description: 'Категория успешно создана',
+        description: 'Category created successfully',
         type: CategoryResponseDto,
     })
-    @ApiResponse({ status: 400, description: 'Невалидные данные' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 400, description: 'Invalid data' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
     @ApiResponse({
         status: 403,
-        description: 'Доступ запрещен (Требуется роль ADMIN)',
+        description: 'Forbidden (ADMIN role required)',
     })
     @ApiResponse({
         status: 409,
-        description: 'Категория с таким именем уже существует',
+        description: 'A category with this name already exists',
     })
     create(@Body() dto: CreateCategoryDto) {
         return this.categoriesService.create(dto);
@@ -85,21 +85,21 @@ export class CategoriesController {
     @Roles(Role.ADMIN)
     @Patch(':id')
     @ApiBearerAuth('JWT-auth')
-    @ApiOperation({ summary: 'Обновить категорию по ID (Только ADMIN)' })
+    @ApiOperation({ summary: 'Update a category by ID (ADMIN only)' })
     @ApiParam({
         name: 'id',
-        description: 'ID категории',
+        description: 'Category ID',
         example: 'cat_123abc456',
     })
     @ApiResponse({
         status: 200,
-        description: 'Категория успешно обновлена',
+        description: 'Category updated successfully',
         type: CategoryResponseDto,
     })
-    @ApiResponse({ status: 400, description: 'Невалидные данные' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 403, description: 'Доступ запрещен' })
-    @ApiResponse({ status: 404, description: 'Категория не найдена' })
+    @ApiResponse({ status: 400, description: 'Invalid data' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 403, description: 'Forbidden' })
+    @ApiResponse({ status: 404, description: 'Category was not found' })
     update(@Param('id') id: string, @Body() dto: UpdateCategoryDto) {
         return this.categoriesService.update(id, dto);
     }
@@ -108,19 +108,19 @@ export class CategoriesController {
     @Roles(Role.ADMIN)
     @Delete(':id')
     @ApiBearerAuth('JWT-auth')
-    @ApiOperation({ summary: 'Удалить категорию по ID (Только ADMIN)' })
+    @ApiOperation({ summary: 'Delete a category by ID (ADMIN only)' })
     @ApiParam({
         name: 'id',
-        description: 'ID категории',
+        description: 'Category ID',
         example: 'cat_123abc456',
     })
     @ApiResponse({
         status: 200,
-        description: 'Категория успешно удалена',
+        description: 'Category deleted successfully',
     })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 403, description: 'Доступ запрещен' })
-    @ApiResponse({ status: 404, description: 'Категория не найдена' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 403, description: 'Forbidden' })
+    @ApiResponse({ status: 404, description: 'Category was not found' })
     remove(@Param('id') id: string) {
         return this.categoriesService.remove(id);
     }

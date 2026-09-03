@@ -3,7 +3,7 @@ import { IsOptional, IsString, Matches } from 'class-validator';
 
 export class DateFilterDto {
     @ApiPropertyOptional({
-        description: 'Начальная дата периода в формате YYYY-MM-DD',
+        description: 'Period start date in YYYY-MM-DD format',
         example: '2026-08-01',
     })
     @IsOptional()
@@ -14,7 +14,7 @@ export class DateFilterDto {
     from?: string;
 
     @ApiPropertyOptional({
-        description: 'Конечная дата периода в формате YYYY-MM-DD',
+        description: 'Period end date in YYYY-MM-DD format',
         example: '2026-08-31',
     })
     @IsOptional()

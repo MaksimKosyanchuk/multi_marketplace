@@ -28,12 +28,12 @@ export class SellersController {
 
     @Post('applications')
     @Roles(Role.CUSTOMER)
-    @ApiOperation({ summary: 'Подать заявку на статус продавца' })
+    @ApiOperation({ summary: 'Submit a seller application' })
     @ApiBody({ type: CreateSellerApplicationDto })
-    @ApiResponse({ status: 201, description: 'Заявка создана' })
-    @ApiResponse({ status: 400, description: 'Невалидные данные' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 403, description: 'Требуется роль CUSTOMER' })
+    @ApiResponse({ status: 201, description: 'Application created' })
+    @ApiResponse({ status: 400, description: 'Invalid data' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 403, description: 'CUSTOMER role required' })
     apply(
         @CurrentUser() user: AuthUser,
         @Body() dto: CreateSellerApplicationDto,
@@ -42,46 +42,46 @@ export class SellersController {
     }
 
     @Get('me')
-    @ApiOperation({ summary: 'Получить свою заявку продавца' })
-    @ApiResponse({ status: 200, description: 'Заявка продавца' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiOperation({ summary: 'Get the current user seller application' })
+    @ApiResponse({ status: 200, description: 'Seller application' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
     getMine(@CurrentUser() user: AuthUser) {
         return this.sellersService.getMine(user.id);
     }
 
     @Get('applications')
     @Roles(Role.ADMIN)
-    @ApiOperation({ summary: 'Получить заявки продавцов' })
+    @ApiOperation({ summary: 'Get seller applications' })
     @ApiQuery({ name: 'status', required: false, enum: SellerStatus })
-    @ApiResponse({ status: 200, description: 'Список заявок' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 403, description: 'Требуется роль ADMIN' })
+    @ApiResponse({ status: 200, description: 'Application list' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 403, description: 'ADMIN role required' })
     list(@Query('status') status?: SellerStatus) {
         return this.sellersService.listApplications(status);
     }
 
     @Patch('applications/:id/approve')
     @Roles(Role.ADMIN)
-    @ApiOperation({ summary: 'Одобрить заявку продавца' })
-    @ApiParam({ name: 'id', description: 'ID заявки' })
-    @ApiResponse({ status: 200, description: 'Заявка одобрена' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 403, description: 'Требуется роль ADMIN' })
-    @ApiResponse({ status: 404, description: 'Заявка не найдена' })
+    @ApiOperation({ summary: 'Approve a seller application' })
+    @ApiParam({ name: 'id', description: 'Application ID' })
+    @ApiResponse({ status: 200, description: 'Application approved' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 403, description: 'ADMIN role required' })
+    @ApiResponse({ status: 404, description: 'Application was not found' })
     approve(@Param('id') id: string, @CurrentUser() admin: AuthUser) {
         return this.sellersService.approve(id, admin.id);
     }
 
     @Patch('applications/:id/reject')
     @Roles(Role.ADMIN)
-    @ApiOperation({ summary: 'Отклонить заявку продавца' })
-    @ApiParam({ name: 'id', description: 'ID заявки' })
+    @ApiOperation({ summary: 'Reject a seller application' })
+    @ApiParam({ name: 'id', description: 'Application ID' })
     @ApiBody({ type: RejectSellerApplicationDto })
-    @ApiResponse({ status: 200, description: 'Заявка отклонена' })
-    @ApiResponse({ status: 400, description: 'Невалидные данные' })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
-    @ApiResponse({ status: 403, description: 'Требуется роль ADMIN' })
-    @ApiResponse({ status: 404, description: 'Заявка не найдена' })
+    @ApiResponse({ status: 200, description: 'Application rejected' })
+    @ApiResponse({ status: 400, description: 'Invalid data' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
+    @ApiResponse({ status: 403, description: 'ADMIN role required' })
+    @ApiResponse({ status: 404, description: 'Application was not found' })
     reject(
         @Param('id') id: string,
         @CurrentUser() admin: AuthUser,

@@ -43,20 +43,20 @@ export class AuthController {
 
     @Post('register')
     @ApiBody({ type: RegisterDto })
-    @ApiOperation({ summary: 'Регистрация нового пользователя' })
+    @ApiOperation({ summary: 'Register a new user' })
     @ApiResponse({
         status: 201,
         description:
-            'Пользователь успешно зарегистрирован. Возвращает accessToken и устанавливает refreshToken в HttpOnly cookie.',
+            'User registered successfully. Returns an accessToken and sets a refreshToken in an HttpOnly cookie.',
         type: AuthTokenResponseDto,
     })
     @ApiResponse({
         status: 400,
-        description: 'Невалидные данные (Ошибка валидации DTO)',
+        description: 'Invalid data (DTO validation error)',
     })
     @ApiResponse({
         status: 409,
-        description: 'Пользователь с таким email уже существует',
+        description: 'A user with this email already exists',
     })
     async register(
         @Body() dto: RegisterDto,
@@ -70,14 +70,14 @@ export class AuthController {
     @Post('login')
     @Throttle({ default: { limit: 10, ttl: 60_000 } })
     @ApiBody({ type: LoginDto })
-    @ApiOperation({ summary: 'Авторизация пользователя' })
+    @ApiOperation({ summary: 'Authenticate a user' })
     @ApiResponse({
         status: 200,
         description:
-            'Успешный вход. Возвращает accessToken и устанавливает refreshToken в HttpOnly cookie.',
+            'Login successful. Returns an accessToken and sets a refreshToken in an HttpOnly cookie.',
         type: AuthTokenResponseDto,
     })
-    @ApiResponse({ status: 401, description: 'Неверный email или пароль' })
+    @ApiResponse({ status: 401, description: 'Invalid email or password' })
     async login(
         @Body() dto: LoginDto,
         @Res({ passthrough: true }) res: Response,
@@ -89,11 +89,11 @@ export class AuthController {
 
     @Post('google')
     @Throttle({ default: { limit: 10, ttl: 60_000 } })
-    @ApiOperation({ summary: 'Вход через Google OAuth2 access token' })
+    @ApiOperation({ summary: 'Sign in with a Google OAuth2 access token' })
     @ApiBody({ type: GoogleLoginDto })
-    @ApiResponse({ status: 200, description: 'Успешный вход через Google', type: AuthTokenResponseDto })
-    @ApiResponse({ status: 400, description: 'Невалидный access token' })
-    @ApiResponse({ status: 401, description: 'Ошибка авторизации Google' })
+    @ApiResponse({ status: 200, description: 'Google sign-in successful', type: AuthTokenResponseDto })
+    @ApiResponse({ status: 400, description: 'Invalid access token' })
+    @ApiResponse({ status: 401, description: 'Google authentication failed' })
     async googleLogin(
         @Body() dto: GoogleLoginDto,
         @Res({ passthrough: true }) res: Response,
@@ -106,11 +106,11 @@ export class AuthController {
 
     @Post('google/register/complete')
     @Throttle({ default: { limit: 10, ttl: 60_000 } })
-    @ApiOperation({ summary: 'Завершить Google-регистрацию' })
+    @ApiOperation({ summary: 'Complete Google registration' })
     @ApiBody({ type: GoogleRegisterCompleteDto })
-    @ApiResponse({ status: 201, description: 'Регистрация завершена', type: AuthTokenResponseDto })
-    @ApiResponse({ status: 400, description: 'Невалидные данные' })
-    @ApiResponse({ status: 409, description: 'Пользователь уже существует' })
+    @ApiResponse({ status: 201, description: 'Registration completed', type: AuthTokenResponseDto })
+    @ApiResponse({ status: 400, description: 'Invalid data' })
+    @ApiResponse({ status: 409, description: 'User already exists' })
     async completeGoogleRegistration(
         @Body() dto: GoogleRegisterCompleteDto,
         @Res({ passthrough: true }) res: Response,
@@ -122,15 +122,15 @@ export class AuthController {
 
     @Post('refresh')
     @ApiCookieAuth('refreshToken')
-    @ApiOperation({ summary: 'Обновление пара токенов (Token Rotation)' })
+    @ApiOperation({ summary: 'Refresh the token pair (token rotation)' })
     @ApiResponse({
         status: 200,
-        description: 'Токены успешно обновлены.',
+        description: 'Tokens refreshed successfully.',
         type: AuthTokenResponseDto,
     })
     @ApiResponse({
         status: 401,
-        description: 'Refresh token отсутствует в cookie или недействителен',
+        description: 'Refresh token is missing from the cookie or is invalid',
     })
     async refresh(
         @Req() req: RequestWithCookies,
@@ -149,12 +149,12 @@ export class AuthController {
 
     @Post('logout')
     @ApiCookieAuth('refreshToken')
-    @ApiOperation({ summary: 'Выход из системы (отзыв refresh токена)' })
+    @ApiOperation({ summary: 'Sign out (revoke the refresh token)' })
     @ApiResponse({
         status: 200,
-        description: 'Успешный выход, cookie очищена',
+        description: 'Signed out successfully; cookie cleared',
     })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
     async logout(
         @Req() req: RequestWithCookies,
         @Res({ passthrough: true }) res: Response,
@@ -175,13 +175,13 @@ export class AuthController {
     @UseGuards(JwtAuthGuard)
     @Get('me')
     @ApiBearerAuth('JWT-auth')
-    @ApiOperation({ summary: 'Получение профиля текущего пользователя' })
+    @ApiOperation({ summary: 'Get the current user profile' })
     @ApiResponse({
         status: 200,
-        description: 'Данные текущего пользователя',
+        description: 'Current user data',
         type: UserProfileResponseDto,
     })
-    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 401, description: 'Unauthorized' })
     me(@Req() req: Request & { user: { id: string } }) {
         return this.authService.me(req.user.id);
     }
