@@ -1,15 +1,52 @@
+// Re-export all types from marketplace.type.ts
+export type {
+    ProductType,
+    ProductStatus,
+    PaymentStatus,
+    SellerOrderStatus,
+    OrderStatus,
+    AuctionStatus,
+    BidStatus,
+    DisputeStatus,
+    SellerSummary,
+    Product,
+    CartItem,
+    Cart,
+    OrderItem,
+    SellerOrder,
+    Payment,
+    Order,
+    Auction,
+    Bid,
+    Review,
+    ReviewSummary,
+    Dispute,
+    Notification,
+    ProductSearchResponse,
+} from './marketplace.type';
+
+// Re-export product types
+export type {
+    ProductSort,
+    CreateProductInput,
+    UpdateProductInput,
+    QueryProductParams,
+    ProductsResponse,
+    Category,
+} from './product.type';
+
+// Auth & common enums/interfaces
 export enum Role {
     CUSTOMER = 'CUSTOMER',
     SELLER = 'SELLER',
     ADMIN = 'ADMIN',
 }
 
-export enum OrderStatus {
-    NEW = 'NEW',
-    PROCESSING = 'PROCESSING',
-    SHIPPED = 'SHIPPED',
-    COMPLETED = 'COMPLETED',
-    CANCELLED = 'CANCELLED',
+export enum SellerStatus {
+    PENDING = 'PENDING',
+    APPROVED = 'APPROVED',
+    REJECTED = 'REJECTED',
+    SUSPENDED = 'SUSPENDED',
 }
 
 export interface User {
@@ -17,66 +54,6 @@ export interface User {
     email: string;
     nickName: string;
     role: Role;
-    createdAt: string;
-    updatedAt: string;
-}
-
-export interface Category {
-    id: string;
-    name: string;
-    createdAt: string;
-    updatedAt: string;
-}
-
-export interface Product {
-    id: string;
-    name: string;
-    description: string;
-    price: number;
-    stock: number;
-    imageUrl?: string | null;
-    categoryId: string;
-    category?: Category;
-    createdAt: string;
-    updatedAt: string;
-}
-
-export interface CartItem {
-    id: string;
-    cartId: string;
-    productId: string;
-    quantity: number;
-    product: Product;
-    createdAt: string;
-    updatedAt: string;
-}
-
-export interface Cart {
-    id: string;
-    userId: string;
-    items: CartItem[];
-    createdAt: string;
-    updatedAt: string;
-}
-
-export interface OrderItem {
-    id: string;
-    orderId: string;
-    productId: string;
-    productName: string;
-    quantity: number;
-    price: number;
-    product?: Product;
-    createdAt: string;
-}
-
-export interface Order {
-    id: string;
-    userId: string;
-    status: OrderStatus;
-    totalAmount: number;
-    items: OrderItem[];
-    user?: User;
     createdAt: string;
     updatedAt: string;
 }
@@ -110,33 +87,6 @@ export interface UpdateProductDto extends Partial<CreateProductDto> {
     [key: string]: unknown;
 }
 
-export interface ProductQueryParams {
-    page?: number;
-    limit?: number;
-    search?: string;
-    categoryId?: string;
-    minPrice?: number;
-    maxPrice?: number;
-    sortBy?: 'price' | 'createdAt';
-    sortOrder?: 'asc' | 'desc';
-}
-
-export interface PaginatedProductsResponse {
-    data: Product[];
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-}
-
-export interface CreateCategoryDto {
-    name: string;
-}
-
-export interface UpdateCategoryDto {
-    name: string;
-}
-
 export interface AddToCartDto {
     productId: string;
     quantity: number;
@@ -146,12 +96,37 @@ export interface UpdateCartItemDto {
     quantity: number;
 }
 
-export interface UpdateOrderStatusDto {
-    status: OrderStatus;
+export interface CheckoutDto {
+    idempotencyKey: string;
 }
 
-export interface CheckoutDto {
-    paymentMethod?: string;
+export interface PaymentDto {
+    orderId: string;
+    idempotencyKey: string;
+}
+
+export interface RefundDto {
+    orderItemId: string;
+    sellerOrderId: string;
+    quantity: number;
+    reason: string;
+    idempotencyKey: string;
+}
+
+export interface CreateBidDto {
+    amount: number;
+    idempotencyKey: string;
+}
+
+export interface CreateReviewDto {
+    orderItemId: string;
+    rating: number;
+    comment?: string;
+}
+
+export interface CreateDisputeDto {
+    sellerOrderId: string;
+    description: string;
 }
 
 export interface TopProduct {
@@ -159,17 +134,19 @@ export interface TopProduct {
     name: string;
     totalSold: number;
     revenue: number;
+    rating?: number;
+}
+
+export interface TopSeller {
+    id: string;
+    displayName: string;
+    totalOrders: number;
+    revenue: number;
+    rating?: number;
 }
 
 export interface SalesByDay {
     date: string;
     sales: number;
     ordersCount: number;
-}
-
-export interface AnalyticsSummary {
-    totalRevenue: number;
-    totalOrders: number;
-    topProducts: TopProduct[];
-    salesChart: SalesByDay[];
 }

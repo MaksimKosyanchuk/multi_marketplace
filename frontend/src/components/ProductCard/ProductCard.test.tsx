@@ -9,11 +9,15 @@ vi.mock('react-router-dom', async () => {
     return {
         ...actual,
         useNavigate: () => mockNavigate,
-        Link: ({ children, to }: { children: React.ReactNode; to: string }) => <a href={to}>{children}</a>,
+        Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
+            <a href={to}>{children}</a>
+        ),
     };
 });
 
-const mockUseAuth = vi.fn().mockReturnValue({ isAuthenticated: true, user: null });
+const mockUseAuth = vi
+    .fn()
+    .mockReturnValue({ isAuthenticated: true, user: null });
 
 vi.mock('../../context/AuthContext/useAuth', () => ({
     useAuth: () => mockUseAuth(),
@@ -31,6 +35,7 @@ vi.mock('../../utils/getImageUrl', () => ({
 
 const mockProduct: Product = {
     id: '1',
+    sellerId: 'seller-1',
     name: 'Test Smartphone',
     description: 'A very good phone',
     price: 999.99,
@@ -57,7 +62,9 @@ describe('ProductCard Component', () => {
         expect(screen.getByText('A very good phone')).toBeInTheDocument();
         expect(screen.getByText('Electronics')).toBeInTheDocument();
         expect(screen.getByText('$999.99')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /у кошик/i })).toBeInTheDocument();
+        expect(
+            screen.getByRole('button', { name: /у кошик/i }),
+        ).toBeInTheDocument();
     });
 
     it('shows authorization modal if unauthenticated user clicks add to cart', async () => {
@@ -78,34 +85,40 @@ describe('ProductCard Component', () => {
         const mockRestore = vi.fn();
 
         render(
-            <ProductCard 
-                product={archivedProduct} 
-                isAdmin={true} 
-                onRestore={mockRestore} 
-            />
+            <ProductCard
+                product={archivedProduct}
+                isAdmin={true}
+                onRestore={mockRestore}
+            />,
         );
 
         expect(screen.getByText('В архіві')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /відновити/i })).toBeInTheDocument();
+        expect(
+            screen.getByRole('button', { name: /відновити/i }),
+        ).toBeInTheDocument();
     });
 
     it('renders edit button when isAdmin and product is active', () => {
         const mockEdit = vi.fn();
 
         render(
-            <ProductCard 
-                product={mockProduct} 
-                isAdmin={true} 
-                onEdit={mockEdit} 
-            />
+            <ProductCard
+                product={mockProduct}
+                isAdmin={true}
+                onEdit={mockEdit}
+            />,
         );
 
-        expect(screen.getByRole('button', { name: /редагувати/i })).toBeInTheDocument();
+        expect(
+            screen.getByRole('button', { name: /редагувати/i }),
+        ).toBeInTheDocument();
     });
 
     it('renders "В кошику" button when isInCart is true', () => {
         render(<ProductCard product={mockProduct} isInCart={true} />);
 
-        expect(screen.getByRole('button', { name: /в кошику/i })).toBeInTheDocument();
+        expect(
+            screen.getByRole('button', { name: /в кошику/i }),
+        ).toBeInTheDocument();
     });
 });

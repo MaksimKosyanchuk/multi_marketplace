@@ -6,8 +6,10 @@ import type { Product } from '../../types/product.type';
 
 const mockProduct: Product = {
     id: 'prod-101',
+    sellerId: 'seller-1',
     name: 'Кросівки Nike Air Max',
-    description: 'Класичні зручні кросівки для щоденного носіння та занять спортом.',
+    description:
+        'Класичні зручні кросівки для щоденного носіння та занять спортом.',
     price: 120.5,
     stock: 10,
     categoryId: 'cat-1',

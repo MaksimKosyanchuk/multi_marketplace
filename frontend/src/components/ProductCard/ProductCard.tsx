@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext/useAuth';
 import { Modal } from '../Modal/Modal';
 import { Button } from '../Ui/Button/Button';
 import { getImageUrl } from '../../utils/getImageUrl';
+import { Role } from '../../types';
 import styles from './ProductCard.module.css';
 
 interface ProductCardProps {
@@ -20,16 +21,16 @@ interface ProductCardProps {
 
 type ModalState = 'none' | 'auth' | 'success' | 'error';
 
-export const ProductCard: React.FC<ProductCardProps> = ({ 
-    product, 
-    isAdmin = false, 
+export const ProductCard: React.FC<ProductCardProps> = ({
+    product,
+    isAdmin = false,
     isInCart = false,
     onEdit,
     onRestore,
-    onAddToCart
+    onAddToCart,
 }) => {
     const navigate = useNavigate();
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, user } = useAuth();
 
     const [isLoading, setIsLoading] = useState(false);
     const [modalState, setModalState] = useState<ModalState>('none');
@@ -46,10 +47,12 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
     const numericPrice = Number(product.price);
     const isValidPrice = !isNaN(numericPrice) && numericPrice >= 0;
-    
+
     const isOutOfStock = product.stock <= 0;
 
-    const fullImageUrl = product.imageUrl ? getImageUrl(product.imageUrl) : null;
+    const fullImageUrl = product.imageUrl
+        ? getImageUrl(product.imageUrl)
+        : null;
 
     const handleAddToCart = async () => {
         if (!product.id || isOutOfStock) return;
@@ -75,6 +78,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             return;
         }
 
+        if (user && user.role !== Role.CUSTOMER) {
+            setErrorMessage(
+                'Купувати товари можуть лише покупці. Для продажу потрібен статус продавця.',
+            );
+            setModalState('error');
+            return;
+        }
+
         setIsLoading(true);
         try {
             await cartService.addToCart(product.id, 1);
@@ -86,7 +97,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                     : err.response.data.message;
                 setErrorMessage(msg);
             } else {
-                setErrorMessage('Не вдалося додати товар у кошик. Спробуйте пізніше.');
+                setErrorMessage(
+                    'Не вдалося додати товар у кошик. Спробуйте пізніше.',
+                );
             }
             setModalState('error');
         } finally {
@@ -164,14 +177,18 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
     return (
         <>
-            <div className={`${styles.card} ${product.isArchived ? styles.archivedCard : ''}`}>
+            <div
+                className={`${styles.card} ${product.isArchived ? styles.archivedCard : ''}`}
+            >
                 {product.isArchived && (
                     <div className={styles.archivedBadge}>В архіві</div>
                 )}
-                
+
                 {/* Плашка "Немає в наявності" для клієнтської частини */}
                 {!isAdmin && isOutOfStock && !product.isArchived && (
-                    <div className={styles.outOfStockBadge}>Немає в наявності</div>
+                    <div className={styles.outOfStockBadge}>
+                        Немає в наявності
+                    </div>
                 )}
 
                 <div className={styles.imageWrapper}>
@@ -212,9 +229,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                         </p>
                     )}
 
-                    <div className={styles.footer}>
-                        {renderActionButton()}
-                    </div>
+                    <div className={styles.footer}>{renderActionButton()}</div>
                 </div>
             </div>
 
@@ -247,8 +262,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                         }
                     >
                         <p>
-                            Щоб додати товар до кошика та оформити замовлення, увійдіть
-                            у свій акаунт.
+                            Щоб додати товар до кошика та оформити замовлення,
+                            увійдіть у свій акаунт.
                         </p>
                     </Modal>
 
@@ -279,8 +294,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                         }
                     >
                         <p>
-                            Товар <strong>«{product.name || 'Товар'}»</strong> успішно додано до
-                            вашого кошика.
+                            Товар <strong>«{product.name || 'Товар'}»</strong>{' '}
+                            успішно додано до вашого кошика.
                         </p>
                     </Modal>
 
@@ -289,7 +304,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                         onClose={closeModal}
                         title="Не вдалося додати товар"
                         actions={
-                            <Button variant="primary" size="small" onClick={closeModal}>
+                            <Button
+                                variant="primary"
+                                size="small"
+                                onClick={closeModal}
+                            >
                                 Зрозуміло
                             </Button>
                         }

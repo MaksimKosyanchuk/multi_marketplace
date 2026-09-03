@@ -20,8 +20,14 @@ export default function GoogleRegisterPage() {
     const [error, setError] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // Type guard: ensure required fields are present
     if (!state?.email || !state.accessToken || !state.registrationToken)
         return <Navigate to="/login" replace />;
+
+    // After guard, these are guaranteed to be strings
+    const email = state.email;
+    const accessToken = state.accessToken;
+    const registrationToken = state.registrationToken;
 
     const submit = async (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -37,8 +43,8 @@ export default function GoogleRegisterPage() {
         setIsSubmitting(true);
         try {
             await completeGoogleRegistration({
-                accessToken: state.accessToken,
-                registrationToken: state.registrationToken,
+                accessToken,
+                registrationToken,
                 nickName: nickName.trim(),
                 password,
             });
@@ -76,7 +82,7 @@ export default function GoogleRegisterPage() {
                     <input
                         id="google-email"
                         className={styles.input}
-                        value={state.email}
+                        value={email}
                         readOnly
                         disabled
                     />

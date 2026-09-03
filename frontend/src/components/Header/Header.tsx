@@ -20,9 +20,11 @@ export const Header: React.FC = () => {
 
                 {isAuthenticated ? (
                     <>
-                        <Link to="/cart" className={styles.link}>
-                            Кошик
-                        </Link>
+                        {user?.role === Role.CUSTOMER && (
+                            <Link to="/cart" className={styles.link}>
+                                Кошик
+                            </Link>
+                        )}
                         <Link to="/profile" className={styles.link}>
                             Профіль / Замовлення
                         </Link>

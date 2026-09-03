@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext/AuthContext';
+import { Role } from './types';
 
 // Layouts
 import { MainLayout } from './layouts/MainLayout/MainLayout';
@@ -42,8 +43,17 @@ export function App() {
                         />
 
                         <Route element={<ProtectedRoute />}>
-                            <Route path="cart" element={<CartPage />} />
                             <Route path="profile" element={<ProfilePage />} />
+                        </Route>
+
+                        <Route
+                            element={
+                                <ProtectedRoute
+                                    allowedRoles={[Role.CUSTOMER]}
+                                />
+                            }
+                        >
+                            <Route path="cart" element={<CartPage />} />
                         </Route>
                     </Route>
 

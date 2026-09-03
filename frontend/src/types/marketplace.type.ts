@@ -59,7 +59,7 @@ export interface Product {
     description: string;
     type: ProductType;
     status: ProductStatus;
-    price: number | string;
+    price: number;
     stock: number;
     imageUrl?: string | null;
     isArchived: boolean;
@@ -90,8 +90,8 @@ export interface OrderItem {
     productId: string;
     productName: string;
     quantity: number;
-    unitPrice: number | string;
-    totalAmount: number | string;
+    unitPrice: number;
+    totalAmount: number;
     createdAt: string;
 }
 export interface SellerOrder {
@@ -100,10 +100,10 @@ export interface SellerOrder {
     sellerId: string;
     seller?: SellerSummary;
     status: SellerOrderStatus;
-    subtotal: number | string;
-    commissionAmount: number | string;
-    sellerEarnings: number | string;
-    refundedAmount: number | string;
+    subtotal: number;
+    commissionAmount: number;
+    sellerEarnings: number;
+    refundedAmount: number;
     trackingNumber?: string | null;
     items: OrderItem[];
     createdAt: string;
@@ -115,7 +115,7 @@ export interface Payment {
     provider: string;
     providerRef?: string | null;
     status: PaymentStatus;
-    amount: number | string;
+    amount: number;
     currency: string;
     createdAt: string;
     updatedAt: string;
@@ -124,8 +124,8 @@ export interface Order {
     id: string;
     userId: string;
     status: OrderStatus;
-    subtotal: number | string;
-    totalAmount: number | string;
+    subtotal: number;
+    totalAmount: number;
     currency: string;
     sellerOrders: SellerOrder[];
     payments?: Payment[];
@@ -136,9 +136,9 @@ export interface Auction {
     id: string;
     productId: string;
     product: Product;
-    startingPrice: number | string;
-    currentPrice: number | string;
-    minBidIncrement: number | string;
+    startingPrice: number;
+    currentPrice: number;
+    minBidIncrement: number;
     startsAt: string;
     endsAt: string;
     status: AuctionStatus;
@@ -151,7 +151,7 @@ export interface Bid {
     id: string;
     auctionId: string;
     bidderId: string;
-    amount: number | string;
+    amount: number;
     status: BidStatus;
     createdAt: string;
 }

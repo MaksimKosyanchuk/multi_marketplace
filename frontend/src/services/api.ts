@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { type InternalAxiosRequestConfig } from 'axios';
 import type { AuthResponse } from '../types/index';
 import { createIdempotencyKey } from './requestMeta';
 
@@ -11,8 +11,10 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use(
-    (config) => {
-        config.headers ??= {};
+    (config: InternalAxiosRequestConfig) => {
+        if (!config.headers) {
+            config.headers = {} as any;
+        }
         config.headers['x-correlation-id'] ??= createIdempotencyKey();
         const token = localStorage.getItem('accessToken');
         if (token && config.headers) {
