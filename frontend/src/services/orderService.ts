@@ -1,6 +1,6 @@
 import { api } from './api';
 import { withIdempotencyKey } from './requestMeta';
-import type { SellerOrder, SellerOrderStatus } from '../types/marketplace.type';
+import type { SellerOrder } from '../types/marketplace.type';
 
 export interface OrderItem {
     id: string;

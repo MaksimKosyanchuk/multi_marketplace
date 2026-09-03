@@ -754,23 +754,23 @@ export const ProfilePage: React.FC = () => {
 
     const tabs = isSeller
         ? ([
-              { key: 'orders', label: 'Історія покупок' },
-              { key: 'sales', label: 'Мої продажі' },
-              { key: 'disputes', label: 'Мої спори' },
-              { key: 'auctions', label: 'Аукціони' },
-              { key: 'products', label: 'Товари' },
-              { key: 'info', label: 'Мої дані' },
-          ] as Array<{ key: ActiveTab; label: string }>)
+            { key: 'orders', label: 'Історія покупок' },
+            { key: 'sales', label: 'Мої продажі' },
+            { key: 'disputes', label: 'Мої спори' },
+            { key: 'auctions', label: 'Аукціони' },
+            { key: 'products', label: 'Товари' },
+            { key: 'info', label: 'Мої дані' },
+        ] as Array<{ key: ActiveTab; label: string }>)
         : ([
-              { key: 'info', label: 'Особисті дані' },
-              ...(isCustomer
-                  ? [
-                        { key: 'orders', label: 'Історія покупок' },
-                        { key: 'disputes', label: 'Мої спори' },
-                        { key: 'auctionHistory', label: 'Історія аукціонів' },
-                    ]
-                  : []),
-          ] as Array<{ key: ActiveTab; label: string }>);
+            { key: 'info', label: 'Особисті дані' },
+            ...(isCustomer
+                ? [
+                    { key: 'orders', label: 'Історія покупок' },
+                    { key: 'disputes', label: 'Мої спори' },
+                    { key: 'auctionHistory', label: 'Історія аукціонів' },
+                ]
+                : []),
+        ] as Array<{ key: ActiveTab; label: string }>);
 
     return (
         <div className={styles.container}>
