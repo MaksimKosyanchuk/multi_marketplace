@@ -1,0 +1,13 @@
+.container { max-width: 900px; margin: 0 auto; padding: 32px 20px; }
+.back { border: 0; background: none; cursor: pointer; margin-bottom: 20px; }
+.panel { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 24px 0; }
+.panel div { padding: 18px; border-radius: 10px; background: #f4f6f8; }
+.panel span, .panel strong { display: block; }
+.panel strong { margin-top: 8px; font-size: 1.35rem; }
+.form { display: flex; gap: 12px; align-items: center; }
+.form input { padding: 10px; min-width: 220px; }
+.bids { list-style: none; padding: 0; }
+.bids li { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ddd; }
+.status { padding: 24px; }
+.statusError, .error { color: #b42318; padding: 24px 0; }
+@media (max-width: 700px) { .panel { grid-template-columns: 1fr; } .form { flex-direction: column; align-items: stretch; } }

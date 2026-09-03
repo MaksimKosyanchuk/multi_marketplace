@@ -31,6 +31,7 @@ export interface Product {
         | 'ARCHIVED'
         | 'SOLD';
     rating?: number;
+    auctionId?: string;
 }
 
 export interface QueryProductParams {

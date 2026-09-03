@@ -18,6 +18,7 @@ import RegisterPage from './pages/RegisterPage/RegisterPage';
 import GoogleRegisterPage from './pages/GoogleRegisterPage/GoogleRegisterPage';
 import CartPage from './pages/CartPage/CartPage';
 import ProfilePage from './pages/ProfilePage/ProfilePage';
+import AuctionPage from './pages/AuctionPage/AuctionPage';
 
 // Admin Pages
 import DashboardPage from './pages/AdminPage/DashboardPage/DashboardPage';
@@ -35,6 +36,7 @@ export function App() {
                     <Route path="/" element={<MainLayout />}>
                         <Route index element={<CatalogPage />} />
                         <Route path="product/:id" element={<ProductPage />} />
+                        <Route path="auction/:auctionId" element={<AuctionPage />} />
                         <Route path="login" element={<LoginPage />} />
                         <Route path="register" element={<RegisterPage />} />
                         <Route

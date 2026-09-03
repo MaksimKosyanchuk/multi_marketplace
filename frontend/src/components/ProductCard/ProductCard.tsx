@@ -138,9 +138,20 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                 );
             }
 
+            const canEdit =
+                product.status !== 'REJECTED' && product.status !== 'ARCHIVED';
             if (product.status === 'DRAFT') {
                 return (
                     <div className={styles.footer}>
+                        {canEdit && (
+                            <Button
+                                variant="secondary"
+                                size="medium"
+                                onClick={() => onEdit?.(product)}
+                            >
+                                Редагувати
+                            </Button>
+                        )}
                         <Button
                             variant="primary"
                             size="medium"
@@ -162,14 +173,25 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             }
 
             return (
-                <Button
-                    variant="secondary"
-                    size="medium"
-                    onClick={() => onDelete?.(product)}
-                    className={styles.deleteBtn}
-                >
-                    Видалити
-                </Button>
+                <div className={styles.footer}>
+                    {canEdit && (
+                        <Button
+                            variant="secondary"
+                            size="medium"
+                            onClick={() => onEdit?.(product)}
+                        >
+                            Редагувати
+                        </Button>
+                    )}
+                    <Button
+                        variant="secondary"
+                        size="medium"
+                        onClick={() => onDelete?.(product)}
+                        className={styles.deleteBtn}
+                    >
+                        Видалити
+                    </Button>
+                </div>
             );
         }
 
@@ -182,6 +204,19 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                     className={styles.outOfStockBtn}
                 >
                     Немає в наявності
+                </Button>
+            );
+        }
+
+        if (product.type === 'AUCTION' && product.auctionId) {
+            return (
+                <Button
+                    variant="primary"
+                    size="medium"
+                    onClick={() => navigate(`/auction/${product.auctionId}`)}
+                    className={styles.addBtn}
+                >
+                    Участвовать
                 </Button>
             );
         }
