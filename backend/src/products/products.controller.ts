@@ -36,6 +36,7 @@ import { Role } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthUser } from '../common/decorators/current-user.decorator';
 import { productMulterOptions } from './config/multer.config';
+import { ModerateProductDto } from './dto/moderate-product.dto';
 
 @ApiTags('Products')
 @Controller('products')
@@ -72,6 +73,68 @@ export class ProductsController {
             seller.id,
             query,
         ) as unknown as Promise<PaginatedProductsResponseDto>;
+    }
+
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(Role.SELLER)
+    @Patch(':id/submit-for-approval')
+    @ApiBearerAuth('JWT-auth')
+    @ApiOperation({ summary: 'Отправить товар на проверку администратору' })
+    submitForApproval(
+        @Param('id') id: string,
+        @CurrentUser() seller: AuthUser,
+    ): Promise<ProductResponseDto> {
+        return this.productsService.submitForApproval(
+            id,
+            seller.id,
+        ) as unknown as Promise<ProductResponseDto>;
+    }
+
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(Role.ADMIN)
+    @Get('admin/pending-approval')
+    @ApiBearerAuth('JWT-auth')
+    @ApiOperation({ summary: 'Получить товары, ожидающие модерации' })
+    findPendingApproval(
+        @Query() query: QueryProductDto,
+    ): Promise<PaginatedProductsResponseDto> {
+        return this.productsService.findPendingApproval(
+            query,
+        ) as unknown as Promise<PaginatedProductsResponseDto>;
+    }
+
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(Role.ADMIN)
+    @Patch(':id/approve')
+    @ApiBearerAuth('JWT-auth')
+    @ApiOperation({ summary: 'Одобрить товар на публикацию' })
+    approve(
+        @Param('id') id: string,
+        @CurrentUser() admin: AuthUser,
+        @Body() dto: ModerateProductDto,
+    ): Promise<ProductResponseDto> {
+        return this.productsService.approve(
+            id,
+            admin.id,
+            dto.comment,
+        ) as unknown as Promise<ProductResponseDto>;
+    }
+
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(Role.ADMIN)
+    @Patch(':id/reject')
+    @ApiBearerAuth('JWT-auth')
+    @ApiOperation({ summary: 'Отклонить товар' })
+    reject(
+        @Param('id') id: string,
+        @CurrentUser() admin: AuthUser,
+        @Body() dto: ModerateProductDto,
+    ): Promise<ProductResponseDto> {
+        return this.productsService.reject(
+            id,
+            admin.id,
+            dto.comment,
+        ) as unknown as Promise<ProductResponseDto>;
     }
 
     @Get(':id')

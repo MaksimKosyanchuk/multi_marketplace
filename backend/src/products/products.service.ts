@@ -23,6 +23,7 @@ interface ProductWithCategory {
     stock: number;
     imageUrl: string | null;
     isArchived: boolean;
+    status: ProductStatus;
     categoryId: string;
     createdAt: Date;
     updatedAt: Date;
@@ -154,6 +155,149 @@ export class ProductsService {
             items,
             meta: { total, page, limit, pageCount: Math.ceil(total / limit) },
         };
+    }
+
+    async submitForApproval(id: string, sellerId: string) {
+        await this.findOwnedProduct(id, sellerId);
+        const product = await this.prisma.$transaction(async (tx) => {
+            const claimed = await tx.product.updateMany({
+                where: {
+                    id,
+                    sellerId,
+                    status: ProductStatus.DRAFT,
+                    isArchived: false,
+                },
+                data: { status: ProductStatus.PENDING_APPROVAL },
+            });
+            if (!claimed.count) {
+                throw new BadRequestException(
+                    'Only non-archived draft products can be submitted for approval',
+                );
+            }
+            const submitted = await tx.product.findUniqueOrThrow({
+                where: { id },
+                include: { category: true },
+            });
+            await tx.outboxEvent.create({
+                data: {
+                    aggregateType: 'Product',
+                    aggregateId: id,
+                    type: 'product.submitted_for_approval',
+                    payload: {
+                        productId: id,
+                        sellerId,
+                        correlationId: getCorrelationId(),
+                    },
+                    idempotencyKey: `product-submitted-for-approval:${id}:${submitted.version}`,
+                },
+            });
+            return submitted;
+        });
+        await this.redis.delByPattern(`${this.CACHE_PREFIX}*`);
+        return product;
+    }
+
+    async findPendingApproval(query: QueryProductDto): Promise<PaginatedProductsResult> {
+        const { page, limit, sort } = query;
+        const where: Prisma.ProductWhereInput = {
+            status: ProductStatus.PENDING_APPROVAL,
+            isArchived: false,
+            ...(query.search && {
+                OR: [
+                    { name: { contains: query.search, mode: 'insensitive' } },
+                    { description: { contains: query.search, mode: 'insensitive' } },
+                ],
+            }),
+            ...(query.categoryId && { categoryId: query.categoryId }),
+            ...(query.sellerId && { sellerId: query.sellerId }),
+            ...(query.type && { type: query.type }),
+        };
+        const orderBy: Prisma.ProductOrderByWithRelationInput =
+            sort === ProductSort.PRICE_ASC
+                ? { price: 'asc' }
+                : sort === ProductSort.PRICE_DESC
+                  ? { price: 'desc' }
+                  : { createdAt: 'asc' };
+        const [items, total] = await this.prisma.$transaction([
+            this.prisma.product.findMany({
+                where,
+                orderBy,
+                skip: (page - 1) * limit,
+                take: limit,
+                include: { category: true },
+            }),
+            this.prisma.product.count({ where }),
+        ]);
+        return {
+            items,
+            meta: { total, page, limit, pageCount: Math.ceil(total / limit) },
+        };
+    }
+
+    async approve(id: string, adminId: string, comment?: string) {
+        return this.moderate(id, adminId, ProductStatus.ACTIVE, comment);
+    }
+
+    async reject(id: string, adminId: string, comment?: string) {
+        return this.moderate(id, adminId, ProductStatus.REJECTED, comment);
+    }
+
+    private async moderate(
+        id: string,
+        adminId: string,
+        status: ProductStatus,
+        comment?: string,
+    ) {
+        const existing = await this.prisma.product.findUnique({ where: { id } });
+        if (!existing) throw new NotFoundException('Product not found');
+        if (
+            existing.status !== ProductStatus.PENDING_APPROVAL ||
+            existing.isArchived
+        ) {
+            throw new BadRequestException(
+                'Only non-archived products pending approval can be moderated',
+            );
+        }
+
+        const product = await this.prisma.$transaction(async (tx) => {
+            const claimed = await tx.product.updateMany({
+                where: {
+                    id,
+                    status: ProductStatus.PENDING_APPROVAL,
+                    isArchived: false,
+                },
+                data: { status },
+            });
+            if (!claimed.count) {
+                throw new BadRequestException(
+                    'Product was already processed by another administrator',
+                );
+            }
+            const updated = await tx.product.findUniqueOrThrow({
+                where: { id },
+                include: { category: true },
+            });
+            await tx.outboxEvent.create({
+                data: {
+                    aggregateType: 'Product',
+                    aggregateId: id,
+                    type: status === ProductStatus.ACTIVE
+                        ? 'product.approved'
+                        : 'product.rejected',
+                    payload: {
+                        productId: id,
+                        adminId,
+                        comment,
+                        status,
+                        correlationId: getCorrelationId(),
+                    },
+                    idempotencyKey: `product-moderated:${id}:${updated.version}:${status}`,
+                },
+            });
+            return updated;
+        });
+        await this.redis.delByPattern(`${this.CACHE_PREFIX}*`);
+        return product;
     }
 
     async findOne(id: string): Promise<ProductWithCategory> {
