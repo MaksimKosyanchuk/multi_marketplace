@@ -1,4 +1,4 @@
-import type { StockUpdate, BidUpdate } from './socketClient';
+import type { AuctionEvent, BidUpdate, StockUpdate } from './socketClient';
 
 export interface RealtimeState {
     stock: Record<string, number>;
@@ -13,10 +13,14 @@ let state: RealtimeState = {
 };
 const listeners = new Set<() => void>();
 const seenEvents = new Set<string>();
-const rememberEvent = (eventId: string | undefined): boolean => {
+const rememberEvent = (
+    eventId: string | undefined,
+    channel: string,
+): boolean => {
     if (!eventId) return true;
-    if (seenEvents.has(eventId)) return false;
-    seenEvents.add(eventId);
+    const key = `${channel}:${eventId}`;
+    if (seenEvents.has(key)) return false;
+    seenEvents.add(key);
     if (seenEvents.size > 2000) {
         const oldest = seenEvents.values().next().value;
         if (oldest) seenEvents.delete(oldest);
@@ -31,23 +35,33 @@ export const realtimeStore = {
         return () => listeners.delete(listener);
     },
     applyStock: (update: StockUpdate): boolean => {
-        if (!rememberEvent(update.eventId)) return false;
+        if (!rememberEvent(update.eventId, 'stock')) return false;
         state = { ...state, stock: { ...state.stock, [update.productId]: update.quantity } };
         listeners.forEach((listener) => listener());
         return true;
     },
     applyBid: (update: BidUpdate): boolean => {
-        if (!rememberEvent(update.eventId)) return false;
+        if (!rememberEvent(update.eventId, 'bid')) return false;
         state = { ...state, bids: { ...state.bids, [update.auctionId]: update } };
         listeners.forEach((listener) => listener());
         return true;
     },
     applyOrderStatus: (update: { orderId: string; status: string; eventId?: string }): boolean => {
-        if (!rememberEvent(update.eventId)) return false;
+        if (!rememberEvent(update.eventId, 'order')) return false;
         state = {
             ...state,
             orderStatuses: { ...state.orderStatuses, [update.orderId]: update.status },
         };
+        listeners.forEach((listener) => listener());
+        return true;
+    },
+    applyAuctionEvent: (event: AuctionEvent): boolean => {
+        if (!rememberEvent(event.eventId, 'auction')) return false;
+        listeners.forEach((listener) => listener());
+        return true;
+    },
+    applyNotification: (eventId?: string): boolean => {
+        if (!rememberEvent(eventId, 'notification')) return false;
         listeners.forEach((listener) => listener());
         return true;
     },

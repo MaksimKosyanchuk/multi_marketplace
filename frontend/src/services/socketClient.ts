@@ -17,6 +17,7 @@ export interface BidUpdate {
 export interface AuctionEvent {
     type: string;
     payload: Record<string, unknown>;
+    eventId?: string;
 }
 
 let socket: Socket | null = null;
@@ -106,15 +107,23 @@ export function onBidUpdate(handler: (payload: BidUpdate) => void): () => void {
 export function onAuctionEvent(
     handler: (payload: AuctionEvent) => void,
 ): () => void {
-    socket?.on('auction_event', handler);
-    return () => socket?.off('auction_event', handler);
+    const wrapped = (payload: AuctionEvent) => {
+        if (realtimeStore.applyAuctionEvent(payload)) handler(payload);
+    };
+    socket?.on('auction_event', wrapped);
+    return () => socket?.off('auction_event', wrapped);
 }
 
 export function onNotification(
-    handler: (payload: Record<string, unknown>) => void,
+    handler: (payload: Record<string, unknown> & { eventId?: string }) => void,
 ): () => void {
-    socket?.on('notification_created', handler);
-    return () => socket?.off('notification_created', handler);
+    const wrapped = (
+        payload: Record<string, unknown> & { eventId?: string },
+    ) => {
+        if (realtimeStore.applyNotification(payload.eventId)) handler(payload);
+    };
+    socket?.on('notification_created', wrapped);
+    return () => socket?.off('notification_created', wrapped);
 }
 
 export function getActiveAuctionRooms(): string[] {
