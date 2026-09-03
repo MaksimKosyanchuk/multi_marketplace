@@ -22,6 +22,9 @@ import { AddToCartDto } from './dto/add-to-cart.dto';
 import { UpdateCartItemDto } from './dto/update-cart-item.dto';
 import { CartResponseDto, CartItemDto } from './dto/cart-response.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { Role } from '@prisma/client';
 
 @ApiTags('Cart')
 @ApiBearerAuth('JWT-auth')
@@ -43,6 +46,8 @@ export class CartController {
     }
 
     @Post('items')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(Role.CUSTOMER)
     @ApiOperation({ summary: 'Добавить товар в корзину' })
     @ApiResponse({
         status: 201,
@@ -63,6 +68,8 @@ export class CartController {
     }
 
     @Patch('items/:id')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(Role.CUSTOMER)
     @ApiOperation({ summary: 'Изменить количество товара в корзине' })
     @ApiParam({
         name: 'id',
@@ -86,6 +93,8 @@ export class CartController {
     }
 
     @Delete('items/:id')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(Role.CUSTOMER)
     @ApiOperation({ summary: 'Удалить конкретный товар из корзины' })
     @ApiParam({
         name: 'id',
@@ -106,6 +115,8 @@ export class CartController {
     }
 
     @Delete()
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(Role.CUSTOMER)
     @ApiOperation({ summary: 'Очистить всю корзину' })
     @ApiResponse({
         status: 200,

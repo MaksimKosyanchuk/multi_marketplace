@@ -82,6 +82,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
     const handleAddToCart = async () => {
         if (!product.id || isOutOfStock) return;
+        if (user?.role === Role.SELLER || user?.role === Role.ADMIN) {
+            return;
+        }
 
         if (!isValidPrice) {
             setErrorMessage('Неможливо додати товар з некоректною ціною.');

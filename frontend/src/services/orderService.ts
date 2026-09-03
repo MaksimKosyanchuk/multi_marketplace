@@ -26,6 +26,43 @@ export interface Order {
     items: OrderItem[];
 }
 
+const normalizeOrder = (value: unknown): Order => {
+    if (!value || typeof value !== 'object') {
+        throw new Error('Invalid order response');
+    }
+
+    const source = value as Partial<Order> & {
+        sellerOrders?: Array<{
+            items?: Array<{
+                id: string;
+                productId: string;
+                productName?: string;
+                quantity: number;
+                unitPrice: string | number;
+            }>;
+        }>;
+    };
+    const sellerItems = (source.sellerOrders ?? []).flatMap(
+        (sellerOrder) =>
+            (sellerOrder.items ?? []).map((item) => ({
+                id: item.id,
+                productId: item.productId,
+                productName: item.productName ?? 'Товар',
+                quantity: item.quantity,
+                price: item.unitPrice,
+            })),
+    );
+
+    return {
+        id: source.id ?? '',
+        userId: source.userId ?? '',
+        status: source.status ?? 'NEW',
+        totalAmount: source.totalAmount ?? 0,
+        createdAt: source.createdAt ?? '',
+        items: Array.isArray(source.items) ? source.items : sellerItems,
+    };
+};
+
 export const orderService = {
     async checkout(): Promise<Order> {
         const response = await api.post<Order>('/orders/checkout', undefined, {
@@ -35,8 +72,8 @@ export const orderService = {
     },
 
     async getMyOrders(): Promise<Order[]> {
-        const response = await api.get<Order[]>('/orders/my');
-        return response.data;
+        const response = await api.get<unknown[]>('/orders/my');
+        return response.data.map(normalizeOrder);
     },
 
     async payOrder(

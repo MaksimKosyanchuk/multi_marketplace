@@ -372,6 +372,16 @@ export const ProfilePage: React.FC = () => {
         }
     };
 
+    const handleDeleteAuction = async (product: { id: string }) => {
+        try {
+            await productService.deleteProduct(product.id);
+            await fetchAuctionHistory();
+        } catch (err) {
+            console.error('Помилка скасування аукціону:', err);
+            setErrorMessage('Не вдалося скасувати аукціон.');
+        }
+    };
+
     const renderSellerAuctions = () => (
         <div className={styles.section}>
             <div className={styles.sectionHeader}>
@@ -404,6 +414,7 @@ export const ProfilePage: React.FC = () => {
                                 auctionId: auction.id,
                                 auctionStatus: auction.status,
                             }}
+                            onDelete={handleDeleteAuction}
                         />
                     ))}
                 </div>

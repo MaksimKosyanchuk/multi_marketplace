@@ -56,7 +56,8 @@ export class BiddingController {
         return this.biddingService.findAuction(auctionId);
     }
 
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(Role.CUSTOMER)
     @Post(':auctionId/bids')
     @Throttle({ default: { limit: 30, ttl: 60_000 } })
     @ApiBearerAuth('JWT-auth')
@@ -75,7 +76,8 @@ export class BiddingController {
         );
     }
 
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(Role.CUSTOMER)
     @Post(':auctionId/checkout')
     @ApiBearerAuth('JWT-auth')
     @ApiOperation({ summary: 'Создать заказ победителя аукциона' })

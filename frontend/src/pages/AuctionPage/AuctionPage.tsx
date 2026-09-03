@@ -118,6 +118,7 @@ const AuctionPage: React.FC = () => {
     const endsAt = new Date(auction.endsAt).getTime();
     const isRunning =
         auction.status === 'ACTIVE' && now >= startsAt && now < endsAt;
+    const canBid = user?.role === 'CUSTOMER';
     const displayStatus =
         now >= endsAt && auction.status === 'ACTIVE'
             ? auction.bids.length > 0
@@ -181,7 +182,7 @@ const AuctionPage: React.FC = () => {
                             </div>
                         )}
                 </div>
-            ) : (
+            ) : canBid ? (
                 <form onSubmit={placeBid} className={styles.form}>
                     <input
                         type="number"
@@ -195,6 +196,10 @@ const AuctionPage: React.FC = () => {
                         {bidding ? 'Відправлення...' : 'Зробити ставку'}
                     </Button>
                 </form>
+            ) : (
+                <div className={styles.status}>
+                    Ставки доступні лише покупцям.
+                </div>
             )}
             {displayStatus === 'SOLD' &&
                 !auction.checkoutOrderId &&

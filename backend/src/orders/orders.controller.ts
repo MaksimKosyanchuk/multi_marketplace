@@ -40,6 +40,8 @@ export class OrdersController {
     constructor(private readonly ordersService: OrdersService) {}
 
     @Post('checkout')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(Role.CUSTOMER)
     @ApiOperation({
         summary: 'Оформить заказ из текущей корзины пользователя',
     })
@@ -64,6 +66,8 @@ export class OrdersController {
     }
 
     @Post(':id/pay')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(Role.CUSTOMER)
     @ApiOperation({
         summary: 'Оплатить заказ по ID',
     })
