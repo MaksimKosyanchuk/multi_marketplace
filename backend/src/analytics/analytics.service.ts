@@ -62,7 +62,7 @@ export class AnalyticsService {
             ...this.buildDateFilter(dto.from, dto.to),
             status: { in: this.getRevenueStatuses() },
         };
-        const [orderStats, commissionStats, grossStats, topItems, commissions] =
+        const [orderStats, commissionStats, grossStats, topItems, commissions, sellerOrders, cartItems] =
             await Promise.all([
                 this.prisma.order.aggregate({
                     where: orderFilter,
@@ -97,6 +97,25 @@ export class AnalyticsService {
                     },
                     orderBy: { createdAt: 'asc' },
                 }),
+                this.prisma.sellerOrder.findMany({
+                    where: { order: orderFilter },
+                    select: {
+                        sellerId: true,
+                        sellerEarnings: true,
+                        refundedAmount: true,
+                        commissionAmount: true,
+                    },
+                }),
+                this.prisma.cartItem.count({
+                    where: (() => {
+                        const updatedAt: Prisma.DateTimeFilter<'Cart'> = {};
+                        if (dto.from) updatedAt.gte = new Date(`${dto.from}T00:00:00.000Z`);
+                        if (dto.to) updatedAt.lte = new Date(`${dto.to}T23:59:59.999Z`);
+                        return Object.keys(updatedAt).length
+                            ? { cart: { updatedAt } }
+                            : {};
+                    })(),
+                }),
             ]);
 
         const platformRevenue = Number(
@@ -120,16 +139,37 @@ export class AnalyticsService {
                 orders: current.orders + 1,
             });
         }
+        const sellerRevenue = new Map<string, number>();
+        for (const sellerOrder of sellerOrders) {
+            sellerRevenue.set(
+                sellerOrder.sellerId,
+                (sellerRevenue.get(sellerOrder.sellerId) ?? 0) +
+                    Number(sellerOrder.sellerEarnings) -
+                    Number(sellerOrder.refundedAmount),
+            );
+        }
 
         return {
             summary: {
                 totalRevenue: platformRevenue,
+                platformCommission: platformRevenue,
+                grossRevenue: Number(grossStats._sum.totalAmount ?? 0),
                 totalOrders,
                 averageOrderValue: totalOrders
                     ? Number(grossStats._sum.totalAmount ?? 0) / totalOrders
                     : 0,
+                cartToOrderConversion: cartItems
+                    ? Number((totalOrders / cartItems).toFixed(4))
+                    : 0,
             },
             topProducts,
+            sellerRevenue: [...sellerRevenue.entries()]
+                .map(([sellerId, revenue]) => ({ sellerId, revenue }))
+                .sort((a, b) => b.revenue - a.revenue),
+            topSellers: [...sellerRevenue.entries()]
+                .map(([sellerId, revenue]) => ({ sellerId, revenue }))
+                .sort((a, b) => b.revenue - a.revenue)
+                .slice(0, 5),
             salesTimeline: [...timeline.entries()].map(([date, values]) => ({
                 date,
                 ...values,
@@ -138,12 +178,21 @@ export class AnalyticsService {
     }
 
     async generateOrdersCsv(dto: DateFilterDto): Promise<string> {
+        const dashboard = await this.getDashboardData(dto);
         const orders = await this.prisma.order.findMany({
             where: this.buildDateFilter(dto.from, dto.to),
             include: { user: { select: { email: true } } },
             orderBy: { createdAt: 'desc' },
         });
-        const header = 'Order ID,Date,Customer,Status,Total Amount ($)\n';
+        const summary = [
+            'Analytics summary',
+            `Platform commission,${dashboard.summary.platformCommission.toFixed(2)}`,
+            `Gross revenue,${dashboard.summary.grossRevenue.toFixed(2)}`,
+            `Orders,${dashboard.summary.totalOrders}`,
+            `Cart to order conversion,${dashboard.summary.cartToOrderConversion}`,
+            '',
+            'Order ID,Date,Customer,Status,Total Amount ($)',
+        ].join('\n');
         const rows = orders.map((order) => {
             const date = this.formatDateToLocal(order.createdAt);
             const time =
@@ -158,7 +207,7 @@ export class AnalyticsService {
                     .split(' ')[1] || '00:00:00';
             return `"${order.id}","${date} ${time}","${order.user?.email ?? 'N/A'}","${order.status}",${Number(order.totalAmount).toFixed(2)}`;
         });
-        return header + rows.join('\n');
+        return `${summary}\n${rows.join('\n')}`;
     }
 
     async getSellerAnalytics(

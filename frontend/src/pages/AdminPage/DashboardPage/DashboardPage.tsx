@@ -17,6 +17,7 @@ export default function DashBoardPage(): React.ReactNode {
     const [data, setData] = useState<DashboardData | null>(null);
     const [loading, setLoading] = useState(true);
     const [isExporting, setIsExporting] = useState(false);
+    const [isExportingJson, setIsExportingJson] = useState(false);
     const [fromDate, setFromDate] = useState('');
     const [toDate, setToDate] = useState('');
 
@@ -75,11 +76,24 @@ export default function DashBoardPage(): React.ReactNode {
                 ...(fromDate && { from: fromDate }),
                 ...(toDate && { to: toDate }),
             };
+
             await analyticsService.downloadOrdersCsv(params);
         } catch (error) {
             console.error('Failed to export CSV:', error);
         } finally {
             setIsExporting(false);
+        }
+    };
+
+    const handleExportJson = async () => {
+        setIsExportingJson(true);
+        try {
+            await analyticsService.downloadDashboardJson({
+                ...(fromDate && { from: fromDate }),
+                ...(toDate && { to: toDate }),
+            });
+        } finally {
+            setIsExportingJson(false);
         }
     };
 
@@ -98,6 +112,9 @@ export default function DashBoardPage(): React.ReactNode {
                     disabled={isExporting}
                 >
                     {isExporting ? 'Завантаження...' : '📥 Експорт в CSV'}
+                </Button>
+                <Button variant="secondary" onClick={() => void handleExportJson()} disabled={isExportingJson}>
+                    {isExportingJson ? 'Завантаження...' : 'Експорт JSON'}
                 </Button>
             </header>
 
@@ -131,9 +148,15 @@ export default function DashBoardPage(): React.ReactNode {
                 <main className={styles.contentGrid}>
                     <section className={styles.kpiGrid}>
                         <div className={styles.kpiCard}>
-                            <span className={styles.kpiLabel}>Загальна виручка</span>
+                            <span className={styles.kpiLabel}>Комісія платформи</span>
                             <strong className={styles.kpiValue}>
                                 ${data.summary.totalRevenue.toFixed(2)}
+                            </strong>
+                        </div>
+                        <div className={styles.kpiCard}>
+                            <span className={styles.kpiLabel}>Конверсія кошик → замовлення</span>
+                            <strong className={styles.kpiValue}>
+                                {(data.summary.cartToOrderConversion * 100).toFixed(1)}%
                             </strong>
                         </div>
                         <div className={styles.kpiCard}>
@@ -147,6 +170,43 @@ export default function DashBoardPage(): React.ReactNode {
                             <strong className={styles.kpiValue}>
                                 ${data.summary.averageOrderValue.toFixed(2)}
                             </strong>
+                        </div>
+                    </section>
+
+                    <section className={styles.topSection}>
+                        <h3>Топ-5 продавців</h3>
+                        <div className={styles.tableWrapper}>
+                            <table className={styles.table}>
+                                <thead><tr><th>Продавець</th><th>Виручка</th></tr></thead>
+                                <tbody>
+                                    {data.topSellers.map((seller) => (
+                                        <tr key={seller.sellerId}>
+                                            <td>{seller.sellerId}</td>
+                                            <td>${seller.revenue.toFixed(2)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section className={styles.topSection}>
+                        <h3>Виручка по продавцях</h3>
+                        <div className={styles.tableWrapper}>
+                            <table className={styles.table}>
+                                <thead><tr><th>Продавець</th><th>Виручка</th></tr></thead>
+                                <tbody>
+                                    {data.sellerRevenue.map((seller) => (
+                                        <tr key={seller.sellerId}>
+                                            <td>{seller.sellerId}</td>
+                                            <td>${seller.revenue.toFixed(2)}</td>
+                                        </tr>
+                                    ))}
+                                    {data.sellerRevenue.length === 0 && (
+                                        <tr><td colSpan={2} className={styles.emptyTableCell}>Немає даних</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
                     </section>
 

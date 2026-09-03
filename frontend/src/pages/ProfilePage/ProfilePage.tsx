@@ -25,6 +25,8 @@ import { useAuth } from '../../context/AuthContext/useAuth';
 import { Role, type SellerOrder, type Auction } from '../../types';
 import { AuctionCard } from '../../components/AuctionCard/AuctionCard';
 import { OrderStatusBadge } from '../../components/OrderStatusBadge/OrderStatusBadge';
+import { analyticsService, type SellerAnalytics, type SalesTimelineItem } from '../../services/analyticsService';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts';
 
 type ActiveTab = 'info' | 'orders' | 'sales' | 'products' | 'auctions' | 'auctionHistory';
 
@@ -38,6 +40,10 @@ export const ProfilePage: React.FC = () => {
     const [activeTab, setActiveTab] = useState<ActiveTab>('info');
     const [orders, setOrders] = useState<Order[]>([]);
     const [sales, setSales] = useState<SellerOrder[]>([]);
+    const [sellerAnalytics, setSellerAnalytics] = useState<SellerAnalytics | null>(null);
+    const [sellerTimeline, setSellerTimeline] = useState<SalesTimelineItem[]>([]);
+    const [activeAuctionBids, setActiveAuctionBids] = useState(0);
+    const [sellerComparison, setSellerComparison] = useState<{ revenueChange: number | null; ordersChange: number | null } | null>(null);
     const [auctionHistory, setAuctionHistory] = useState<Auction[]>([]);
     const [auctionForm, setAuctionForm] = useState({
         name: '',
@@ -84,6 +90,27 @@ export const ProfilePage: React.FC = () => {
             startTransition(() => {
                 setSales(data);
             });
+            if (isSeller) {
+                const from = new Date();
+                from.setDate(from.getDate() - 29);
+                const params = { from: from.toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) };
+                const [analytics, timeline, comparison] = await Promise.all([
+                    analyticsService.getSellerAnalytics(params),
+                    analyticsService.getSellerTimeline(params),
+                    analyticsService.getSellerComparison(params),
+                ]);
+                const ownAuctions = await auctionService.getCreated();
+                setSellerAnalytics(analytics);
+                setSellerTimeline(timeline);
+                setSellerComparison(comparison);
+                setActiveAuctionBids(
+                    ownAuctions.reduce(
+                        (total, auction) =>
+                            total + (auction.bids?.filter((bid) => bid.status === 'ACTIVE').length ?? 0),
+                        0,
+                    ),
+                );
+            }
         } catch (err) {
             console.error('Помилка завантаження продажів:', err);
 
@@ -93,7 +120,7 @@ export const ProfilePage: React.FC = () => {
         } finally {
             setIsLoadingSales(false);
         }
-    }, []);
+    }, [isSeller]);
 
     const fetchAuctionHistory = useCallback(async () => {
         try {
@@ -361,6 +388,47 @@ export const ProfilePage: React.FC = () => {
             <div className={styles.sectionHeader}>
                 <h2>Мої продажі</h2>
             </div>
+            {sellerAnalytics && (
+                <>
+                    <div className={styles.kpiGrid}>
+                        <div className={styles.kpiCard}>
+                            <span className={styles.label}>Власна виручка</span>
+                            <strong>${sellerAnalytics.revenue.toFixed(2)}</strong>
+                        </div>
+                        <div className={styles.kpiCard}>
+                            <span className={styles.label}>Суб-замовлення</span>
+                            <strong>{sellerAnalytics.orders}</strong>
+                        </div>
+                        <div className={styles.kpiCard}>
+                            <span className={styles.label}>Завершені</span>
+                            <strong>{sellerAnalytics.completedOrders}</strong>
+                        </div>
+                        <div className={styles.kpiCard}>
+                            <span className={styles.label}>Поточні ставки на лоти</span>
+                            <strong>{activeAuctionBids}</strong>
+                        </div>
+                        <div className={styles.kpiCard}>
+                            <span className={styles.label}>Порівняння виручки</span>
+                            <strong>
+                                {sellerComparison?.revenueChange == null
+                                    ? '—'
+                                    : `${sellerComparison.revenueChange >= 0 ? '+' : ''}${(sellerComparison.revenueChange * 100).toFixed(1)}%`}
+                            </strong>
+                        </div>
+                    </div>
+                    <div className={styles.chartSection}>
+                        <h3>Продажі за останні 30 днів</h3>
+                        <ResponsiveContainer width="100%" height={220}>
+                            <AreaChart data={sellerTimeline}>
+                                <XAxis dataKey="date" />
+                                <YAxis />
+                                <Tooltip />
+                                <Area type="monotone" dataKey="revenue" stroke="#2563eb" fill="#dbeafe" />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+                </>
+            )}
 
             {isLoadingSales ? (
                 <div>Завантаження продажів...</div>
