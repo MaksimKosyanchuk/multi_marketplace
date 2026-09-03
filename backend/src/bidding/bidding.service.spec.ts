@@ -10,7 +10,9 @@ import { BiddingService } from './bidding.service';
 import {
     AuctionRepository,
     BidRepository,
+    OrderRepository,
     OutboxRepository,
+    ProductRepository,
 } from '../database';
 
 describe('BiddingService critical auction flows', () => {
@@ -41,7 +43,9 @@ describe('BiddingService critical auction flows', () => {
             logger as never,
             new AuctionRepository(prisma as never),
             new BidRepository(prisma as never),
+            new OrderRepository(prisma as never),
             new OutboxRepository(prisma as never),
+            new ProductRepository(prisma as never),
         );
         prisma.bid.findUnique.mockResolvedValue(null);
     });

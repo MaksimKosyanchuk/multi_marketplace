@@ -29,6 +29,24 @@ export class AuctionRepository {
         });
     }
 
+    findByIdWithProduct(id: string, db: DatabaseClient = this.prisma) {
+        return db.auction.findUnique({
+            where: { id },
+            include: { product: true },
+        });
+    }
+
+    updateCheckoutOrder(
+        auctionId: string,
+        checkoutOrderId: string,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.auction.update({
+            where: { id: auctionId },
+            data: { checkoutOrderId },
+        });
+    }
+
     findByProductId(productId: string, db: DatabaseClient = this.prisma) {
         return db.auction.findUnique({ where: { productId } });
     }

@@ -42,6 +42,183 @@ export class OrderRepository {
         });
     }
 
+    create(
+        data: Prisma.OrderCreateArgs['data'],
+        include: Prisma.OrderInclude,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.order.create({ data, include });
+    }
+
+    findById(
+        orderId: string,
+        include: Prisma.OrderInclude = {},
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.order.findUnique({
+            where: { id: orderId },
+            ...(Object.keys(include).length ? { include } : {}),
+        });
+    }
+
+    findByIdWithDetails(orderId: string, db: DatabaseClient = this.prisma) {
+        return db.order.findUnique({
+            where: { id: orderId },
+            include: orderDetails,
+        });
+    }
+
+    findForPayment(orderId: string, db: DatabaseClient = this.prisma) {
+        return db.order.findUnique({
+            where: { id: orderId },
+            include: {
+                payments: true,
+                sellerOrders: { select: { sellerId: true } },
+            },
+        });
+    }
+
+    findForPaymentProcessing(
+        orderId: string,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.order.findUnique({
+            where: { id: orderId },
+            include: { payments: true },
+        });
+    }
+
+    findSellerOrdersForPayment(
+        orderId: string,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.sellerOrder.findMany({
+            where: { orderId },
+            select: {
+                id: true,
+                status: true,
+                sellerId: true,
+                subtotal: true,
+            },
+        });
+    }
+
+    updateOrderPaymentPending(
+        orderId: string,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.order.updateMany({
+            where: { id: orderId, status: OrderStatus.NEW },
+            data: { status: OrderStatus.PAYMENT_PENDING },
+        });
+    }
+
+    updateSellerOrdersPaymentPending(
+        orderId: string,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.sellerOrder.updateMany({
+            where: { orderId, status: SellerOrderStatus.NEW },
+            data: { status: SellerOrderStatus.PAYMENT_PENDING },
+        });
+    }
+
+    updateSellerOrdersProcessing(
+        orderId: string,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.sellerOrder.updateMany({
+            where: {
+                orderId,
+                status: {
+                    in: [
+                        SellerOrderStatus.PAYMENT_PENDING,
+                        SellerOrderStatus.NEW,
+                    ],
+                },
+            },
+            data: { status: SellerOrderStatus.PROCESSING },
+        });
+    }
+
+    findSellerOrderDetails(
+        sellerOrderId: string,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.sellerOrder.findUnique({
+            where: { id: sellerOrderId },
+            include: sellerOrderDetails,
+        });
+    }
+
+    listOrdersForUser(userId: string, db: DatabaseClient = this.prisma) {
+        return db.order.findMany({
+            where: { userId },
+            include: {
+                ...orderDetails,
+                payments: { select: { status: true } },
+            },
+            orderBy: { createdAt: 'desc' },
+        });
+    }
+
+    listSellerOrders(sellerId: string, db: DatabaseClient = this.prisma) {
+        return db.sellerOrder.findMany({
+            where: { sellerId },
+            include: sellerOrderDetails,
+            orderBy: { createdAt: 'desc' },
+        });
+    }
+
+    listOrders(
+        where: Prisma.OrderWhereInput,
+        skip: number,
+        take: number,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.order.findMany({
+            where,
+            include: {
+                ...orderDetails,
+                user: { select: { id: true, email: true, nickName: true } },
+            },
+            orderBy: { createdAt: 'desc' },
+            skip,
+            take,
+        });
+    }
+
+    countOrders(
+        where: Prisma.OrderWhereInput,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.order.count({ where });
+    }
+
+    findPaymentWithSellerOrderItems(
+        idempotencyKey: string,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.payment.findUnique({
+            where: { idempotencyKey },
+            include: {
+                order: {
+                    include: { sellerOrders: { include: { items: true } } },
+                },
+            },
+        });
+    }
+
+    findByIdWithSellerOrderItems(
+        orderId: string,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.order.findUnique({
+            where: { id: orderId },
+            include: { sellerOrders: { include: { items: true } } },
+        });
+    }
+
     findOrderItemForRefund(
         orderItemId: string,
         db: DatabaseClient = this.prisma,
@@ -219,6 +396,18 @@ export class OrderRepository {
             where: { id: orderId },
             data: { status },
             ...(includeDetails ? { include: orderDetails } : {}),
+        });
+    }
+
+    updateOrderStatusWithDetails(
+        orderId: string,
+        status: OrderStatus,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.order.update({
+            where: { id: orderId },
+            data: { status },
+            include: orderDetails,
         });
     }
 

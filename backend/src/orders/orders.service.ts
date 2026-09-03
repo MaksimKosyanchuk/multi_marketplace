@@ -41,12 +41,6 @@ const orderDetails = {
     },
 } satisfies Prisma.OrderInclude;
 
-const sellerOrderDetails = {
-    order: true,
-    items: { include: { product: true } },
-    seller: { select: { id: true, email: true, nickName: true } },
-} satisfies Prisma.SellerOrderInclude;
-
 export function deriveOrderStatus(statuses: SellerOrderStatus[]): OrderStatus {
     if (!statuses.length) {
         return OrderStatus.NEW;
@@ -316,13 +310,7 @@ export class OrdersService {
             return existing.order;
         }
 
-        const pendingOrder = await this.prisma.order.findUnique({
-            where: { id: orderId },
-            include: {
-                payments: true,
-                sellerOrders: { select: { sellerId: true } },
-            },
-        });
+        const pendingOrder = await this.orderRepository.findForPayment(orderId);
         if (!pendingOrder) throw new NotFoundException('Order not found');
         if (pendingOrder.userId !== userId) {
             throw new ForbiddenException(
@@ -336,16 +324,16 @@ export class OrdersService {
                 ({ status }) => status === PaymentStatus.PENDING,
             )
         ) {
-            await this.prisma.$transaction([
-                this.prisma.order.updateMany({
-                    where: { id: orderId, status: OrderStatus.NEW },
-                    data: { status: OrderStatus.PAYMENT_PENDING },
-                }),
-                this.prisma.sellerOrder.updateMany({
-                    where: { orderId, status: SellerOrderStatus.NEW },
-                    data: { status: SellerOrderStatus.PAYMENT_PENDING },
-                }),
-            ]);
+            await this.prisma.$transaction(async (tx) => {
+                await this.orderRepository.updateOrderPaymentPending(
+                    orderId,
+                    tx,
+                );
+                await this.orderRepository.updateSellerOrdersPaymentPending(
+                    orderId,
+                    tx,
+                );
+            });
             this.ordersGateway?.emitOrderStatusUpdate(
                 userId,
                 orderId,
@@ -368,10 +356,11 @@ export class OrdersService {
 
         try {
             const updated = await this.prisma.$transaction(async (tx) => {
-                const order = await tx.order.findUnique({
-                    where: { id: orderId },
-                    include: { payments: true },
-                });
+                const order =
+                    await this.orderRepository.findForPaymentProcessing(
+                        orderId,
+                        tx,
+                    );
                 if (!order) throw new NotFoundException('Order not found');
                 if (order.userId !== userId) {
                     throw new ForbiddenException(
@@ -396,37 +385,31 @@ export class OrdersService {
                         status === PaymentStatus.PARTIALLY_REFUNDED,
                 );
                 if (!payment && completedPayment) {
-                    const sellerOrderStatuses = await tx.sellerOrder.findMany({
-                        where: { orderId },
-                        select: { status: true },
-                    });
+                    const sellerOrderStatuses =
+                        await this.orderRepository.findSellerOrderStatuses(
+                            orderId,
+                            tx,
+                        );
                     const derivedStatus = deriveOrderStatus(
                         sellerOrderStatuses.map(({ status }) => status),
                     );
-                    return tx.order.update({
-                        where: { id: orderId },
-                        data: {
-                            status:
-                                derivedStatus === OrderStatus.PAYMENT_PENDING ||
-                                derivedStatus === OrderStatus.NEW
-                                    ? OrderStatus.PROCESSING
-                                    : derivedStatus,
-                        },
-                        include: orderDetails,
-                    });
+                    return this.orderRepository.updateOrderStatusWithDetails(
+                        orderId,
+                        derivedStatus === OrderStatus.PAYMENT_PENDING ||
+                            derivedStatus === OrderStatus.NEW
+                            ? OrderStatus.PROCESSING
+                            : derivedStatus,
+                        tx,
+                    );
                 }
                 if (!payment) {
                     throw new BadRequestException('Payment is not pending');
                 }
-                const sellerOrdersForPayment = await tx.sellerOrder.findMany({
-                    where: { orderId },
-                    select: {
-                        id: true,
-                        status: true,
-                        sellerId: true,
-                        subtotal: true,
-                    },
-                });
+                const sellerOrdersForPayment =
+                    await this.orderRepository.findSellerOrdersForPayment(
+                        orderId,
+                        tx,
+                    );
                 const payableAmount = sellerOrdersForPayment
                     .filter(
                         ({ status }) => status !== SellerOrderStatus.CANCELLED,
@@ -444,35 +427,29 @@ export class OrdersService {
                     payment.id,
                     payableAmount,
                 );
-                await tx.payment.update({
-                    where: { id: payment.id },
-                    data: {
+                await this.orderRepository.updatePayment(
+                    payment.id,
+                    {
                         amount: payableAmount,
                         status: PaymentStatus.PAID,
                         providerRef: charge.providerRef,
                         paidAt: new Date(),
                     },
-                });
-                await tx.ledgerEntry.create({
-                    data: {
+                    tx,
+                );
+                await this.orderRepository.createLedgerEntry(
+                    {
                         paymentId: payment.id,
                         type: LedgerEntryType.CUSTOMER_CHARGE,
                         amount: charge.amount,
                         idempotencyKey: `${idempotencyKey}:charge-ledger`,
                     },
-                });
-                await tx.sellerOrder.updateMany({
-                    where: {
-                        orderId,
-                        status: {
-                            in: [
-                                SellerOrderStatus.PAYMENT_PENDING,
-                                SellerOrderStatus.NEW,
-                            ],
-                        },
-                    },
-                    data: { status: SellerOrderStatus.PROCESSING },
-                });
+                    tx,
+                );
+                await this.orderRepository.updateSellerOrdersProcessing(
+                    orderId,
+                    tx,
+                );
                 for (const sellerOrder of sellerOrdersForPayment) {
                     if (sellerOrder.status === SellerOrderStatus.CANCELLED) {
                         continue;
@@ -490,10 +467,10 @@ export class OrdersService {
                     );
                 }
                 const updatedSellerOrderStatuses =
-                    await tx.sellerOrder.findMany({
-                        where: { orderId },
-                        select: { status: true },
-                    });
+                    await this.orderRepository.findSellerOrderStatuses(
+                        orderId,
+                        tx,
+                    );
                 if (
                     updatedSellerOrderStatuses.every(
                         ({ status }) => status === SellerOrderStatus.CANCELLED,
@@ -506,13 +483,14 @@ export class OrdersService {
                 const aggregateStatus = deriveOrderStatus(
                     updatedSellerOrderStatuses.map(({ status }) => status),
                 );
-                const result = await tx.order.update({
-                    where: { id: orderId },
-                    data: { status: aggregateStatus },
-                    include: orderDetails,
-                });
-                await tx.outboxEvent.create({
-                    data: {
+                const result =
+                    await this.orderRepository.updateOrderStatusWithDetails(
+                        orderId,
+                        aggregateStatus,
+                        tx,
+                    );
+                await this.outboxRepository.create(
+                    {
                         orderId,
                         aggregateType: 'Payment',
                         aggregateId: payment.id,
@@ -524,7 +502,8 @@ export class OrdersService {
                         },
                         idempotencyKey: eventKey,
                     },
-                });
+                    tx,
+                );
                 return result;
             });
             await this.ordersQueue.add('process-order', { orderId });
@@ -547,10 +526,8 @@ export class OrdersService {
                 error instanceof Prisma.PrismaClientKnownRequestError &&
                 error.code === 'P2002'
             ) {
-                const retry = await this.prisma.outboxEvent.findUnique({
-                    where: { idempotencyKey: eventKey },
-                    include: { order: { include: orderDetails } },
-                });
+                const retry =
+                    await this.outboxRepository.findByIdempotencyKey(eventKey);
                 if (retry?.order) return retry.order;
             }
             throw error;
@@ -566,10 +543,8 @@ export class OrdersService {
             throw new BadRequestException('Idempotency-Key header is required');
         }
         const eventKey = `payment-cancelled:${idempotencyKey}`;
-        const existing = await this.prisma.outboxEvent.findUnique({
-            where: { idempotencyKey: eventKey },
-            include: { order: { include: orderDetails } },
-        });
+        const existing =
+            await this.outboxRepository.findByIdempotencyKey(eventKey);
         if (existing?.order) return existing.order;
 
         try {
@@ -722,10 +697,8 @@ export class OrdersService {
                 error instanceof Prisma.PrismaClientKnownRequestError &&
                 error.code === 'P2002'
             ) {
-                const retry = await this.prisma.outboxEvent.findUnique({
-                    where: { idempotencyKey: eventKey },
-                    include: { order: { include: orderDetails } },
-                });
+                const retry =
+                    await this.outboxRepository.findByIdempotencyKey(eventKey);
                 if (retry?.order) return retry.order;
             }
             throw error;
@@ -733,9 +706,7 @@ export class OrdersService {
     }
 
     async cancelOrder(userId: string, orderId: string) {
-        const order = await this.prisma.order.findUnique({
-            where: { id: orderId },
-        });
+        const order = await this.orderRepository.findById(orderId);
         if (!order) throw new NotFoundException('Order not found');
         if (order.userId !== userId)
             throw new ForbiddenException(
@@ -984,10 +955,10 @@ export class OrdersService {
             throw new BadRequestException('Idempotency-Key header is required');
         }
         const eventKey = `seller-order-cancel:${idempotencyKey}`;
-        const existing = await this.prisma.outboxEvent.findUnique({
-            where: { idempotencyKey: eventKey },
-            include: { sellerOrder: { include: sellerOrderDetails } },
-        });
+        const existing =
+            await this.outboxRepository.findSellerOrderByIdempotencyKey(
+                eventKey,
+            );
         if (existing?.sellerOrder) return existing.sellerOrder;
 
         try {
@@ -1224,10 +1195,10 @@ export class OrdersService {
                 this.redis.delByPattern('search:products:*'),
                 this.redis.delByPattern('products:detail:*'),
             ]);
-            const event = await this.prisma.outboxEvent.findUnique({
-                where: { idempotencyKey: eventKey },
-                select: { id: true },
-            });
+            const event =
+                await this.outboxRepository.findEventIdByIdempotencyKey(
+                    eventKey,
+                );
             if (event)
                 await this.ordersQueue.add(
                     'deliver-outbox-event',
@@ -1243,10 +1214,10 @@ export class OrdersService {
                 error instanceof Prisma.PrismaClientKnownRequestError &&
                 error.code === 'P2002'
             ) {
-                const retry = await this.prisma.outboxEvent.findUnique({
-                    where: { idempotencyKey: eventKey },
-                    include: { sellerOrder: { include: sellerOrderDetails } },
-                });
+                const retry =
+                    await this.outboxRepository.findSellerOrderByIdempotencyKey(
+                        eventKey,
+                    );
                 if (retry?.sellerOrder) return retry.sellerOrder;
             }
             throw error;
@@ -1435,10 +1406,10 @@ export class OrdersService {
                 this.redis.delByPattern('search:products:*'),
                 this.redis.delByPattern('products:detail:*'),
             ]);
-            const event = await this.prisma.outboxEvent.findUnique({
-                where: { idempotencyKey: `${idempotencyKey}:refund-event` },
-                select: { id: true },
-            });
+            const event =
+                await this.outboxRepository.findEventIdByIdempotencyKey(
+                    `${idempotencyKey}:refund-event`,
+                );
             if (event)
                 await this.ordersQueue.add(
                     'deliver-outbox-event',
@@ -1465,14 +1436,7 @@ export class OrdersService {
     }
 
     async findMyOrders(userId: string) {
-        const orders = await this.prisma.order.findMany({
-            where: { userId },
-            include: {
-                ...orderDetails,
-                payments: { select: { status: true } },
-            },
-            orderBy: { createdAt: 'desc' },
-        });
+        const orders = await this.orderRepository.listOrdersForUser(userId);
 
         return orders.map(({ payments, ...order }) => {
             const hasPaidPayment = payments.some(
@@ -1494,18 +1458,12 @@ export class OrdersService {
     }
 
     findMySellerOrders(sellerId: string) {
-        return this.prisma.sellerOrder.findMany({
-            where: { sellerId },
-            include: sellerOrderDetails,
-            orderBy: { createdAt: 'desc' },
-        });
+        return this.orderRepository.listSellerOrders(sellerId);
     }
 
     async findSellerOrder(sellerId: string, sellerOrderId: string) {
-        const sellerOrder = await this.prisma.sellerOrder.findUnique({
-            where: { id: sellerOrderId },
-            include: sellerOrderDetails,
-        });
+        const sellerOrder =
+            await this.orderRepository.findSellerOrderDetails(sellerOrderId);
         if (!sellerOrder) throw new NotFoundException('Seller order not found');
         if (sellerOrder.sellerId !== sellerId) {
             throw new ForbiddenException(
@@ -1521,10 +1479,11 @@ export class OrdersService {
         dto: UpdateSellerOrderStatusDto,
     ) {
         const result = await this.prisma.$transaction(async (tx) => {
-            const sellerOrder = await tx.sellerOrder.findUnique({
-                where: { id: sellerOrderId },
-                include: { order: true },
-            });
+            const sellerOrder =
+                await this.orderRepository.findSellerOrderForCancellation(
+                    sellerOrderId,
+                    tx,
+                );
             if (!sellerOrder)
                 throw new NotFoundException('Seller order not found');
             if (sellerOrder.sellerId !== sellerId) {
@@ -1535,39 +1494,43 @@ export class OrdersService {
 
             this.assertSellerOrderTransition(sellerOrder.status, dto.status);
             const now = new Date();
-            const updatedSellerOrder = await tx.sellerOrder.update({
-                where: { id: sellerOrderId },
-                data: {
-                    status: dto.status,
-                    ...(dto.status === SellerOrderStatus.SHIPPED && {
-                        ...(dto.trackingNumber?.trim() && {
-                            trackingNumber: dto.trackingNumber.trim(),
+            const updatedSellerOrder =
+                await this.orderRepository.updateSellerOrder(
+                    sellerOrderId,
+                    {
+                        status: dto.status,
+                        ...(dto.status === SellerOrderStatus.SHIPPED && {
+                            ...(dto.trackingNumber?.trim() && {
+                                trackingNumber: dto.trackingNumber.trim(),
+                            }),
+                            shippedAt: now,
                         }),
-                        shippedAt: now,
-                    }),
-                    ...(dto.status === SellerOrderStatus.COMPLETED && {
-                        completedAt: now,
-                    }),
-                },
-                include: sellerOrderDetails,
-            });
-            const siblingStatuses = await tx.sellerOrder.findMany({
-                where: { orderId: sellerOrder.orderId },
-                select: { status: true },
-            });
+                        ...(dto.status === SellerOrderStatus.COMPLETED && {
+                            completedAt: now,
+                        }),
+                    },
+                    tx,
+                    true,
+                );
+            const siblingStatuses =
+                await this.orderRepository.findSellerOrderStatuses(
+                    sellerOrder.orderId,
+                    tx,
+                );
             const nextOrderStatus = deriveOrderStatus(
                 siblingStatuses.map(({ status }) => status),
             );
             const parentChanged = sellerOrder.order.status !== nextOrderStatus;
             const order = parentChanged
-                ? await tx.order.update({
-                      where: { id: sellerOrder.orderId },
-                      data: { status: nextOrderStatus },
-                  })
+                ? await this.orderRepository.updateOrderStatus(
+                      sellerOrder.orderId,
+                      nextOrderStatus,
+                      tx,
+                  )
                 : sellerOrder.order;
 
-            await tx.outboxEvent.createMany({
-                data: [
+            await this.outboxRepository.createMany(
+                [
                     {
                         orderId: order.id,
                         sellerOrderId: updatedSellerOrder.id,
@@ -1599,7 +1562,8 @@ export class OrdersService {
                           ]
                         : []),
                 ],
-            });
+                tx,
+            );
             return { sellerOrder: updatedSellerOrder, order };
         });
 
@@ -1615,10 +1579,7 @@ export class OrdersService {
     }
 
     async findOne(userId: string, userRole: Role, orderId: string) {
-        const order = await this.prisma.order.findUnique({
-            where: { id: orderId },
-            include: orderDetails,
-        });
+        const order = await this.orderRepository.findByIdWithDetails(orderId);
         if (!order) throw new NotFoundException('Order not found');
         const allowed =
             userRole === Role.ADMIN ||
@@ -1637,19 +1598,17 @@ export class OrdersService {
     async findAll(query: QueryOrderDto) {
         const { status, page, limit } = query;
         const where: Prisma.OrderWhereInput = { ...(status && { status }) };
-        const [items, total] = await this.prisma.$transaction([
-            this.prisma.order.findMany({
-                where,
-                include: {
-                    ...orderDetails,
-                    user: { select: { id: true, email: true, nickName: true } },
-                },
-                orderBy: { createdAt: 'desc' },
-                skip: (page - 1) * limit,
-                take: limit,
-            }),
-            this.prisma.order.count({ where }),
-        ]);
+        const [items, total] = await this.prisma.$transaction(async (tx) =>
+            Promise.all([
+                this.orderRepository.listOrders(
+                    where,
+                    (page - 1) * limit,
+                    limit,
+                    tx,
+                ),
+                this.orderRepository.countOrders(where, tx),
+            ]),
+        );
         return {
             items,
             meta: { total, page, limit, pageCount: Math.ceil(total / limit) },
@@ -1660,10 +1619,10 @@ export class OrdersService {
         userId: string,
         idempotencyKey: string,
     ) {
-        const payment = await this.prisma.payment.findUnique({
-            where: { idempotencyKey },
-            include: { order: { include: orderDetails } },
-        });
+        const payment =
+            await this.orderRepository.findByPaymentIdempotencyKey(
+                idempotencyKey,
+            );
         if (!payment) return null;
         if (payment.order.userId !== userId) {
             throw new ForbiddenException(

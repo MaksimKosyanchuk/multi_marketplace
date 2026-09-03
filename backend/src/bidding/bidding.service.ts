@@ -25,13 +25,10 @@ import { LoggerService } from '../logger/logger.service';
 import {
     AuctionRepository,
     BidRepository,
+    OrderRepository,
     OutboxRepository,
+    ProductRepository,
 } from '../database';
-
-const auctionDetails = {
-    product: true,
-    bids: { orderBy: { amount: 'desc' as const } },
-};
 
 @Injectable()
 export class BiddingService {
@@ -41,7 +38,9 @@ export class BiddingService {
         private readonly logger: LoggerService,
         private readonly auctionRepository: AuctionRepository,
         private readonly bidRepository: BidRepository,
+        private readonly orderRepository: OrderRepository,
         private readonly outboxRepository: OutboxRepository,
+        private readonly productRepository: ProductRepository,
     ) {}
 
     async createAuction(sellerId: string, dto: CreateAuctionDto) {
@@ -54,9 +53,10 @@ export class BiddingService {
         }
 
         const auction = await this.prisma.$transaction(async (tx) => {
-            const product = await tx.product.findUnique({
-                where: { id: dto.productId },
-            });
+            const product = await this.productRepository.findById(
+                dto.productId,
+                tx,
+            );
             if (!product) throw new NotFoundException('Product not found');
             if (product.sellerId !== sellerId) {
                 throw new ForbiddenException('You do not own this product');
@@ -138,9 +138,10 @@ export class BiddingService {
                 auction.startsAt > new Date()
             )
                 return auction;
-            const product = await tx.product.findUnique({
-                where: { id: auction.productId },
-            });
+            const product = await this.productRepository.findById(
+                auction.productId,
+                tx,
+            );
             if (product?.status !== ProductStatus.ACTIVE) {
                 return auction;
             }
@@ -315,9 +316,10 @@ export class BiddingService {
                 error instanceof Prisma.PrismaClientKnownRequestError &&
                 error.code === 'P2002'
             ) {
-                const retry = await this.prisma.bid.findUnique({
-                    where: { idempotencyKey },
-                });
+                const retry =
+                    await this.bidRepository.findByIdempotencyKey(
+                        idempotencyKey,
+                    );
                 if (retry) return retry;
             }
             throw error;
@@ -430,14 +432,10 @@ export class BiddingService {
         if (!idempotencyKey?.trim()) {
             throw new BadRequestException('Idempotency-Key header is required');
         }
-        const existing = await this.prisma.payment.findUnique({
-            where: { idempotencyKey },
-            include: {
-                order: {
-                    include: { sellerOrders: { include: { items: true } } },
-                },
-            },
-        });
+        const existing =
+            await this.orderRepository.findPaymentWithSellerOrderItems(
+                idempotencyKey,
+            );
         if (existing) {
             if (existing.order.userId !== winnerId) {
                 throw new ForbiddenException(
@@ -449,16 +447,18 @@ export class BiddingService {
 
         try {
             return await this.prisma.$transaction(async (tx) => {
-                const auction = await tx.auction.findUnique({
-                    where: { id: auctionId },
-                    include: { product: true },
-                });
+                const auction =
+                    await this.auctionRepository.findByIdWithProduct(
+                        auctionId,
+                        tx,
+                    );
                 if (!auction) throw new NotFoundException('Auction not found');
                 if (auction.checkoutOrderId) {
-                    const paidOrder = await tx.order.findUnique({
-                        where: { id: auction.checkoutOrderId },
-                        include: { sellerOrders: { include: { items: true } } },
-                    });
+                    const paidOrder =
+                        await this.orderRepository.findByIdWithSellerOrderItems(
+                            auction.checkoutOrderId,
+                            tx,
+                        );
                     if (paidOrder?.userId === winnerId) return paidOrder;
                     throw new ForbiddenException(
                         'Auction checkout belongs to another user',
@@ -489,20 +489,21 @@ export class BiddingService {
                         'Auction product is no longer available',
                     );
                 }
-                await tx.product.update({
-                    where: { id: auction.productId },
-                    data: {
+                await this.productRepository.update(
+                    auction.productId,
+                    {
                         status: ProductStatus.SOLD,
                         version: { increment: 1 },
                     },
-                });
+                    tx,
+                );
                 const commissionRate = new Prisma.Decimal('0.10');
                 const commissionAmount =
                     auction.currentPrice.mul(commissionRate);
                 const sellerEarnings =
                     auction.currentPrice.sub(commissionAmount);
-                const order = await tx.order.create({
-                    data: {
+                const order = await this.orderRepository.create(
+                    {
                         userId: winnerId,
                         status: OrderStatus.PROCESSING,
                         subtotal: auction.currentPrice,
@@ -549,12 +550,14 @@ export class BiddingService {
                             },
                         },
                     },
-                    include: { sellerOrders: { include: { items: true } } },
-                });
-                await tx.auction.update({
-                    where: { id: auctionId },
-                    data: { checkoutOrderId: order.id },
-                });
+                    { sellerOrders: { include: { items: true } } },
+                    tx,
+                );
+                await this.auctionRepository.updateCheckoutOrder(
+                    auctionId,
+                    order.id,
+                    tx,
+                );
                 void this.logger.audit(
                     BiddingService.name,
                     'Auction winner checkout created',
@@ -565,8 +568,8 @@ export class BiddingService {
                         amount: auction.currentPrice.toString(),
                     },
                 );
-                await tx.outboxEvent.createMany({
-                    data: [
+                await this.outboxRepository.createMany(
+                    [
                         {
                             orderId: order.id,
                             aggregateType: 'Order',
@@ -594,7 +597,8 @@ export class BiddingService {
                             idempotencyKey: `${idempotencyKey}:auction-checkout`,
                         },
                     ],
-                });
+                    tx,
+                );
                 return order;
             });
         } catch (error: unknown) {
@@ -602,16 +606,10 @@ export class BiddingService {
                 error instanceof Prisma.PrismaClientKnownRequestError &&
                 error.code === 'P2002'
             ) {
-                const retry = await this.prisma.payment.findUnique({
-                    where: { idempotencyKey },
-                    include: {
-                        order: {
-                            include: {
-                                sellerOrders: { include: { items: true } },
-                            },
-                        },
-                    },
-                });
+                const retry =
+                    await this.orderRepository.findPaymentWithSellerOrderItems(
+                        idempotencyKey,
+                    );
                 if (retry?.order) return retry.order;
             }
             throw error;

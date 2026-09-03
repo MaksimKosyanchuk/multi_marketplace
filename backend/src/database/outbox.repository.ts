@@ -12,6 +12,12 @@ const orderDetails = {
     },
 } satisfies Prisma.OrderInclude;
 
+const sellerOrderDetails = {
+    order: true,
+    items: { include: { product: true } },
+    seller: { select: { id: true, email: true, nickName: true } },
+} satisfies Prisma.SellerOrderInclude;
+
 @Injectable()
 export class OutboxRepository {
     constructor(private readonly prisma: PrismaService) {}
@@ -37,6 +43,26 @@ export class OutboxRepository {
         return db.outboxEvent.findUnique({
             where: { idempotencyKey },
             include: { order: { include: orderDetails } },
+        });
+    }
+
+    findSellerOrderByIdempotencyKey(
+        idempotencyKey: string,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.outboxEvent.findUnique({
+            where: { idempotencyKey },
+            include: { sellerOrder: { include: sellerOrderDetails } },
+        });
+    }
+
+    findEventIdByIdempotencyKey(
+        idempotencyKey: string,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.outboxEvent.findUnique({
+            where: { idempotencyKey },
+            select: { id: true },
         });
     }
 }
