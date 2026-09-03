@@ -62,47 +62,6 @@
     gap: 10px;
 }
 
-.statusBadge {
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 0.825rem;
-    font-weight: 600;
-    letter-spacing: 0.01em;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    white-space: nowrap;
-}
-
-.statusNew {
-    background-color: #fef3c7;
-    color: #92400e;
-}
-
-.statusProcessing {
-    background-color: #e0f2fe;
-    color: #0369a1;
-}
-
-.statusShipped {
-    background-color: #f3e8ff;
-    color: #6b21a8;
-}
-
-.statusCompleted {
-    background-color: #dcfce7;
-    color: #15803d;
-}
-
-.statusCancelled {
-    background-color: #fee2e2;
-    color: #b91c1c;
-}
-.statusPending {
-    background-color: #fef3c7;
-    color: #d97706;
-}
-
 .statusSelect {
     appearance: none;
     background-color: #f8fafc;

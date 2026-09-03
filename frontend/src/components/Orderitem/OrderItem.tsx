@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import type { Order, OrderStatus } from '../../services/orderService';
-import type { SellerOrder, SellerOrderStatus } from '../../types';
+import type { SellerOrder } from '../../types';
 import { Button } from '../Ui/Button/Button';
 import { Modal } from '../Modal/Modal';
+import { OrderStatusBadge } from '../OrderStatusBadge/OrderStatusBadge';
 import styles from './OrderItem.module.css';
 
 interface OrderItemProps {
@@ -25,18 +26,6 @@ const VALID_STATUSES: OrderStatus[] = [
     'PARTIALLY_COMPLETED',
     'PARTIALLY_CANCELLED',
 ];
-
-const statusLabels: Record<OrderStatus, { text: string; className: string }> = {
-    NEW: { text: 'Очікує оплати', className: styles.statusNew },
-    PAYMENT_PENDING: { text: 'Не оплачено', className: styles.statusPending },
-    PROCESSING: { text: 'Оплачено', className: styles.statusProcessing },
-    SHIPPED: { text: 'Відправлено', className: styles.statusShipped },
-    COMPLETED: { text: 'Завершено', className: styles.statusCompleted },
-    CANCELLED: { text: 'Скасовано', className: styles.statusCancelled },
-    PARTIALLY_SHIPPED: { text: 'Частково відправлено', className: styles.statusShipped },
-    PARTIALLY_COMPLETED: { text: 'Частково завершено', className: styles.statusCompleted },
-    PARTIALLY_CANCELLED: { text: 'Частково скасовано', className: styles.statusCancelled },
-};
 
 export const OrderItemCard: React.FC<OrderItemProps> = ({
     order,
@@ -108,13 +97,6 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
         }
     };
 
-    const statusInfo = isProcessing && order.status === 'PAYMENT_PENDING'
-        ? { text: 'Оплата обробляється', className: styles.statusPending }
-        : statusLabels[order.status] || {
-            text: order.status ?? 'Невідомий',
-            className: '',
-        };
-
     const isCancelable =
         order.status === 'NEW' ||
         order.status === 'PAYMENT_PENDING' ||
@@ -151,14 +133,6 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
         )
         .reduce((total, sellerOrder) => total + Number(sellerOrder.subtotal), 0);
     const amountDue = sellerOrders.length > 0 ? unpaidAmount : totalAmount;
-    const sellerStatusLabels: Record<SellerOrderStatus, string> = {
-        NEW: 'Нове',
-        PAYMENT_PENDING: 'Не оплачено',
-        PROCESSING: 'Оплачено',
-        SHIPPED: 'Відправлено',
-        COMPLETED: 'Завершено',
-        CANCELLED: 'Скасовано',
-    };
     const sellerCanCancel = (sellerOrder: SellerOrder) =>
         ['NEW', 'PAYMENT_PENDING', 'PROCESSING', 'SHIPPED'].includes(sellerOrder.status);
     const hasUnpaidSellerOrder = sellerOrders.some(
@@ -195,9 +169,7 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
                     </div>
 
                     <div className={styles.statusSection}>
-                        <span className={`${styles.statusBadge} ${statusInfo.className}`}>
-                            {statusInfo.text}
-                        </span>
+                        <OrderStatusBadge status={order.status} scope="root" />
 
                         {isAdmin && !isTerminalState && !isPendingPayment && onStatusChange && (
                             <select
@@ -250,9 +222,7 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
                                             sellerOrder.seller?.email ??
                                             `Продавець ${sellerOrder.sellerId.slice(0, 8)}`}
                                     </strong>
-                                    <span className={`${styles.statusBadge} ${sellerOrder.status === 'CANCELLED' ? styles.statusCancelled : styles.statusProcessing}`}>
-                                        {sellerStatusLabels[sellerOrder.status]}
-                                    </span>
+                                    <OrderStatusBadge status={sellerOrder.status} scope="suborder" />
                                 </div>
                                 <div className={styles.sellerOrderMeta}>
                                     ${Number(sellerOrder.subtotal).toFixed(2)}

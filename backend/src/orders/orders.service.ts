@@ -183,7 +183,7 @@ export class OrdersService {
                 const order = await tx.order.create({
                     data: {
                         userId,
-                        status: OrderStatus.PAYMENT_PENDING,
+                        status: OrderStatus.NEW,
                         subtotal: totalAmount,
                         totalAmount,
                         payments: {
@@ -206,7 +206,7 @@ export class OrdersService {
                                         group.subtotal.sub(commissionAmount);
                                     return {
                                         sellerId,
-                                        status: SellerOrderStatus.PAYMENT_PENDING,
+                                        status: SellerOrderStatus.NEW,
                                         subtotal: group.subtotal,
                                         commissionRate,
                                         commissionAmount,
@@ -324,9 +324,20 @@ export class OrdersService {
             throw new ForbiddenException('You do not have access to this order');
         }
         if (
-            pendingOrder.status === OrderStatus.PAYMENT_PENDING &&
+            (pendingOrder.status === OrderStatus.NEW ||
+                pendingOrder.status === OrderStatus.PAYMENT_PENDING) &&
             pendingOrder.payments.some(({ status }) => status === PaymentStatus.PENDING)
         ) {
+            await this.prisma.$transaction([
+                this.prisma.order.updateMany({
+                    where: { id: orderId, status: OrderStatus.NEW },
+                    data: { status: OrderStatus.PAYMENT_PENDING },
+                }),
+                this.prisma.sellerOrder.updateMany({
+                    where: { orderId, status: SellerOrderStatus.NEW },
+                    data: { status: SellerOrderStatus.PAYMENT_PENDING },
+                }),
+            ]);
             this.ordersGateway?.emitOrderStatusUpdate(
                 userId,
                 orderId,
@@ -970,7 +981,12 @@ export class OrdersService {
                           SellerOrderStatus.PAYMENT_PENDING,
                           SellerOrderStatus.PROCESSING,
                       ]
-                    : [SellerOrderStatus.PROCESSING];
+                    : [
+                          SellerOrderStatus.NEW,
+                          SellerOrderStatus.PAYMENT_PENDING,
+                          SellerOrderStatus.PROCESSING,
+                        SellerOrderStatus.SHIPPED,
+                    ];
                 if (!cancellableStatuses.includes(sellerOrder.status)) {
                     throw new BadRequestException(
                         `Seller order cannot be cancelled in status ${sellerOrder.status}`,
@@ -1487,22 +1503,15 @@ export class OrdersService {
             }
 
             this.assertSellerOrderTransition(sellerOrder.status, dto.status);
-            if (
-                dto.status === SellerOrderStatus.SHIPPED &&
-                !dto.trackingNumber?.trim()
-            ) {
-                throw new BadRequestException(
-                    'Tracking number is required when shipping an order',
-                );
-            }
-
             const now = new Date();
             const updatedSellerOrder = await tx.sellerOrder.update({
                 where: { id: sellerOrderId },
                 data: {
                     status: dto.status,
                     ...(dto.status === SellerOrderStatus.SHIPPED && {
-                        trackingNumber: dto.trackingNumber!.trim(),
+                        ...(dto.trackingNumber?.trim() && {
+                            trackingNumber: dto.trackingNumber.trim(),
+                        }),
                         shippedAt: now,
                     }),
                     ...(dto.status === SellerOrderStatus.COMPLETED && {

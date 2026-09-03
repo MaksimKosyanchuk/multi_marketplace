@@ -16,7 +16,7 @@ export class UpdateSellerOrderStatusDto {
 
     @ApiPropertyOptional({
         example: 'UA123456789',
-        description: 'Required when moving a seller order to SHIPPED.',
+        description: 'Optional tracking number for a shipped seller order.',
     })
     @IsOptional()
     @IsString()

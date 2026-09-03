@@ -24,6 +24,7 @@ import styles from './ProfilePage.module.css';
 import { useAuth } from '../../context/AuthContext/useAuth';
 import { Role, type SellerOrder, type Auction } from '../../types';
 import { AuctionCard } from '../../components/AuctionCard/AuctionCard';
+import { OrderStatusBadge } from '../../components/OrderStatusBadge/OrderStatusBadge';
 
 type ActiveTab = 'info' | 'orders' | 'sales' | 'products' | 'auctions' | 'auctionHistory';
 
@@ -310,6 +311,27 @@ export const ProfilePage: React.FC = () => {
         }
     };
 
+    const handleSellerOrderStatusChange = async (
+        sellerOrderId: string,
+        status: 'PROCESSING' | 'SHIPPED' | 'COMPLETED',
+        trackingNumber?: string,
+    ) => {
+        try {
+            await orderApi.updateSellerStatus(sellerOrderId, status, trackingNumber);
+            await fetchSales();
+        } catch (err) {
+            if (err instanceof AxiosError && err.response?.data?.message) {
+                setErrorMessage(
+                    Array.isArray(err.response.data.message)
+                        ? err.response.data.message[0]
+                        : err.response.data.message,
+                );
+            } else {
+                setErrorMessage('Помилка при зміні статусу субзамовлення.');
+            }
+        }
+    };
+
     const renderCustomerOrders = () => (
         <div className={styles.section}>
             <h2>Історія замовлень</h2>
@@ -354,23 +376,49 @@ export const ProfilePage: React.FC = () => {
                                         Замовлення #{sale.id.slice(0, 8)}
                                     </div>
                                     <div className={styles.saleMeta}>
-                                        Статус: {sale.status}
+                                        <OrderStatusBadge status={sale.status} scope="suborder" />
                                     </div>
                                 </div>
                                 <div className={styles.saleAmount}>
                                     ${Number(sale.sellerEarnings).toFixed(2)}
                                 </div>
                             </div>
-                            {sale.status === 'PROCESSING' && (
-                                <Button
-                                    type="button"
-                                    variant="secondary"
-                                    size="small"
-                                    onClick={() => void handleCancelOwnSellerOrder(sale.id)}
+                            {['NEW', 'PAYMENT_PENDING', 'PROCESSING', 'SHIPPED'].includes(sale.status) ? (
+                                <select
+                                    className={styles.statusSelect}
+                                    value=""
+                                    onChange={(event) => {
+                                        const nextStatus = event.target.value as
+                                            | 'PROCESSING'
+                                            | 'SHIPPED'
+                                            | 'COMPLETED'
+                                            | 'CANCELLED';
+                                        if (nextStatus) {
+                                            if (nextStatus === 'CANCELLED') {
+                                                void handleCancelOwnSellerOrder(sale.id);
+                                            } else {
+                                                void handleSellerOrderStatusChange(
+                                                    sale.id,
+                                                    nextStatus,
+                                                );
+                                            }
+                                        }
+                                    }}
                                 >
-                                    Скасувати субзамовлення
-                                </Button>
-                            )}
+                                    <option value="">Змінити статус...</option>
+                                    {sale.status === 'NEW' || sale.status === 'PAYMENT_PENDING' ? null : (
+                                        <>
+                                            {sale.status === 'PROCESSING' && (
+                                                <option value="SHIPPED">Відправлено</option>
+                                            )}
+                                            {sale.status === 'SHIPPED' && (
+                                                <option value="COMPLETED">Доставлено</option>
+                                            )}
+                                        </>
+                                    )}
+                                    <option value="CANCELLED">Скасувати</option>
+                                </select>
+                            ) : null}
 
                             <div className={styles.saleItems}>
                                 {sale.items.map((item) => (
