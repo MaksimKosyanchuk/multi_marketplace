@@ -11,6 +11,7 @@ import { useAuth } from '../../context/AuthContext/useAuth';
 import { ProductCard } from '../../components/ProductCard/ProductCard';
 import { Modal } from '../../components/Modal/Modal';
 import { Button } from '../../components/Ui/Button/Button';
+import { Role } from '../../types';
 import styles from './CatalogPage.module.css';
 
 interface CartItem {
@@ -28,7 +29,7 @@ type ModalType = 'auth' | 'cart_success' | 'cart_error' | null;
 
 export const CatalogPage: React.FC = () => {
     const navigate = useNavigate();
-    const { isAuthenticated, socket } = useAuth();
+    const { isAuthenticated, socket, user } = useAuth();
 
     const [products, setProducts] = useState<Product[]>([]);
     const [cartItemIds, setCartItemIds] = useState<string[]>([]);
@@ -378,7 +379,11 @@ export const CatalogPage: React.FC = () => {
                                 isInCart={cartItemIds.includes(
                                     product.id,
                                 )}
-                                onAddToCart={handleAddToCart}
+                                onAddToCart={
+                                    user?.role === Role.SELLER
+                                        ? undefined
+                                        : handleAddToCart
+                                }
                             />
                         ))}
                     </div>

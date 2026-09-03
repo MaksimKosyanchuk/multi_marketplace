@@ -13,15 +13,16 @@ import {
     type Category,
 } from '../../services/categoryService';
 import { productService } from '../../services/productService';
+import { auctionService } from '../../services/auctionService';
 import { OrderItemCard } from '../../components/Orderitem/OrderItem';
 import { Modal } from '../../components/Modal/Modal';
 import { Button } from '../../components/Ui/Button/Button';
 import ProductsPage from '../AdminPage/ProductsPage/ProductsPage';
 import styles from './ProfilePage.module.css';
 import { useAuth } from '../../context/AuthContext/useAuth';
-import { Role, type SellerOrder } from '../../types';
+import { Role, type SellerOrder, type Auction } from '../../types';
 
-type ActiveTab = 'info' | 'orders' | 'sales' | 'products';
+type ActiveTab = 'info' | 'orders' | 'sales' | 'products' | 'createdAuctions' | 'auctionHistory';
 
 export const ProfilePage: React.FC = () => {
     const { user, socket } = useAuth();
@@ -33,6 +34,7 @@ export const ProfilePage: React.FC = () => {
     const [activeTab, setActiveTab] = useState<ActiveTab>('info');
     const [orders, setOrders] = useState<Order[]>([]);
     const [sales, setSales] = useState<SellerOrder[]>([]);
+    const [auctionHistory, setAuctionHistory] = useState<Auction[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
     const [isLoadingOrders, setIsLoadingOrders] = useState<boolean>(false);
     const [isLoadingSales, setIsLoadingSales] = useState<boolean>(false);
@@ -45,6 +47,9 @@ export const ProfilePage: React.FC = () => {
         price: '',
         stock: '',
         categoryId: '',
+        type: '',
+        minBidIncrement: '',
+        auctionEndsAt: '',
     });
 
     const fetchOrders = useCallback(async () => {
@@ -87,6 +92,18 @@ export const ProfilePage: React.FC = () => {
         }
     }, []);
 
+    const fetchAuctionHistory = useCallback(async () => {
+        try {
+            setAuctionHistory(
+                isSeller
+                    ? await auctionService.getCreated()
+                    : await auctionService.getParticipating(),
+            );
+        } catch {
+            setErrorMessage('Не вдалося завантажити історію аукціонів.');
+        }
+    }, [isSeller]);
+
     const fetchCategories = useCallback(async () => {
         if (!isSeller) {
             return;
@@ -103,12 +120,15 @@ export const ProfilePage: React.FC = () => {
     const handleTabChange = (tab: ActiveTab) => {
         setActiveTab(tab);
 
-        if (tab === 'orders' && isCustomer) {
+        if (tab === 'orders' && (isCustomer || isSeller)) {
             void fetchOrders();
         }
 
         if (tab === 'sales' && isSeller) {
             void fetchSales();
+        }
+        if (tab === 'createdAuctions' || tab === 'auctionHistory') {
+            void fetchAuctionHistory();
         }
     };
 
@@ -228,6 +248,9 @@ export const ProfilePage: React.FC = () => {
             price: '',
             stock: '',
             categoryId: '',
+            type: '',
+            minBidIncrement: '',
+            auctionEndsAt: '',
         });
     };
 
@@ -241,13 +264,32 @@ export const ProfilePage: React.FC = () => {
             setErrorMessage('Оберіть категорію для товару.');
             return;
         }
+        if (!productForm.type) {
+            setErrorMessage('Оберіть тип товару.');
+            return;
+        }
 
         if (!productForm.price || Number(productForm.price) <= 0) {
             setErrorMessage('Ціна повинна бути більшою за 0.');
             return;
         }
+        if (
+            productForm.type === 'AUCTION' &&
+            (!productForm.minBidIncrement ||
+                Number(productForm.minBidIncrement) <= 0 ||
+                !productForm.auctionEndsAt ||
+                new Date(productForm.auctionEndsAt) <= new Date())
+        ) {
+            setErrorMessage(
+                'Для аукціону вкажіть мінімальний крок ставки та майбутній дедлайн.',
+            );
+            return;
+        }
 
-        if (!productForm.stock || Number(productForm.stock) <= 0) {
+        if (
+            productForm.type !== 'AUCTION' &&
+            (!productForm.stock || Number(productForm.stock) <= 0)
+        ) {
             setErrorMessage('Кількість повинна бути більшою за 0.');
             return;
         }
@@ -259,10 +301,23 @@ export const ProfilePage: React.FC = () => {
             formData.append('name', productForm.name.trim());
             formData.append('description', productForm.description.trim());
             formData.append('price', String(productForm.price));
-            formData.append('stock', String(productForm.stock));
+            formData.append(
+                'stock',
+                productForm.type === 'AUCTION' ? '1' : String(productForm.stock),
+            );
             formData.append('categoryId', productForm.categoryId);
+            formData.append('type', productForm.type);
 
-            await productService.createProduct(formData);
+            const created = await productService.createProduct(formData);
+            if (productForm.type === 'AUCTION') {
+                await auctionService.create({
+                    productId: created.id,
+                    startingPrice: Number(productForm.price),
+                    minBidIncrement: Number(productForm.minBidIncrement),
+                    startsAt: new Date().toISOString(),
+                    endsAt: new Date(productForm.auctionEndsAt).toISOString(),
+                });
+            }
             setIsCreateProductOpen(false);
             resetProductForm();
             await fetchSales();
@@ -338,16 +393,39 @@ export const ProfilePage: React.FC = () => {
         </div>
     );
 
+    const renderAuctionHistory = () => (
+        <div className={styles.section}>
+            <h2>{isSeller ? 'Мої створені аукціони' : 'Історія аукціонів'}</h2>
+            {auctionHistory.length === 0 ? (
+                <p>Аукціонів немає.</p>
+            ) : (
+                <div className={styles.ordersList}>
+                    {auctionHistory.map((auction) => (
+                        <Link key={auction.id} to={`/auction/${auction.id}`}>
+                            {auction.product.name} — {auction.status} — $
+                            {auction.currentPrice.toFixed(2)}
+                        </Link>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+
     const tabs = isSeller
         ? ([
+              { key: 'orders', label: 'Історія покупок' },
               { key: 'sales', label: 'Мої продажі' },
+              { key: 'createdAuctions', label: 'Мої аукціони' },
               { key: 'products', label: 'Товари' },
               { key: 'info', label: 'Мої дані' },
           ] as Array<{ key: ActiveTab; label: string }>)
         : ([
               { key: 'info', label: 'Особисті дані' },
               ...(isCustomer
-                  ? [{ key: 'orders', label: 'Мої замовлення' }]
+                  ? [
+                        { key: 'orders', label: 'Історія покупок' },
+                        { key: 'auctionHistory', label: 'Історія аукціонів' },
+                    ]
                   : []),
           ] as Array<{ key: ActiveTab; label: string }>);
 
@@ -410,8 +488,10 @@ export const ProfilePage: React.FC = () => {
                 </div>
             )}
 
-            {activeTab === 'orders' && isCustomer && renderCustomerOrders()}
+            {activeTab === 'orders' && (isCustomer || isSeller) && renderCustomerOrders()}
             {activeTab === 'sales' && isSeller && renderSellerSales()}
+            {activeTab === 'createdAuctions' && isSeller && renderAuctionHistory()}
+            {activeTab === 'auctionHistory' && isCustomer && renderAuctionHistory()}
             {activeTab === 'products' && isSeller && <ProductsPage />}
 
             <Modal
@@ -448,6 +528,24 @@ export const ProfilePage: React.FC = () => {
             >
                 <div className={styles.productForm}>
                     <label className={styles.field}>
+                        <span>Тип товару</span>
+                        <select
+                            value={productForm.type}
+                            onChange={(e) =>
+                                setProductForm((prev) => ({
+                                    ...prev,
+                                    type: e.target.value as 'FIXED_PRICE' | 'AUCTION',
+                                }))
+                            }
+                        >
+                            <option value="">Оберіть тип товару</option>
+                            <option value="FIXED_PRICE">Звичайний товар</option>
+                            <option value="AUCTION">Аукціон</option>
+                        </select>
+                    </label>
+                    {productForm.type && (
+                        <>
+                    <label className={styles.field}>
                         <span>Назва</span>
                         <input
                             value={productForm.name}
@@ -459,7 +557,38 @@ export const ProfilePage: React.FC = () => {
                             }
                         />
                     </label>
-
+                    {productForm.type === 'AUCTION' && (
+                        <div className={styles.rowTwo}>
+                            <label className={styles.field}>
+                                <span>Мінімальний крок ставки</span>
+                                <input
+                                    type="number"
+                                    min="0.01"
+                                    step="0.01"
+                                    value={productForm.minBidIncrement}
+                                    onChange={(e) =>
+                                        setProductForm((prev) => ({
+                                            ...prev,
+                                            minBidIncrement: e.target.value,
+                                        }))
+                                    }
+                                />
+                            </label>
+                            <label className={styles.field}>
+                                <span>Дедлайн аукціону</span>
+                                <input
+                                    type="datetime-local"
+                                    value={productForm.auctionEndsAt}
+                                    onChange={(e) =>
+                                        setProductForm((prev) => ({
+                                            ...prev,
+                                            auctionEndsAt: e.target.value,
+                                        }))
+                                    }
+                                />
+                            </label>
+                        </div>
+                    )}
                     <label className={styles.field}>
                         <span>Опис</span>
                         <textarea
@@ -476,7 +605,11 @@ export const ProfilePage: React.FC = () => {
 
                     <div className={styles.rowTwo}>
                         <label className={styles.field}>
-                            <span>Ціна</span>
+                            <span>
+                                {productForm.type === 'AUCTION'
+                                    ? 'Стартова ціна'
+                                    : 'Ціна'}
+                            </span>
                             <input
                                 type="number"
                                 min="0"
@@ -491,7 +624,7 @@ export const ProfilePage: React.FC = () => {
                             />
                         </label>
 
-                        <label className={styles.field}>
+                        {productForm.type !== 'AUCTION' && <label className={styles.field}>
                             <span>Кількість</span>
                             <input
                                 type="number"
@@ -504,9 +637,8 @@ export const ProfilePage: React.FC = () => {
                                     }))
                                 }
                             />
-                        </label>
+                        </label>}
                     </div>
-
                     <label className={styles.field}>
                         <span>Категорія</span>
                         <select
@@ -526,6 +658,8 @@ export const ProfilePage: React.FC = () => {
                             ))}
                         </select>
                     </label>
+                        </>
+                    )}
                 </div>
             </Modal>
 

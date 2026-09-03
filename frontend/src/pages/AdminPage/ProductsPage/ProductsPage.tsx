@@ -7,12 +7,14 @@ import styles from './ProductsPage.module.css';
 import type { Product } from '../../../types/product.type';
 import { Role } from '../../../types';
 import { useAuth } from '../../../context/AuthContext/useAuth';
+import { auctionService } from '../../../services/auctionService';
 
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const MAX_FILE_SIZE_MB = 5;
 
 interface FormErrors {
     name?: string;
+    type?: string;
     price?: string;
     stock?: string;
     categoryId?: string;
@@ -39,6 +41,9 @@ export default function ProductsPage() {
     const [price, setPrice] = useState<number | ''>('');
     const [stock, setStock] = useState<number | ''>('');
     const [categoryId, setCategoryId] = useState('');
+    const [type, setType] = useState<'FIXED_PRICE' | 'AUCTION' | ''>('');
+    const [minBidIncrement, setMinBidIncrement] = useState<number | ''>('');
+    const [auctionEndsAt, setAuctionEndsAt] = useState('');
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     
@@ -135,6 +140,9 @@ export default function ProductsPage() {
         setPrice('');
         setStock('');
         setCategoryId('');
+        setType('');
+        setMinBidIncrement('');
+        setAuctionEndsAt('');
         setImageFile(null);
         setImagePreview(null);
         setFormErrors({});
@@ -151,6 +159,9 @@ export default function ProductsPage() {
         setPrice(product.price !== undefined ? product.price : '');
         setStock(product.stock !== undefined ? product.stock : '');
         setCategoryId(product.categoryId || '');
+        setType(product.type ?? '');
+        setMinBidIncrement('');
+        setAuctionEndsAt('');
         setImageFile(null);
         setImagePreview(getImageUrl(product.imageUrl));
         setFormErrors({});
@@ -237,16 +248,29 @@ export default function ProductsPage() {
         }
 
         const numStock = Number(stock);
-        if (stock === '' || isNaN(numStock)) {
+        if (type !== 'AUCTION' && (stock === '' || isNaN(numStock))) {
             errors.stock = 'Введіть кількість';
-        } else if (numStock < 0) {
+        } else if (type !== 'AUCTION' && numStock < 0) {
             errors.stock = 'Кількість не може бути від’ємною';
-        } else if (!Number.isInteger(numStock)) {
+        } else if (type !== 'AUCTION' && !Number.isInteger(numStock)) {
             errors.stock = 'Кількість повинна бути цілим числом';
         }
 
         if (!categoryId) {
             errors.categoryId = 'Оберіть категорію';
+        }
+        if (!type) {
+            errors.type = 'Оберіть тип товару';
+        }
+        if (
+            modalMode === 'create' &&
+            type === 'AUCTION' &&
+            (!minBidIncrement ||
+                Number(minBidIncrement) <= 0 ||
+                !auctionEndsAt ||
+                new Date(auctionEndsAt) <= new Date())
+        ) {
+            errors.type = 'Для аукціону вкажіть крок ставки та майбутній дедлайн';
         }
 
         setFormErrors(errors);
@@ -267,8 +291,11 @@ export default function ProductsPage() {
             formData.append('name', name.trim());
             formData.append('description', description.trim());
             formData.append('price', String(price));
-            formData.append('stock', String(stock));
+            formData.append('stock', type === 'AUCTION' ? '1' : String(stock));
             formData.append('categoryId', categoryId);
+            if (modalMode === 'create') {
+                formData.append('type', type);
+            }
 
             if (imageFile) {
                 formData.append('image', imageFile);
@@ -282,6 +309,15 @@ export default function ProductsPage() {
 
             if (modalMode === 'create') {
                 const created = await productService.createProduct(formData);
+                if (type === 'AUCTION') {
+                    await auctionService.create({
+                        productId: created.id,
+                        startingPrice: Number(price),
+                        minBidIncrement: Number(minBidIncrement),
+                        startsAt: new Date().toISOString(),
+                        endsAt: new Date(auctionEndsAt).toISOString(),
+                    });
+                }
                 setProducts((prev) => [created, ...prev]);
             } else if (modalMode === 'edit' && selectedProduct) {
                 const updated = await productService.updateProduct(selectedProduct.id, formData);
@@ -310,7 +346,11 @@ export default function ProductsPage() {
         try {
             await productService.deleteProduct(selectedProduct.id);
             setProducts((prev) =>
-                prev.map((p) => (p.id === selectedProduct.id ? { ...p, isArchived: true } : p))
+                prev.map((p) =>
+                    p.id === selectedProduct.id
+                        ? { ...p, isArchived: true, status: 'ARCHIVED' }
+                        : p,
+                ),
             );
             handleCloseModal();
         } catch (err: unknown) {
@@ -424,6 +464,39 @@ export default function ProductsPage() {
                             </div>
                         ) : (
                             <form onSubmit={handleSubmit} className={styles.form} noValidate>
+                                <label>
+                                    Тип товару:
+                                    <select value={type} onChange={(e) => setType(e.target.value as typeof type)} required>
+                                        <option value="">Оберіть тип</option>
+                                        <option value="FIXED_PRICE">Звичайний товар</option>
+                                        <option value="AUCTION">Аукціон</option>
+                                    </select>
+                                    {formErrors.type && (
+                                        <span className={styles.fieldError}>{formErrors.type}</span>
+                                    )}
+                                </label>
+                                {modalMode === 'create' && type === 'AUCTION' && (
+                                    <div className={styles.row}>
+                                        <label className={styles.label}>
+                                            Мінімальний крок ставки:
+                                            <input
+                                                type="number"
+                                                min="0.01"
+                                                step="0.01"
+                                                value={minBidIncrement}
+                                                onChange={(e) => setMinBidIncrement(e.target.value ? Number(e.target.value) : '')}
+                                            />
+                                        </label>
+                                        <label className={styles.label}>
+                                            Дедлайн:
+                                            <input
+                                                type="datetime-local"
+                                                value={auctionEndsAt}
+                                                onChange={(e) => setAuctionEndsAt(e.target.value)}
+                                            />
+                                        </label>
+                                    </div>
+                                )}
                                 <label className={styles.label}>
                                     Назва:
                                     <input
@@ -449,7 +522,7 @@ export default function ProductsPage() {
 
                                 <div className={styles.row}>
                                     <label className={styles.label}>
-                                        Ціна ($):
+                                        {type === 'AUCTION' ? 'Стартова ціна' : 'Ціна ($)'}:
                                         <input
                                             type="number"
                                             step="0.01"
@@ -463,7 +536,7 @@ export default function ProductsPage() {
                                         )}
                                     </label>
 
-                                    <label className={styles.label}>
+                                    {type !== 'AUCTION' && <label className={styles.label}>
                                         Кількість на складі:
                                         <input
                                             type="number"
@@ -475,7 +548,7 @@ export default function ProductsPage() {
                                         {formErrors.stock && (
                                             <span className={styles.fieldError}>{formErrors.stock}</span>
                                         )}
-                                    </label>
+                                    </label>}
                                 </div>
 
                                 <label className={styles.label}>

@@ -172,6 +172,18 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                 );
             }
 
+            if (user?.role === Role.SELLER) {
+                return (
+                    <Button
+                        variant="secondary"
+                        size="medium"
+                        onClick={() => navigate('/profile')}
+                    >
+                        Керувати товарами
+                    </Button>
+                );
+            }
+
             return (
                 <div className={styles.footer}>
                     {canEdit && (

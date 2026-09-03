@@ -18,6 +18,14 @@ export const auctionService = {
         const { data } = await api.get<Auction>(`/auctions/${auctionId}`);
         return data;
     },
+    async getCreated(): Promise<Auction[]> {
+        const { data } = await api.get<Auction[]>('/auctions/mine/created');
+        return data;
+    },
+    async getParticipating(): Promise<Auction[]> {
+        const { data } = await api.get<Auction[]>('/auctions/mine/participating');
+        return data;
+    },
     async create(input: CreateAuctionInput): Promise<Auction> {
         const { data } = await api.post<Auction>('/auctions', input);
         return data;

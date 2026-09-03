@@ -38,6 +38,18 @@ export class BiddingController {
         return this.biddingService.createAuction(req.user.id, dto);
     }
 
+    @UseGuards(JwtAuthGuard)
+    @Get('mine/created')
+    getMyAuctions(@Req() req: Request & { user: { id: string } }) {
+        return this.biddingService.findCreatedAuctions(req.user.id);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Get('mine/participating')
+    getParticipatingAuctions(@Req() req: Request & { user: { id: string } }) {
+        return this.biddingService.findParticipatingAuctions(req.user.id);
+    }
+
     @Get(':auctionId')
     @ApiOperation({ summary: 'Получить аукцион и историю ставок' })
     findOne(@Param('auctionId') auctionId: string) {

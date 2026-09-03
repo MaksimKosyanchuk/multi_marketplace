@@ -53,6 +53,8 @@ export class BiddingService {
             }
             if (
                 product.type !== ProductType.AUCTION ||
+                product.status !== ProductStatus.DRAFT &&
+                product.status !== ProductStatus.PENDING_APPROVAL &&
                 product.status !== ProductStatus.ACTIVE ||
                 product.isArchived
             ) {
@@ -157,6 +159,22 @@ export class BiddingService {
         return this.prisma.auction.findUnique({
             where: { id: auctionId },
             include: auctionDetails,
+        });
+    }
+
+    findCreatedAuctions(sellerId: string) {
+        return this.prisma.auction.findMany({
+            where: { product: { sellerId } },
+            include: auctionDetails,
+            orderBy: { createdAt: 'desc' },
+        });
+    }
+
+    findParticipatingAuctions(bidderId: string) {
+        return this.prisma.auction.findMany({
+            where: { bids: { some: { bidderId } } },
+            include: auctionDetails,
+            orderBy: { createdAt: 'desc' },
         });
     }
 
