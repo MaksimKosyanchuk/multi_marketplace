@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { Order, OrderStatus } from '../../services/orderService';
+import type { SellerOrder, SellerOrderStatus } from '../../types';
 import { Button } from '../Ui/Button/Button';
 import { Modal } from '../Modal/Modal';
 import styles from './OrderItem.module.css';
@@ -8,6 +9,7 @@ interface OrderItemProps {
     order: Order;
     onPay?: (orderId: string) => Promise<void>;
     onCancel?: (orderId: string) => Promise<void>;
+    onSellerCancel?: (sellerOrderId: string) => Promise<void>;
     onStatusChange?: (orderId: string, status: OrderStatus) => Promise<void>;
     isAdmin?: boolean;
 }
@@ -19,21 +21,28 @@ const VALID_STATUSES: OrderStatus[] = [
     'SHIPPED',
     'COMPLETED',
     'CANCELLED',
+    'PARTIALLY_SHIPPED',
+    'PARTIALLY_COMPLETED',
+    'PARTIALLY_CANCELLED',
 ];
 
 const statusLabels: Record<OrderStatus, { text: string; className: string }> = {
     NEW: { text: 'Очікує оплати', className: styles.statusNew },
-    PAYMENT_PENDING: { text: 'Оплата обробляється', className: styles.statusPending },
+    PAYMENT_PENDING: { text: 'Не оплачено', className: styles.statusPending },
     PROCESSING: { text: 'Оплачено', className: styles.statusProcessing },
     SHIPPED: { text: 'Відправлено', className: styles.statusShipped },
     COMPLETED: { text: 'Завершено', className: styles.statusCompleted },
     CANCELLED: { text: 'Скасовано', className: styles.statusCancelled },
+    PARTIALLY_SHIPPED: { text: 'Частково відправлено', className: styles.statusShipped },
+    PARTIALLY_COMPLETED: { text: 'Частково завершено', className: styles.statusCompleted },
+    PARTIALLY_CANCELLED: { text: 'Частково скасовано', className: styles.statusCancelled },
 };
 
 export const OrderItemCard: React.FC<OrderItemProps> = ({
     order,
     onPay,
     onCancel,
+    onSellerCancel,
     onStatusChange,
     isAdmin = false,
 }) => {
@@ -106,6 +115,7 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
 
     const isCancelable =
         order.status === 'NEW' ||
+        order.status === 'PAYMENT_PENDING' ||
         order.status === 'PROCESSING' ||
         order.status === 'SHIPPED';
 
@@ -129,6 +139,18 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
 
     const totalAmount = Number(order.totalAmount);
     const isValidTotal = !isNaN(totalAmount) && totalAmount >= 0;
+
+    const sellerOrders = order.sellerOrders ?? [];
+    const sellerStatusLabels: Record<SellerOrderStatus, string> = {
+        NEW: 'Нове',
+        PAYMENT_PENDING: 'Не оплачено',
+        PROCESSING: 'Оплачено',
+        SHIPPED: 'Відправлено',
+        COMPLETED: 'Завершено',
+        CANCELLED: 'Скасовано',
+    };
+    const sellerCanCancel = (sellerOrder: SellerOrder) =>
+        ['NEW', 'PAYMENT_PENDING', 'PROCESSING', 'SHIPPED'].includes(sellerOrder.status);
 
     return (
         <>
@@ -183,8 +205,9 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
                 </div>
 
                 <div className={styles.itemsList}>
-                    {order.items.map((item) => {
-                        const price = Number(item.price);
+                    {(sellerOrders.length ? sellerOrders.flatMap((sellerOrder) =>
+                        sellerOrder.items.map((item) => ({ ...item, sellerOrder }))) : order.items.map((item) => ({ ...item, sellerOrder: undefined }))).map(({ sellerOrder, ...item }) => {
+                        const price = Number((item as { price?: string | number }).price ?? item.unitPrice ?? 0);
                         const quantity = Number(item.quantity);
                         return (
                             <div key={item.id} className={styles.itemRow}>
@@ -192,6 +215,8 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
                                     {item.productName || 'Товар'}
                                 </span>
                                 <span className={styles.itemDetails}>
+                                    {sellerOrder?.seller?.nickName ?? sellerOrder?.seller?.email ?? ''}
+                                    {sellerOrder ? ' · ' : ''}
                                     {!isNaN(quantity) ? quantity : 0} шт. × $
                                     {!isNaN(price) ? price.toFixed(2) : '0.00'}
                                 </span>
@@ -199,6 +224,40 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
                         );
                     })}
                 </div>
+
+                {sellerOrders.length > 0 && (
+                    <div className={styles.sellerOrders}>
+                        {sellerOrders.map((sellerOrder) => (
+                            <div className={styles.sellerOrder} key={sellerOrder.id}>
+                                <div>
+                                    <strong>
+                                        {sellerOrder.seller?.nickName ??
+                                            sellerOrder.seller?.email ??
+                                            `Продавець ${sellerOrder.sellerId.slice(0, 8)}`}
+                                    </strong>
+                                    <span className={`${styles.statusBadge} ${sellerOrder.status === 'CANCELLED' ? styles.statusCancelled : styles.statusProcessing}`}>
+                                        {sellerStatusLabels[sellerOrder.status]}
+                                    </span>
+                                </div>
+                                <div className={styles.sellerOrderMeta}>
+                                    ${Number(sellerOrder.subtotal).toFixed(2)}
+                                </div>
+                                {onSellerCancel && sellerCanCancel(sellerOrder) && (
+                                    <div className={styles.sellerOrderActions}>
+                                        <Button
+                                            variant="secondary"
+                                            size="small"
+                                            onClick={() => void onSellerCancel(sellerOrder.id)}
+                                            disabled={isProcessing}
+                                        >
+                                            Скасувати субзамовлення
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
 
                 <div className={styles.footer}>
                     <div className={styles.total}>
@@ -208,7 +267,9 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
 
                     {!isAdmin && (
                         <div className={styles.actions}>
-                            {order.status === 'NEW' && onPay && (
+                            {(order.status === 'NEW' ||
+                                order.status === 'PAYMENT_PENDING') &&
+                                onPay && (
                                 <Button
                                     variant="primary"
                                     size="small"

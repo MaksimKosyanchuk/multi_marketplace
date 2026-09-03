@@ -1,18 +1,24 @@
 import { api } from './api';
 import { withIdempotencyKey } from './requestMeta';
+import type { SellerOrder, SellerOrderStatus } from '../types/marketplace.type';
 
 export interface OrderItem {
     id: string;
     productId: string;
     productName: string;
     quantity: number;
-    price: string | number;
+    price?: string | number;
+    unitPrice?: string | number;
+    totalAmount?: string | number;
 }
 
 export type OrderStatus =
     | 'NEW'
     | 'PAYMENT_PENDING'
     | 'PROCESSING'
+    | 'PARTIALLY_SHIPPED'
+    | 'PARTIALLY_COMPLETED'
+    | 'PARTIALLY_CANCELLED'
     | 'SHIPPED'
     | 'COMPLETED'
     | 'CANCELLED';
@@ -24,6 +30,10 @@ export interface Order {
     totalAmount: string | number;
     createdAt: string;
     items: OrderItem[];
+    subtotal?: string | number;
+    currency?: string;
+    sellerOrders?: SellerOrder[];
+    updatedAt?: string;
 }
 
 const normalizeOrder = (value: unknown): Order => {
@@ -31,17 +41,7 @@ const normalizeOrder = (value: unknown): Order => {
         throw new Error('Invalid order response');
     }
 
-    const source = value as Partial<Order> & {
-        sellerOrders?: Array<{
-            items?: Array<{
-                id: string;
-                productId: string;
-                productName?: string;
-                quantity: number;
-                unitPrice: string | number;
-            }>;
-        }>;
-    };
+    const source = value as Partial<Order> & { sellerOrders?: SellerOrder[] };
     const sellerItems = (source.sellerOrders ?? []).flatMap(
         (sellerOrder) =>
             (sellerOrder.items ?? []).map((item) => ({
@@ -49,7 +49,8 @@ const normalizeOrder = (value: unknown): Order => {
                 productId: item.productId,
                 productName: item.productName ?? 'Товар',
                 quantity: item.quantity,
-                price: item.unitPrice,
+                price: item.unitPrice ?? Number(item.totalAmount) / item.quantity,
+                totalAmount: item.totalAmount,
             })),
     );
 
@@ -60,15 +61,19 @@ const normalizeOrder = (value: unknown): Order => {
         totalAmount: source.totalAmount ?? 0,
         createdAt: source.createdAt ?? '',
         items: Array.isArray(source.items) ? source.items : sellerItems,
+        subtotal: source.subtotal,
+        currency: source.currency,
+        sellerOrders: source.sellerOrders ?? [],
+        updatedAt: source.updatedAt,
     };
 };
 
 export const orderService = {
     async checkout(): Promise<Order> {
-        const response = await api.post<Order>('/orders/checkout', undefined, {
+        const response = await api.post<unknown>('/orders/checkout', undefined, {
             headers: withIdempotencyKey(),
         });
-        return response.data;
+        return normalizeOrder(response.data);
     },
 
     async getMyOrders(): Promise<Order[]> {
@@ -87,11 +92,9 @@ export const orderService = {
         return { success: true, transactionId: response.data.id };
     },
 
-    async cancelOrder(orderId: string): Promise<{ order: Order }> {
-        const response = await api.post<{ order: Order }>(
-            `/orders/${orderId}/cancel`,
-        );
-        return response.data;
+    async cancelOrder(orderId: string): Promise<Order> {
+        const response = await api.post<unknown>(`/orders/${orderId}/cancel`);
+        return normalizeOrder(response.data);
     },
 
     getAllOrders: async (): Promise<{ items: Order[]; meta: unknown }> => {

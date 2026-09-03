@@ -7,6 +7,7 @@ import React, {
 import { AxiosError } from 'axios';
 import { Link } from 'react-router-dom';
 import { orderService, type Order } from '../../services/orderService';
+import { orderApi } from '../../services/orderApi';
 import { sellerAdminService } from '../../services/sellerAdminService';
 import {
     categoriesService,
@@ -237,7 +238,12 @@ export const ProfilePage: React.FC = () => {
 
     const handleCancelOrder = async (orderId: string) => {
         try {
-            await orderService.cancelOrder(orderId);
+            const order = orders.find((current) => current.id === orderId);
+            if (order?.status === 'PAYMENT_PENDING') {
+                await orderApi.cancelPendingPayment(orderId);
+            } else {
+                await orderService.cancelOrder(orderId);
+            }
             await fetchOrders();
         } catch (err) {
             if (err instanceof AxiosError && err.response?.data?.message) {
@@ -248,6 +254,40 @@ export const ProfilePage: React.FC = () => {
                 );
             } else {
                 setErrorMessage('Помилка при скасуванні замовлення.');
+            }
+        }
+    };
+
+    const handleCancelSellerOrder = async (sellerOrderId: string) => {
+        try {
+            await orderApi.cancelCustomerSellerOrder(sellerOrderId);
+            await fetchOrders();
+        } catch (err) {
+            if (err instanceof AxiosError && err.response?.data?.message) {
+                setErrorMessage(
+                    Array.isArray(err.response.data.message)
+                        ? err.response.data.message[0]
+                        : err.response.data.message,
+                );
+            } else {
+                setErrorMessage('Помилка при скасуванні замовлення продавця.');
+            }
+        }
+    };
+
+    const handleCancelOwnSellerOrder = async (sellerOrderId: string) => {
+        try {
+            await orderApi.cancelSellerOrder(sellerOrderId);
+            await fetchSales();
+        } catch (err) {
+            if (err instanceof AxiosError && err.response?.data?.message) {
+                setErrorMessage(
+                    Array.isArray(err.response.data.message)
+                        ? err.response.data.message[0]
+                        : err.response.data.message,
+                );
+            } else {
+                setErrorMessage('Помилка при скасуванні субзамовлення.');
             }
         }
     };
@@ -268,6 +308,7 @@ export const ProfilePage: React.FC = () => {
                             order={order}
                             onPay={handlePayOrder}
                             onCancel={handleCancelOrder}
+                            onSellerCancel={handleCancelSellerOrder}
                         />
                     ))}
                 </div>
@@ -299,9 +340,19 @@ export const ProfilePage: React.FC = () => {
                                     </div>
                                 </div>
                                 <div className={styles.saleAmount}>
-                                    ${sale.sellerEarnings.toFixed(2)}
+                                    ${Number(sale.sellerEarnings).toFixed(2)}
                                 </div>
                             </div>
+                            {sale.status === 'PROCESSING' && (
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    size="small"
+                                    onClick={() => void handleCancelOwnSellerOrder(sale.id)}
+                                >
+                                    Скасувати субзамовлення
+                                </Button>
+                            )}
 
                             <div className={styles.saleItems}>
                                 {sale.items.map((item) => (
@@ -317,7 +368,7 @@ export const ProfilePage: React.FC = () => {
                                         </span>
                                         <span>× {item.quantity}</span>
                                         <span>
-                                            ${item.totalAmount.toFixed(2)}
+                                            ${Number(item.totalAmount).toFixed(2)}
                                         </span>
                                     </div>
                                 ))}

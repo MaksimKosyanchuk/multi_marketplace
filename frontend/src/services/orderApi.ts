@@ -91,6 +91,24 @@ export const orderApi = {
         completeOperationKey('seller-cancel', sellerOrderId);
         return data;
     },
+    async cancelCustomerSellerOrder(
+        sellerOrderId: string,
+        reason?: string,
+        idempotencyKey?: string,
+    ): Promise<SellerOrder> {
+        const { data } = await api.post<SellerOrder>(
+            `/orders/suborders/${sellerOrderId}/cancel`,
+            { reason },
+            {
+                headers: withIdempotencyKey(
+                    idempotencyKey ??
+                        createOperationKey('customer-suborder-cancel', sellerOrderId),
+                ),
+            },
+        );
+        completeOperationKey('customer-suborder-cancel', sellerOrderId);
+        return data;
+    },
     async refundItem(
         orderItemId: string,
         quantity: number,

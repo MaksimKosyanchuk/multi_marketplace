@@ -56,6 +56,7 @@ export interface Product {
     sellerId: string;
     categoryId: string;
     name: string;
+    title?: string;
     description: string;
     type: ProductType;
     status: ProductStatus;
@@ -73,6 +74,7 @@ export interface CartItem {
     cartId: string;
     productId: string;
     quantity: number;
+    totalPrice?: number | string;
     product?: Product;
     createdAt: string;
     updatedAt: string;
@@ -83,6 +85,8 @@ export interface Cart {
     userId?: string;
     items: CartItem[];
     total?: number;
+    totalAmount?: number | string;
+    totalItems?: number;
 }
 export interface OrderItem {
     id: string;
@@ -90,8 +94,8 @@ export interface OrderItem {
     productId: string;
     productName: string;
     quantity: number;
-    unitPrice: number;
-    totalAmount: number;
+    unitPrice: number | string;
+    totalAmount: number | string;
     product?: Product;
     createdAt: string;
 }
@@ -101,10 +105,10 @@ export interface SellerOrder {
     sellerId: string;
     seller?: SellerSummary;
     status: SellerOrderStatus;
-    subtotal: number;
-    commissionAmount: number;
-    sellerEarnings: number;
-    refundedAmount: number;
+    subtotal: number | string;
+    commissionAmount: number | string;
+    sellerEarnings: number | string;
+    refundedAmount: number | string;
     trackingNumber?: string | null;
     items: OrderItem[];
     createdAt: string;
@@ -125,8 +129,8 @@ export interface Order {
     id: string;
     userId: string;
     status: OrderStatus;
-    subtotal: number;
-    totalAmount: number;
+    subtotal?: number | string;
+    totalAmount: number | string;
     currency: string;
     sellerOrders: SellerOrder[];
     payments?: Payment[];

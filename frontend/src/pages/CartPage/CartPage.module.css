@@ -104,6 +104,12 @@
     margin-top: 0.25rem;
 }
 
+.seller {
+    font-size: 0.8rem;
+    color: #475569;
+    margin-top: 0.35rem;
+}
+
 /* Кнопки зміни кількості */
 .quantityControls {
     display: flex;

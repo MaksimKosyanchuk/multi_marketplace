@@ -190,6 +190,45 @@
     align-items: center;
 }
 
+.sellerOrders {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 4px 0 16px;
+    padding-top: 12px;
+    border-top: 1px solid #f1f5f9;
+}
+
+.sellerOrder {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 10px 12px;
+    background: #f8fafc;
+    border-radius: 8px;
+}
+
+.sellerOrder > div:first-child {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.sellerOrderMeta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    white-space: nowrap;
+}
+
+.sellerOrderActions {
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
+}
+
 @media (max-width: 576px) {
     .header {
         flex-direction: column;
@@ -209,5 +248,10 @@
     .actions {
         width: 100%;
         justify-content: flex-end;
+    }
+
+    .sellerOrder {
+        align-items: flex-start;
+        flex-direction: column;
     }
 }

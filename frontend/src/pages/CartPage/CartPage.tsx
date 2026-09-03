@@ -12,7 +12,10 @@ export interface CartItem {
     quantity: number;
     product: {
         id: string;
-        name: string;
+        name?: string;
+        title?: string;
+        sellerId?: string;
+        seller?: { id?: string; nickName?: string; email?: string };
         price: number;
         imageUrl?: string;
         stock: number;
@@ -22,6 +25,7 @@ export interface CartItem {
 export interface CartData {
     id: string;
     items: CartItem[];
+    totalAmount?: number;
 }
 
 export const CartPage: React.FC = () => {
@@ -180,7 +184,8 @@ export const CartPage: React.FC = () => {
         cart?.items.reduce(
             (sum, item) => sum + item.product.price * item.quantity,
             0,
-        ) ?? 0;
+        )         ?? cart?.totalAmount
+        ?? 0;
 
     if (isLoading) {
         return (
@@ -223,7 +228,7 @@ export const CartPage: React.FC = () => {
                                 {item.product.imageUrl ? (
                                     <img
                                         src={item.product.imageUrl}
-                                        alt={item.product.name}
+                                        alt={item.product.name ?? item.product.title ?? 'Товар'}
                                     />
                                 ) : (
                                     <div
@@ -241,9 +246,16 @@ export const CartPage: React.FC = () => {
                                     to={`/products/${item.product.id}`}
                                     className={styles.productName}
                                 >
-                                    {item.product.name}
+                                    {item.product.name ?? item.product.title ?? 'Товар'}
                                 </Link>
 
+                                <div className={styles.seller}>
+                                    Продавець:{' '}
+                                    {item.product.seller?.nickName ??
+                                        item.product.seller?.email ??
+                                        item.product.sellerId ??
+                                        'Невідомий'}
+                                </div>
                                 <div
                                     className={
                                         styles.productPrice
