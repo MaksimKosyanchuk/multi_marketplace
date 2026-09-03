@@ -84,6 +84,7 @@ api.interceptors.response.use(
                 );
 
                 localStorage.setItem('accessToken', data.accessToken);
+                window.dispatchEvent(new Event('auth:refreshed'));
                 api.defaults.headers.common.Authorization = `Bearer ${data.accessToken}`;
 
                 processQueue(null, data.accessToken);

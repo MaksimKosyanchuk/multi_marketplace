@@ -21,6 +21,15 @@ interface ProductCardProps {
 
 type ModalState = 'none' | 'auth' | 'success' | 'error';
 
+const productStatusLabels: Record<NonNullable<Product['status']>, string> = {
+    DRAFT: 'Чернетка',
+    PENDING_APPROVAL: 'На модерації',
+    ACTIVE: 'Активний',
+    REJECTED: 'Відхилений',
+    ARCHIVED: 'В архіві',
+    SOLD: 'Проданий',
+};
+
 export const ProductCard: React.FC<ProductCardProps> = ({
     product,
     isAdmin = false,
@@ -213,7 +222,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                                 </span>
                             )}
                             <h3 className={styles.title}>
-                                <Link to={`/products/${product.id}`}>
+                                <Link to={`/product/${product.id}`}>
                                     {product.name || 'Без назви'}
                                 </Link>
                             </h3>
@@ -222,6 +231,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                             ${isValidPrice ? numericPrice.toFixed(2) : '0.00'}
                         </span>
                     </div>
+
+                    {isAdmin && product.status && (
+                        <span
+                            className={`${styles.statusBadge} ${styles[`status${product.status}`]}`}
+                        >
+                            Статус: {productStatusLabels[product.status]}
+                        </span>
+                    )}
 
                     {product.description && (
                         <p className={styles.description}>

@@ -110,6 +110,52 @@ export class ProductsService {
         return result;
     }
 
+    async findSellerProducts(
+        sellerId: string,
+        query: QueryProductDto,
+    ): Promise<PaginatedProductsResult> {
+        const { page, limit, sort } = query;
+        const where: Prisma.ProductWhereInput = {
+            sellerId,
+            ...(query.includeArchived
+                ? {}
+                : { isArchived: false }),
+            ...(query.search && {
+                OR: [
+                    { name: { contains: query.search, mode: 'insensitive' } },
+                    {
+                        description: {
+                            contains: query.search,
+                            mode: 'insensitive',
+                        },
+                    },
+                ],
+            }),
+            ...(query.categoryId && { categoryId: query.categoryId }),
+            ...(query.type && { type: query.type }),
+        };
+        const orderBy: Prisma.ProductOrderByWithRelationInput =
+            sort === ProductSort.PRICE_ASC
+                ? { price: 'asc' }
+                : sort === ProductSort.PRICE_DESC
+                  ? { price: 'desc' }
+                  : { createdAt: 'desc' };
+        const [items, total] = await this.prisma.$transaction([
+            this.prisma.product.findMany({
+                where,
+                orderBy,
+                skip: (page - 1) * limit,
+                take: limit,
+                include: { category: true },
+            }),
+            this.prisma.product.count({ where }),
+        ]);
+        return {
+            items,
+            meta: { total, page, limit, pageCount: Math.ceil(total / limit) },
+        };
+    }
+
     async findOne(id: string): Promise<ProductWithCategory> {
         const product = await this.prisma.product.findUnique({
             where: { id, status: ProductStatus.ACTIVE, isArchived: false },

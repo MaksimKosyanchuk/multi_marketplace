@@ -14,6 +14,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(true);
 
+    const syncUser = async () => {
+        try {
+            setUser(await authService.getMe());
+        } catch {
+            setUser(null);
+        }
+    };
+
     useEffect(() => {
         const initAuth = async () => {
             const token = localStorage.getItem('accessToken');
@@ -50,8 +58,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         }
 
         return connectMarketplaceSocket(token, async () => {
-            await orderApi.resync();
+            await Promise.all([orderApi.resync(), syncUser()]);
         });
+    }, [user]);
+
+    useEffect(() => {
+        const handleAuthRefresh = () => {
+            void syncUser();
+        };
+        const handleWindowFocus = () => {
+            if (user) void syncUser();
+        };
+
+        window.addEventListener('auth:refreshed', handleAuthRefresh);
+        window.addEventListener('focus', handleWindowFocus);
+
+        return () => {
+            window.removeEventListener('auth:refreshed', handleAuthRefresh);
+            window.removeEventListener('focus', handleWindowFocus);
+        };
     }, [user]);
 
     useEffect(() => {

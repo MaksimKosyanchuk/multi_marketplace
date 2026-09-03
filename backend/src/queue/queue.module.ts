@@ -1,7 +1,8 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
+@Global()
 @Module({
     imports: [
         BullModule.forRootAsync({
@@ -11,6 +12,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
                 connection: {
                     host: config.get<string>('REDIS_HOST', 'localhost'),
                     port: Number(config.get<string>('REDIS_PORT', '6379')),
+                    maxRetriesPerRequest: null,
+                    enableReadyCheck: false,
                 },
             }),
         }),

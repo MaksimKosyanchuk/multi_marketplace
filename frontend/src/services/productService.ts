@@ -24,6 +24,15 @@ export const productService = {
         };
     },
 
+    getSellerProducts: async (
+        params?: QueryProductParams,
+    ): Promise<ProductsResponse> => {
+        const { data } = await api.get<ProductsResponse>('/products/seller/me', {
+            params,
+        });
+        return data;
+    },
+
     getById: async (id: string): Promise<Product> => {
         const { data } = await api.get<Product>(`/products/${id}`);
         return data;

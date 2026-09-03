@@ -45,7 +45,8 @@ export class NotificationsDispatcher implements OnModuleInit, OnModuleDestroy {
             await Promise.all(
                 events.map((event) => {
                     const payload =
-                        typeof event.payload === 'object' && event.payload !== null
+                        typeof event.payload === 'object' &&
+                        event.payload !== null
                             ? (event.payload as Record<string, unknown>)
                             : {};
                     return this.queue.add(
@@ -58,7 +59,7 @@ export class NotificationsDispatcher implements OnModuleInit, OnModuleDestroy {
                                     : undefined,
                         },
                         {
-                            jobId: `notification:${event.id}`,
+                            jobId: `notification-${event.id}`,
                             attempts: 5,
                             backoff: { type: 'exponential', delay: 1000 },
                             removeOnComplete: true,

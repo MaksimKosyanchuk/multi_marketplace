@@ -92,47 +92,51 @@ export class AuthService {
             throw new UnauthorizedException('Invalid credentials');
         }
 
+        await this.invalidateRefreshTokens(user.id);
         return this.issueTokens(user.id, user.email, user.role);
     }
 
     async loginWithGoogle(dto: GoogleLoginDto) {
-            const response = await fetch(
-                'https://openidconnect.googleapis.com/v1/userinfo',
-                { headers: { Authorization: `Bearer ${dto.accessToken}` } },
-            );
-            if (!response.ok) {
-                throw new UnauthorizedException('Invalid Google access token');
-            }
-            const profile = (await response.json()) as {
-                sub?: string;
-                email?: string;
-                email_verified?: boolean;
-                name?: string;
-            };
-            if (!profile.sub || !profile.email || profile.email_verified !== true) {
-                throw new UnauthorizedException('Google account email is not verified');
-            }
-
-            const email = profile.email.toLowerCase();
-            const user = await this.usersService.findByEmail(email);
-            if (user) {
-                return this.issueTokens(user.id, user.email, user.role);
-            }
-            const registrationToken = randomBytes(32).toString('hex');
-            await this.redis.set(
-                `auth:google-registration:${registrationToken}`,
-                JSON.stringify({
-                    email,
-                    tokenHash: this.hashToken(dto.accessToken),
-                }),
-                600,
-            );
-            return {
-                status: 'REGISTRATION_REQUIRED' as const,
-                registrationToken,
-                email,
-            };
+        const response = await fetch(
+            'https://openidconnect.googleapis.com/v1/userinfo',
+            { headers: { Authorization: `Bearer ${dto.accessToken}` } },
+        );
+        if (!response.ok) {
+            throw new UnauthorizedException('Invalid Google access token');
         }
+        const profile = (await response.json()) as {
+            sub?: string;
+            email?: string;
+            email_verified?: boolean;
+            name?: string;
+        };
+        if (!profile.sub || !profile.email || profile.email_verified !== true) {
+            throw new UnauthorizedException(
+                'Google account email is not verified',
+            );
+        }
+
+        const email = profile.email.toLowerCase();
+        const user = await this.usersService.findByEmail(email);
+        if (user) {
+            await this.invalidateRefreshTokens(user.id);
+            return this.issueTokens(user.id, user.email, user.role);
+        }
+        const registrationToken = randomBytes(32).toString('hex');
+        await this.redis.set(
+            `auth:google-registration:${registrationToken}`,
+            JSON.stringify({
+                email,
+                tokenHash: this.hashToken(dto.accessToken),
+            }),
+            600,
+        );
+        return {
+            status: 'REGISTRATION_REQUIRED' as const,
+            registrationToken,
+            email,
+        };
+    }
 
     async completeGoogleRegistration(dto: GoogleRegisterCompleteDto) {
         const key = `auth:google-registration:${dto.registrationToken}`;
@@ -162,7 +166,9 @@ export class AuthService {
             email !== pending.email ||
             this.hashToken(dto.accessToken) !== pending.tokenHash
         ) {
-            throw new UnauthorizedException('Google registration token mismatch');
+            throw new UnauthorizedException(
+                'Google registration token mismatch',
+            );
         }
         const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
         let user;
@@ -276,6 +282,11 @@ export class AuthService {
 
     private hashToken(token: string): string {
         return createHash('sha256').update(token).digest('hex');
+    }
+
+    /** Revokes every existing refresh token so a new login invalidates prior sessions. */
+    private async invalidateRefreshTokens(userId: string): Promise<void> {
+        await this.prisma.refreshToken.deleteMany({ where: { userId } });
     }
 
     private parseDurationDays(value: string): number {

@@ -91,7 +91,7 @@ export class BiddingService {
             { auctionId: auction.id },
             {
                 delay: Math.max(0, endsAt.getTime() - Date.now()),
-                jobId: `auction-end:${auction.id}`,
+                jobId: `auction-end-${auction.id}`,
                 attempts: 5,
                 backoff: { type: 'exponential', delay: 1000 },
             },
@@ -102,7 +102,7 @@ export class BiddingService {
                 { auctionId: auction.id },
                 {
                     delay: Math.max(0, startsAt.getTime() - Date.now()),
-                    jobId: `auction-start:${auction.id}`,
+                    jobId: `auction-start-${auction.id}`,
                     attempts: 5,
                     backoff: { type: 'exponential', delay: 1000 },
                 },

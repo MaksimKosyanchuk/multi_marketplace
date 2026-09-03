@@ -5,6 +5,8 @@ import { ProductCard } from '../../../components/ProductCard/ProductCard';
 import { getImageUrl } from '../../../utils/getImageUrl';
 import styles from './ProductsPage.module.css';
 import type { Product } from '../../../types/product.type';
+import { Role } from '../../../types';
+import { useAuth } from '../../../context/AuthContext/useAuth';
 
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const MAX_FILE_SIZE_MB = 5;
@@ -22,6 +24,7 @@ interface ProductResponseItems {
 }
 
 export default function ProductsPage() {
+    const { user } = useAuth();
     const [products, setProducts] = useState<Product[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -51,14 +54,21 @@ export default function ProductsPage() {
         setError(null);
         try {
             const [productsRes, categoriesData] = await Promise.all([
-                productService.getAll({ includeArchived: true }),
+                user?.role === Role.SELLER
+                    ? productService.getSellerProducts({ includeArchived: true })
+                    : productService.getAll({ includeArchived: true }),
                 categoriesService.getAllCategories(),
             ]);
 
             const resObj = productsRes as ProductResponseItems;
-            const productsList = Array.isArray(productsRes)
+            const productsList = (Array.isArray(productsRes)
                 ? productsRes
-                : resObj.items || resObj.products || [];
+                : resObj.items || resObj.products || []
+            ).filter(
+                (product) =>
+                    user?.role !== Role.SELLER ||
+                    product.sellerId === user.id,
+            );
 
             setProducts(productsList);
             setCategories(categoriesData);
@@ -68,7 +78,7 @@ export default function ProductsPage() {
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [user]);
 
     useEffect(() => {
         let isMounted = true;
@@ -78,15 +88,23 @@ export default function ProductsPage() {
             setError(null);
             try {
                 const [productsRes, categoriesData] = await Promise.all([
-                    productService.getAll({ includeArchived: true }),
+                    user?.role === Role.SELLER
+                        ? productService.getSellerProducts({
+                              includeArchived: true,
+                          })
+                        : productService.getAll({ includeArchived: true }),
                     categoriesService.getAllCategories(),
                 ]);
 
                 if (isMounted) {
                     const resObj = productsRes as ProductResponseItems;
-                    const productsList = Array.isArray(productsRes)
+                    const productsList = (Array.isArray(productsRes)
                         ? productsRes
-                        : resObj.items || resObj.products || [];
+                        : resObj.items || resObj.products || []
+                    ).filter(
+                        (product) =>
+                            user?.role !== Role.SELLER || product.sellerId === user.id,
+                    );
 
                     setProducts(productsList);
                     setCategories(categoriesData);
@@ -108,7 +126,7 @@ export default function ProductsPage() {
         return () => {
             isMounted = false;
         };
-    }, [fetchData]);
+    }, [fetchData, user]);
 
     const handleOpenCreateModal = () => {
         setSelectedProduct(null);

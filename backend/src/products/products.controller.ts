@@ -60,6 +60,20 @@ export class ProductsController {
         ) as unknown as Promise<PaginatedProductsResponseDto>;
     }
 
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(Role.SELLER)
+    @Get('seller/me')
+    @ApiBearerAuth('JWT-auth')
+    findSellerProducts(
+        @Query() query: QueryProductDto,
+        @CurrentUser() seller: AuthUser,
+    ): Promise<PaginatedProductsResponseDto> {
+        return this.productsService.findSellerProducts(
+            seller.id,
+            query,
+        ) as unknown as Promise<PaginatedProductsResponseDto>;
+    }
+
     @Get(':id')
     @ApiOperation({ summary: 'Получить детальную информацию о товаре по ID' })
     @ApiParam({ name: 'id', description: 'ID товара', example: 'prod_999xyz' })

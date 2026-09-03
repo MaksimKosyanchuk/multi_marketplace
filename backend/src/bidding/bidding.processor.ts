@@ -59,7 +59,7 @@ export class BiddingProcessor extends WorkerHost {
                             0,
                             auction.checkoutExpiresAt.getTime() - Date.now(),
                         ),
-                        jobId: `auction-checkout-expiry:${auction.id}`,
+                        jobId: `auction-checkout-expiry-${auction.id}`,
                         attempts: 5,
                         backoff: { type: 'exponential', delay: 1000 },
                     },

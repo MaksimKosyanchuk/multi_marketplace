@@ -8,14 +8,20 @@ import { AxiosError } from 'axios';
 import { Link } from 'react-router-dom';
 import { orderService, type Order } from '../../services/orderService';
 import { sellerAdminService } from '../../services/sellerAdminService';
+import {
+    categoriesService,
+    type Category,
+} from '../../services/categoryService';
+import { productService } from '../../services/productService';
 import { OrderItemCard } from '../../components/Orderitem/OrderItem';
 import { Modal } from '../../components/Modal/Modal';
 import { Button } from '../../components/Ui/Button/Button';
+import ProductsPage from '../AdminPage/ProductsPage/ProductsPage';
 import styles from './ProfilePage.module.css';
 import { useAuth } from '../../context/AuthContext/useAuth';
 import { Role, type SellerOrder } from '../../types';
 
-type ActiveTab = 'info' | 'orders' | 'sales';
+type ActiveTab = 'info' | 'orders' | 'sales' | 'products';
 
 export const ProfilePage: React.FC = () => {
     const { user, socket } = useAuth();
@@ -27,9 +33,19 @@ export const ProfilePage: React.FC = () => {
     const [activeTab, setActiveTab] = useState<ActiveTab>('info');
     const [orders, setOrders] = useState<Order[]>([]);
     const [sales, setSales] = useState<SellerOrder[]>([]);
+    const [categories, setCategories] = useState<Category[]>([]);
     const [isLoadingOrders, setIsLoadingOrders] = useState<boolean>(false);
     const [isLoadingSales, setIsLoadingSales] = useState<boolean>(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [isCreateProductOpen, setIsCreateProductOpen] = useState(false);
+    const [isCreatingProduct, setIsCreatingProduct] = useState(false);
+    const [productForm, setProductForm] = useState({
+        name: '',
+        description: '',
+        price: '',
+        stock: '',
+        categoryId: '',
+    });
 
     const fetchOrders = useCallback(async () => {
         setIsLoadingOrders(true);
@@ -70,6 +86,19 @@ export const ProfilePage: React.FC = () => {
             setIsLoadingSales(false);
         }
     }, []);
+
+    const fetchCategories = useCallback(async () => {
+        if (!isSeller) {
+            return;
+        }
+
+        try {
+            const data = await categoriesService.getAllCategories();
+            setCategories(data);
+        } catch (err) {
+            console.error('Помилка завантаження категорій:', err);
+        }
+    }, [isSeller]);
 
     const handleTabChange = (tab: ActiveTab) => {
         setActiveTab(tab);
@@ -112,6 +141,10 @@ export const ProfilePage: React.FC = () => {
             socket.off('order_status_updated', handleOrderUpdate);
         };
     }, [socket, isCustomer, handleOrderUpdate]);
+
+    useEffect(() => {
+        void fetchCategories();
+    }, [fetchCategories]);
 
     const handlePayOrder = async (orderId: string) => {
         try {
@@ -170,9 +203,79 @@ export const ProfilePage: React.FC = () => {
         </div>
     );
 
+    const resetProductForm = () => {
+        setProductForm({
+            name: '',
+            description: '',
+            price: '',
+            stock: '',
+            categoryId: '',
+        });
+    };
+
+    const handleCreateProduct = async () => {
+        if (!productForm.name.trim()) {
+            setErrorMessage('Назва товару є обов’язковою.');
+            return;
+        }
+
+        if (!productForm.categoryId) {
+            setErrorMessage('Оберіть категорію для товару.');
+            return;
+        }
+
+        if (!productForm.price || Number(productForm.price) <= 0) {
+            setErrorMessage('Ціна повинна бути більшою за 0.');
+            return;
+        }
+
+        if (!productForm.stock || Number(productForm.stock) <= 0) {
+            setErrorMessage('Кількість повинна бути більшою за 0.');
+            return;
+        }
+
+        setIsCreatingProduct(true);
+
+        try {
+            const formData = new FormData();
+            formData.append('name', productForm.name.trim());
+            formData.append('description', productForm.description.trim());
+            formData.append('price', String(productForm.price));
+            formData.append('stock', String(productForm.stock));
+            formData.append('categoryId', productForm.categoryId);
+
+            await productService.createProduct(formData);
+            setIsCreateProductOpen(false);
+            resetProductForm();
+            await fetchSales();
+        } catch (err) {
+            console.error('Помилка створення товару:', err);
+            if (err instanceof AxiosError && err.response?.data?.message) {
+                setErrorMessage(
+                    Array.isArray(err.response.data.message)
+                        ? err.response.data.message[0]
+                        : err.response.data.message,
+                );
+            } else {
+                setErrorMessage('Не вдалося створити товар.');
+            }
+        } finally {
+            setIsCreatingProduct(false);
+        }
+    };
+
     const renderSellerSales = () => (
         <div className={styles.section}>
-            <h2>Мої продажі</h2>
+            <div className={styles.sectionHeader}>
+                <h2>Мої продажі</h2>
+                <Button
+                    variant="primary"
+                    size="small"
+                    onClick={() => setIsCreateProductOpen(true)}
+                >
+                    + Створити товар
+                </Button>
+            </div>
 
             {isLoadingSales ? (
                 <div>Завантаження продажів...</div>
@@ -217,11 +320,18 @@ export const ProfilePage: React.FC = () => {
         </div>
     );
 
-    const tabs = [] as Array<{ key: ActiveTab; label: string }>;
-
-    tabs.push({ key: 'info', label: 'Особисті дані' });
-    if (isCustomer) tabs.push({ key: 'orders', label: 'Мої замовлення' });
-    if (isSeller) tabs.push({ key: 'sales', label: 'Мої продажі' });
+    const tabs = isSeller
+        ? ([
+              { key: 'sales', label: 'Мої продажі' },
+              { key: 'products', label: 'Товари' },
+              { key: 'info', label: 'Мої дані' },
+          ] as Array<{ key: ActiveTab; label: string }>)
+        : ([
+              { key: 'info', label: 'Особисті дані' },
+              ...(isCustomer
+                  ? [{ key: 'orders', label: 'Мої замовлення' }]
+                  : []),
+          ] as Array<{ key: ActiveTab; label: string }>);
 
     return (
         <div className={styles.container}>
@@ -284,6 +394,122 @@ export const ProfilePage: React.FC = () => {
 
             {activeTab === 'orders' && isCustomer && renderCustomerOrders()}
             {activeTab === 'sales' && isSeller && renderSellerSales()}
+            {activeTab === 'products' && isSeller && <ProductsPage />}
+
+            <Modal
+                isOpen={isCreateProductOpen}
+                onClose={() => {
+                    setIsCreateProductOpen(false);
+                    resetProductForm();
+                }}
+                title="Створити товар"
+                actions={
+                    <>
+                        <Button
+                            variant="secondary"
+                            size="small"
+                            onClick={() => {
+                                setIsCreateProductOpen(false);
+                                resetProductForm();
+                            }}
+                        >
+                            Скасувати
+                        </Button>
+                        <Button
+                            variant="primary"
+                            size="small"
+                            onClick={() => {
+                                void handleCreateProduct();
+                            }}
+                            disabled={isCreatingProduct}
+                        >
+                            {isCreatingProduct ? 'Створення...' : 'Створити'}
+                        </Button>
+                    </>
+                }
+            >
+                <div className={styles.productForm}>
+                    <label className={styles.field}>
+                        <span>Назва</span>
+                        <input
+                            value={productForm.name}
+                            onChange={(e) =>
+                                setProductForm((prev) => ({
+                                    ...prev,
+                                    name: e.target.value,
+                                }))
+                            }
+                        />
+                    </label>
+
+                    <label className={styles.field}>
+                        <span>Опис</span>
+                        <textarea
+                            rows={3}
+                            value={productForm.description}
+                            onChange={(e) =>
+                                setProductForm((prev) => ({
+                                    ...prev,
+                                    description: e.target.value,
+                                }))
+                            }
+                        />
+                    </label>
+
+                    <div className={styles.rowTwo}>
+                        <label className={styles.field}>
+                            <span>Ціна</span>
+                            <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={productForm.price}
+                                onChange={(e) =>
+                                    setProductForm((prev) => ({
+                                        ...prev,
+                                        price: e.target.value,
+                                    }))
+                                }
+                            />
+                        </label>
+
+                        <label className={styles.field}>
+                            <span>Кількість</span>
+                            <input
+                                type="number"
+                                min="1"
+                                value={productForm.stock}
+                                onChange={(e) =>
+                                    setProductForm((prev) => ({
+                                        ...prev,
+                                        stock: e.target.value,
+                                    }))
+                                }
+                            />
+                        </label>
+                    </div>
+
+                    <label className={styles.field}>
+                        <span>Категорія</span>
+                        <select
+                            value={productForm.categoryId}
+                            onChange={(e) =>
+                                setProductForm((prev) => ({
+                                    ...prev,
+                                    categoryId: e.target.value,
+                                }))
+                            }
+                        >
+                            <option value="">Оберіть категорію</option>
+                            {categories.map((category) => (
+                                <option key={category.id} value={category.id}>
+                                    {category.name}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                </div>
+            </Modal>
 
             <Modal
                 isOpen={Boolean(errorMessage)}

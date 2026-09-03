@@ -61,7 +61,7 @@ export class OrdersDispatcher implements OnModuleInit, OnModuleDestroy {
                                     : undefined,
                         },
                         {
-                            jobId: `outbox:${event.id}`,
+                            jobId: `outbox-${event.id}`,
                             attempts: 5,
                             backoff: { type: 'exponential', delay: 1000 },
                             removeOnComplete: true,

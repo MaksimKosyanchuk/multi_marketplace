@@ -7,6 +7,7 @@ import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoggerService } from '../logger/logger.service';
+import { RedisService } from '../redis/redis.service';
 import * as bcrypt from 'bcrypt';
 
 jest.mock('bcrypt');
@@ -234,6 +235,12 @@ describe('AuthService', () => {
         verbose: jest.fn<void, [string, ...unknown[]]>(),
     };
 
+    const mockRedisService = {
+        get: jest.fn(),
+        set: jest.fn(),
+        del: jest.fn(),
+    };
+
     const hashToken = (token: string): string =>
         createHash('sha256').update(token).digest('hex');
 
@@ -281,6 +288,10 @@ describe('AuthService', () => {
                 {
                     provide: LoggerService,
                     useValue: mockLoggerService,
+                },
+                {
+                    provide: RedisService,
+                    useValue: mockRedisService,
                 },
             ],
         }).compile();

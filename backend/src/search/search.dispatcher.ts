@@ -40,7 +40,12 @@ export class SearchDispatcher implements OnModuleInit, OnModuleDestroy {
                     availableAt: { lte: now },
                     attempts: { lt: 5 },
                 },
-                select: { id: true, aggregateId: true, type: true, payload: true },
+                select: {
+                    id: true,
+                    aggregateId: true,
+                    type: true,
+                    payload: true,
+                },
                 take: 50,
                 orderBy: { createdAt: 'asc' },
             });
@@ -62,7 +67,7 @@ export class SearchDispatcher implements OnModuleInit, OnModuleDestroy {
                                     : undefined,
                         },
                         {
-                            jobId: `search:${event.id}`,
+                            jobId: `search-${event.id}`,
                             attempts: 5,
                             backoff: { type: 'exponential', delay: 1000 },
                             removeOnComplete: true,

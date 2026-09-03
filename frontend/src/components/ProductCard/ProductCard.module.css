@@ -121,6 +121,43 @@
     white-space: nowrap;
 }
 
+.statusBadge {
+    align-self: flex-start;
+    margin-bottom: 0.75rem;
+    padding: 0.25rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #1e3a8a;
+    background: #dbeafe;
+}
+
+.statusDRAFT {
+    color: #92400e;
+    background: #fef3c7;
+}
+
+.statusPENDING_APPROVAL {
+    color: #6b21a8;
+    background: #f3e8ff;
+}
+
+.statusACTIVE {
+    color: #166534;
+    background: #dcfce7;
+}
+
+.statusREJECTED {
+    color: #991b1b;
+    background: #fee2e2;
+}
+
+.statusARCHIVED,
+.statusSOLD {
+    color: #374151;
+    background: #e5e7eb;
+}
+
 .description {
     font-size: 0.85rem;
     color: #666666;

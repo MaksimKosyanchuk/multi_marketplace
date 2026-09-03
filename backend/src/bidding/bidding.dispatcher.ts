@@ -62,7 +62,7 @@ export class BiddingDispatcher implements OnModuleInit, OnModuleDestroy {
                                     : undefined,
                         },
                         {
-                            jobId: `auction-outbox:${event.id}`,
+                            jobId: `auction-outbox-${event.id}`,
                             attempts: 5,
                             backoff: { type: 'exponential', delay: 1000 },
                             removeOnComplete: true,
