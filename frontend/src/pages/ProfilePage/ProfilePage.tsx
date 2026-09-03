@@ -5,7 +5,7 @@ import React, {
     useEffect,
 } from 'react';
 import { AxiosError } from 'axios';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { orderService, type Order } from '../../services/orderService';
 import { orderApi } from '../../services/orderApi';
 import { sellerAdminService } from '../../services/sellerAdminService';
@@ -16,9 +16,6 @@ import {
 import { productService } from '../../services/productService';
 import { auctionService } from '../../services/auctionService';
 import { sellerService } from '../../services/sellerService';
-import { OrderItemCard } from '../../components/Orderitem/OrderItem';
-import { Modal } from '../../components/Modal/Modal';
-import { Button } from '../../components/Ui/Button/Button';
 import ProductsPage from '../AdminPage/ProductsPage/ProductsPage';
 import styles from './ProfilePage.module.css';
 import { useAuth } from '../../context/AuthContext/useAuth';
@@ -26,12 +23,17 @@ import { Role, type SellerOrder, type Auction } from '../../types';
 import type { Dispute } from '../../types/marketplace.type';
 import { reviewService } from '../../services/reviewService';
 import { disputeService } from '../../services/disputeService';
-import { AuctionCard } from '../../components/AuctionCard/AuctionCard';
-import { OrderStatusBadge } from '../../components/OrderStatusBadge/OrderStatusBadge';
 import { analyticsService, type SellerAnalytics, type SalesTimelineItem } from '../../services/analyticsService';
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts';
-
-type ActiveTab = 'info' | 'orders' | 'sales' | 'disputes' | 'products' | 'auctions' | 'auctionHistory';
+import type { ActiveTab, AuctionFormState } from './components/types';
+import { ProfileTabsNav } from './components/ProfileTabsNav';
+import { InfoTab } from './components/InfoTab';
+import { CustomerOrdersTab } from './components/customer/CustomerOrdersTab';
+import { AuctionHistoryTab } from './components/customer/AuctionHistoryTab';
+import { DisputesTab } from './components/shared/DisputesTab';
+import { ErrorModal } from './components/shared/ErrorModal';
+import { SellerSalesTab } from './components/seller/SellerSalesTab';
+import { SellerAuctionsTab } from './components/seller/SellerAuctionsTab';
+import { CreateAuctionModal } from './components/seller/CreateAuctionModal';
 
 export const ProfilePage: React.FC = () => {
     const { user, socket } = useAuth();
@@ -51,7 +53,7 @@ export const ProfilePage: React.FC = () => {
     const [activeAuctionBids, setActiveAuctionBids] = useState(0);
     const [sellerComparison, setSellerComparison] = useState<{ revenueChange: number | null; ordersChange: number | null } | null>(null);
     const [auctionHistory, setAuctionHistory] = useState<Auction[]>([]);
-    const [auctionForm, setAuctionForm] = useState({
+    const [auctionForm, setAuctionForm] = useState<AuctionFormState>({
         name: '',
         description: '',
         categoryId: '',
@@ -270,8 +272,10 @@ export const ProfilePage: React.FC = () => {
     ]);
 
     useEffect(() => {
-        void fetchCategories();
-        void fetchSellerApplication();
+        queueMicrotask(() => {
+            void fetchCategories();
+            void fetchSellerApplication();
+        });
     }, [fetchCategories, fetchSellerApplication]);
 
     const handlePayOrder = async (orderId: string) => {
@@ -413,229 +417,6 @@ export const ProfilePage: React.FC = () => {
         }
     };
 
-    const renderCustomerOrders = () => (
-        <div className={styles.section}>
-            <h2>Історія замовлень</h2>
-
-            {isLoadingOrders ? (
-                <div>Завантаження замовлень...</div>
-            ) : orders.length === 0 ? (
-                <p>У вас поки немає замовлень.</p>
-            ) : (
-                <div className={styles.ordersList}>
-                    {orders.map((order) => (
-                        <OrderItemCard
-                            key={order.id}
-                            order={order}
-                            onPay={handlePayOrder}
-                            onCancel={handleCancelOrder}
-                            onSellerCancel={handleCancelSellerOrder}
-                            onReview={handleReview}
-                            onOpenDispute={handleOpenDispute}
-                            reviewedProductIds={reviewedProductIds}
-                        />
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-
-    const renderDisputes = () => (
-        <div className={styles.section}>
-            <h2>Мої спори</h2>
-            <div className={styles.salesList}>
-                {disputes.length === 0 ? <p>Спорів немає.</p> : disputes.map((dispute) => (
-                    <article className={styles.saleCard} key={dispute.id}>
-                        <div className={styles.saleHeader}>
-                            <strong>{dispute.subject}</strong>
-                            <span className={`${styles.disputeBadge} ${styles[`dispute${dispute.status}`] ?? ''}`}>
-                                {{
-                                    OPEN: 'Відкритий',
-                                    UNDER_REVIEW: 'На розгляді',
-                                    RESOLVED_FOR_CUSTOMER: 'Вирішено на користь покупця',
-                                    RESOLVED_FOR_SELLER: 'Вирішено на користь продавця',
-                                    CLOSED: 'Закритий',
-                                }[dispute.status] ?? dispute.status}
-                            </span>
-                        </div>
-                        <div className={styles.disputeContext}>
-                            <span><strong>Замовлення:</strong> #{dispute.sellerOrder?.orderId ?? dispute.sellerOrderId}</span>
-                            <span><strong>Продавець:</strong> {dispute.sellerOrder?.seller?.nickName ?? 'Невідомий'}</span>
-                            <span><strong>Покупець:</strong> {dispute.sellerOrder?.order?.user?.nickName ?? dispute.openedBy?.nickName ?? 'Невідомий'}</span>
-                            {dispute.sellerOrder?.items?.length ? (
-                                <span><strong>Товари:</strong> {dispute.sellerOrder.items.map((item) => `${item.productName} × ${item.quantity}`).join(', ')}</span>
-                            ) : null}
-                        </div>
-                        <p>{dispute.description}</p>
-                        {dispute.resolution && <p><strong>Рішення:</strong> {dispute.resolution}</p>}
-                    </article>
-                ))}
-            </div>
-        </div>
-    );
-
-    const renderSellerSales = () => (
-        <div className={styles.section}>
-            <div className={styles.sectionHeader}>
-                <h2>Мої продажі</h2>
-            </div>
-            {sellerAnalytics && (
-                <>
-                    <div className={styles.kpiGrid}>
-                        <div className={styles.kpiCard}>
-                            <span className={styles.label}>Власна виручка</span>
-                            <strong>${sellerAnalytics.revenue.toFixed(2)}</strong>
-                        </div>
-                        <div className={styles.kpiCard}>
-                            <span className={styles.label}>Суб-замовлення</span>
-                            <strong>{sellerAnalytics.orders}</strong>
-                        </div>
-                        <div className={styles.kpiCard}>
-                            <span className={styles.label}>Завершені</span>
-                            <strong>{sellerAnalytics.completedOrders}</strong>
-                        </div>
-                        <div className={styles.kpiCard}>
-                            <span className={styles.label}>Поточні ставки на лоти</span>
-                            <strong>{activeAuctionBids}</strong>
-                        </div>
-                        <div className={styles.kpiCard}>
-                            <span className={styles.label}>Порівняння виручки</span>
-                            <strong>
-                                {sellerComparison?.revenueChange == null
-                                    ? '—'
-                                    : `${sellerComparison.revenueChange >= 0 ? '+' : ''}${(sellerComparison.revenueChange * 100).toFixed(1)}%`}
-                            </strong>
-                        </div>
-                    </div>
-                    <div className={styles.chartSection}>
-                        <h3>Продажі за останні 30 днів</h3>
-                        <ResponsiveContainer width="100%" height={220}>
-                            <AreaChart data={sellerTimeline}>
-                                <XAxis dataKey="date" />
-                                <YAxis />
-                                <Tooltip />
-                                <Area type="monotone" dataKey="revenue" stroke="#2563eb" fill="#dbeafe" />
-                            </AreaChart>
-                        </ResponsiveContainer>
-                    </div>
-                </>
-            )}
-
-            {isLoadingSales ? (
-                <div>Завантаження продажів...</div>
-            ) : sales.length === 0 ? (
-                <p>У вас поки немає продажів.</p>
-            ) : (
-                <div className={styles.salesList}>
-                    {sales.map((sale) => (
-                        <div key={sale.id} className={styles.saleCard}>
-                            <div className={styles.saleHeader}>
-                                <div>
-                                    <div className={styles.saleId}>
-                                        Замовлення #{sale.id.slice(0, 8)}
-                                    </div>
-                                    <div className={styles.saleMeta}>
-                                        <OrderStatusBadge status={sale.status} scope="suborder" />
-                                    </div>
-                                </div>
-                                <div className={styles.saleAmount}>
-                                    ${Number(sale.sellerEarnings).toFixed(2)}
-                                </div>
-                            </div>
-                            {['NEW', 'PAYMENT_PENDING', 'PROCESSING', 'SHIPPED'].includes(sale.status) ? (
-                                <select
-                                    className={styles.statusSelect}
-                                    value=""
-                                    onChange={(event) => {
-                                        const nextStatus = event.target.value as
-                                            | 'PROCESSING'
-                                            | 'SHIPPED'
-                                            | 'COMPLETED'
-                                            | 'CANCELLED';
-                                        if (nextStatus) {
-                                            if (nextStatus === 'CANCELLED') {
-                                                void handleCancelOwnSellerOrder(sale.id);
-                                            } else {
-                                                void handleSellerOrderStatusChange(
-                                                    sale.id,
-                                                    nextStatus,
-                                                );
-                                            }
-                                        }
-                                    }}
-                                >
-                                    <option value="">Змінити статус...</option>
-                                    {sale.status === 'NEW' || sale.status === 'PAYMENT_PENDING' ? null : (
-                                        <>
-                                            {sale.status === 'PROCESSING' && (
-                                                <option value="SHIPPED">Відправлено</option>
-                                            )}
-                                            {sale.status === 'SHIPPED' && (
-                                                <option value="COMPLETED">Доставлено</option>
-                                            )}
-                                        </>
-                                    )}
-                                    <option value="CANCELLED">Скасувати</option>
-                                </select>
-                            ) : null}
-
-                            <div className={styles.saleItems}>
-                                {sale.items.map((item) => (
-                                    <div
-                                        key={item.id}
-                                        className={styles.saleItemRow}
-                                    >
-                                        <button
-                                            type="button"
-                                            className={styles.productLink}
-                                            onClick={() => navigate(`/product/${item.productId}`)}
-                                        >
-                                            {item.product?.type === 'AUCTION'
-                                                ? 'Аукціон'
-                                                : 'Товар'}:{' '}
-                                            {item.productName}
-                                        </button>
-                                        <span>× {item.quantity}</span>
-                                        <span>
-                                            ${Number(item.totalAmount).toFixed(2)}
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-
-    const renderAuctionHistory = () => (
-        <div className={styles.section}>
-            <h2>Історія аукціонів</h2>
-            {auctionHistory.length === 0 ? (
-                <p>Аукціонів немає.</p>
-            ) : (
-                <div className={styles.ordersList}>
-                    {auctionHistory.map((auction) => (
-                        <div key={auction.id} className={styles.saleItemRow}>
-                            <span>
-                                {auction.product?.name ?? 'Аукціон'} —{' '}
-                                {auction.status} — $
-                                {Number(auction.currentPrice).toFixed(2)}
-                            </span>
-                            <Link
-                                to={`/auction/${auction.id}`}
-                                className={styles.adminLink}
-                            >
-                                Перейти
-                            </Link>
-                        </div>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-
     const createAuction = async (event: React.FormEvent) => {
         event.preventDefault();
         if (
@@ -711,47 +492,6 @@ export const ProfilePage: React.FC = () => {
         }
     };
 
-    const renderSellerAuctions = () => (
-        <div className={styles.section}>
-            <div className={styles.sectionHeader}>
-                <h2>Мої аукціони</h2>
-                <Button type="button" onClick={() => setIsCreateAuctionOpen(true)}>
-                    Створити аукціон
-                </Button>
-            </div>
-            {auctionHistory.length === 0 ? (
-                <p>Аукціонів немає.</p>
-            ) : (
-                <div className={styles.salesList}>
-                    {auctionHistory.map((auction) => (
-                        <AuctionCard
-                            key={auction.id}
-                            product={{
-                                ...(auction.product ?? {
-                                    id: auction.productId,
-                                    name: 'Аукціон',
-                                    description: '',
-                                    sellerId: user?.id ?? '',
-                                    price: Number(auction.currentPrice),
-                                    stock: 1,
-                                    categoryId: '',
-                                    createdAt: '',
-                                    updatedAt: '',
-                                    isArchived: false,
-                                }),
-                                type: 'AUCTION',
-                                auctionId: auction.id,
-                                auctionStatus: auction.status,
-                            }}
-                            onDelete={handleDeleteAuction}
-                            onPublish={handlePublishAuction}
-                        />
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-
     const tabs = isSeller
         ? ([
             { key: 'orders', label: 'Історія покупок' },
@@ -775,180 +515,73 @@ export const ProfilePage: React.FC = () => {
     return (
         <div className={styles.container}>
             <h1 className={styles.title}>Особистий кабінет</h1>
-
-            <div className={styles.tabs}>
-                {tabs.map((tab) => (
-                    <button
-                        key={tab.key}
-                        type="button"
-                        className={`${styles.tabBtn} ${
-                            activeTab === tab.key ? styles.activeTab : ''
-                        }`}
-                        onClick={() => handleTabChange(tab.key)}
-                    >
-                        {tab.label}
-                    </button>
-                ))}
-            </div>
-
+            <ProfileTabsNav
+                tabs={tabs}
+                activeTab={activeTab}
+                onTabChange={handleTabChange}
+            />
             {activeTab === 'info' && (
-                <div className={styles.section}>
-                    <h2>Дані профілю</h2>
-
-                    <div className={styles.profileInfoCard}>
-                        <div className={styles.profileRow}>
-                            <span className={styles.label}>Email</span>
-                            <strong>{user?.email ?? '—'}</strong>
-                        </div>
-                        <div className={styles.profileRow}>
-                            <span className={styles.label}>Нікнейм</span>
-                            <strong>{user?.nickName ?? '—'}</strong>
-                        </div>
-                        <div className={styles.profileRow}>
-                            <span className={styles.label}>Роль</span>
-                            <strong>{userRole}</strong>
-                        </div>
-
-                        {isCustomer && (
-                            <>
-                                <div className={styles.profileHint}>
-                                    Ви можете купувати товари в каталозі.
-                                </div>
-                                {sellerApplicationStatus === 'PENDING' ? (
-                                    <div className={styles.profileHint}>
-                                        Заявка на статус продавця вже подана та очікує перевірки.
-                                    </div>
-                                ) : sellerApplicationStatus !== 'APPROVED' ? (
-                                    <Button type="button" onClick={() => void applyForSeller()}>
-                                        Подати заявку на продавця
-                                    </Button>
-                                ) : null}
-                            </>
-                        )}
-                        {isSeller && (
-                            <div className={styles.profileHint}>
-                                Ви можете продавати товари і відстежувати
-                                продажі.
-                            </div>
-                        )}
-                        {isAdmin && (
-                            <div className={styles.profileActions}>
-                                <Link to="/admin" className={styles.adminLink}>
-                                    Відкрити адмін-панель
-                                </Link>
-                            </div>
-                        )}
-                    </div>
-                </div>
+                <InfoTab
+                    user={user}
+                    userRole={userRole}
+                    isCustomer={isCustomer}
+                    isSeller={isSeller}
+                    isAdmin={isAdmin}
+                    sellerApplicationStatus={sellerApplicationStatus}
+                    onApplyForSeller={() => void applyForSeller()}
+                />
             )}
-
-            {activeTab === 'orders' && (isCustomer || isSeller) && renderCustomerOrders()}
-            {activeTab === 'sales' && isSeller && renderSellerSales()}
-            {activeTab === 'disputes' && (isCustomer || isSeller) && renderDisputes()}
-            {activeTab === 'auctionHistory' && isCustomer && renderAuctionHistory()}
-            {activeTab === 'auctions' && isSeller && renderSellerAuctions()}
+            {activeTab === 'orders' && (isCustomer || isSeller) && (
+                <CustomerOrdersTab
+                    orders={orders}
+                    isLoadingOrders={isLoadingOrders}
+                    reviewedProductIds={reviewedProductIds}
+                    onPay={handlePayOrder}
+                    onCancel={handleCancelOrder}
+                    onSellerCancel={handleCancelSellerOrder}
+                    onReview={handleReview}
+                    onOpenDispute={handleOpenDispute}
+                />
+            )}
+            {activeTab === 'sales' && isSeller && (
+                <SellerSalesTab
+                    sellerAnalytics={sellerAnalytics}
+                    activeAuctionBids={activeAuctionBids}
+                    sellerComparison={sellerComparison}
+                    sellerTimeline={sellerTimeline}
+                    isLoadingSales={isLoadingSales}
+                    sales={sales}
+                    onNavigateToProduct={(productId) => navigate(`/product/${productId}`)}
+                    onStatusChange={handleSellerOrderStatusChange}
+                    onCancelOwnSellerOrder={handleCancelOwnSellerOrder}
+                />
+            )}
+            {activeTab === 'disputes' && (isCustomer || isSeller) && (
+                <DisputesTab disputes={disputes} />
+            )}
+            {activeTab === 'auctionHistory' && isCustomer && (
+                <AuctionHistoryTab auctionHistory={auctionHistory} />
+            )}
+            {activeTab === 'auctions' && isSeller && (
+                <SellerAuctionsTab
+                    auctionHistory={auctionHistory}
+                    sellerId={user?.id ?? ''}
+                    onCreateClick={() => setIsCreateAuctionOpen(true)}
+                    onDelete={handleDeleteAuction}
+                    onPublish={handlePublishAuction}
+                />
+            )}
             {activeTab === 'products' && isSeller && <ProductsPage sellerMode />}
-
-            <Modal
+            <CreateAuctionModal
                 isOpen={isCreateAuctionOpen}
                 onClose={() => setIsCreateAuctionOpen(false)}
-                title="Створити аукціон"
-                actions={
-                    <>
-                        <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={() => setIsCreateAuctionOpen(false)}
-                        >
-                            Скасувати
-                        </Button>
-                        <Button
-                            type="submit"
-                            form="create-auction-form"
-                            disabled={isCreatingAuction}
-                        >
-                            {isCreatingAuction ? 'Створення...' : 'Створити'}
-                        </Button>
-                    </>
-                }
-            >
-                <form id="create-auction-form" onSubmit={createAuction} className={styles.form}>
-                    <input
-                        required
-                        placeholder="Назва аукціону"
-                        value={auctionForm.name}
-                        onChange={(event) =>
-                            setAuctionForm((current) => ({ ...current, name: event.target.value }))
-                        }
-                    />
-                    <textarea
-                        placeholder="Опис"
-                        value={auctionForm.description}
-                        onChange={(event) =>
-                            setAuctionForm((current) => ({ ...current, description: event.target.value }))
-                        }
-                    />
-                    <select
-                        required
-                        value={auctionForm.categoryId}
-                        onChange={(event) =>
-                            setAuctionForm((current) => ({ ...current, categoryId: event.target.value }))
-                        }
-                    >
-                        <option value="">Оберіть категорію</option>
-                        {categories.map((category) => (
-                            <option key={category.id} value={category.id}>{category.name}</option>
-                        ))}
-                    </select>
-                    <input
-                        required
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        placeholder="Стартова ціна"
-                        value={auctionForm.startingPrice}
-                        onChange={(event) =>
-                            setAuctionForm((current) => ({ ...current, startingPrice: event.target.value }))
-                        }
-                    />
-                    <input
-                        required
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        placeholder="Крок ставки"
-                        value={auctionForm.minBidIncrement}
-                        onChange={(event) =>
-                            setAuctionForm((current) => ({ ...current, minBidIncrement: event.target.value }))
-                        }
-                    />
-                    <input
-                        required
-                        type="datetime-local"
-                        value={auctionForm.endsAt}
-                        onChange={(event) =>
-                            setAuctionForm((current) => ({ ...current, endsAt: event.target.value }))
-                        }
-                    />
-                </form>
-            </Modal>
-
-            <Modal
-                isOpen={Boolean(errorMessage)}
-                onClose={() => setErrorMessage(null)}
-                title="Помилка"
-                actions={
-                    <Button
-                        variant="primary"
-                        size="small"
-                        onClick={() => setErrorMessage(null)}
-                    >
-                        Зрозуміло
-                    </Button>
-                }
-            >
-                <p>{errorMessage}</p>
-            </Modal>
+                auctionForm={auctionForm}
+                onFormChange={setAuctionForm}
+                categories={categories}
+                isCreatingAuction={isCreatingAuction}
+                onSubmit={createAuction}
+            />
+            <ErrorModal message={errorMessage} onClose={() => setErrorMessage(null)} />
         </div>
     );
 };

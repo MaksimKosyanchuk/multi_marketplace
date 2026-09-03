@@ -169,7 +169,11 @@ export class SearchService implements OnModuleInit {
                 return fallback;
             }
             await this.writeCache(cacheKey, result);
-            return result;
+            return {
+                ...result,
+                estimatedTotalHits: result.estimatedTotalHits ?? 0,
+                hits: result.hits ?? [],
+            };
         } catch (error: unknown) {
             this.logger.warn(
                 `Search unavailable, using PostgreSQL fallback: ${error instanceof Error ? error.message : 'unknown error'}`,

@@ -34,6 +34,7 @@ interface ProductWithCategory {
     updatedAt: Date;
     category?: unknown;
     rating?: number;
+    reviews?: { rating: number }[];
 }
 
 interface PaginatedProductsResult {
@@ -119,10 +120,7 @@ export class ProductsService {
 
         const result: PaginatedProductsResult = {
             items: items.map((item) => {
-                const reviews = item.reviews;
-                const result = { ...item };
-
-                delete result.reviews;
+                const { reviews, ...result } = item;
 
                 return {
                     ...result,
@@ -194,16 +192,11 @@ export class ProductsService {
         ]);
         return {
             items: items.map((item) => {
-                const reviews = (
-                    item as ProductWithCategory & {
-                        reviews?: { rating: number }[];
-                    }
-                ).reviews;
+                const { reviews, ...result } = item as ProductWithCategory & {
+                    reviews?: { rating: number }[];
+                };
 
                 if (!reviews) return item;
-
-                const result = { ...item };
-                delete result.reviews;
 
                 return {
                     ...result,
