@@ -48,6 +48,27 @@ export class AuctionRepository {
         });
     }
 
+    cancelForProduct(productId: string, db: DatabaseClient = this.prisma) {
+        return db.auction.updateMany({
+            where: {
+                productId,
+                status: { in: [AuctionStatus.DRAFT, AuctionStatus.ACTIVE] },
+            },
+            data: { status: AuctionStatus.CANCELLED },
+        });
+    }
+
+    activateDraftIfStarted(id: string, db: DatabaseClient = this.prisma) {
+        return db.auction.updateMany({
+            where: {
+                id,
+                status: AuctionStatus.DRAFT,
+                startsAt: { lte: new Date() },
+            },
+            data: { status: AuctionStatus.ACTIVE },
+        });
+    }
+
     claimExpired(id: string, db: DatabaseClient = this.prisma) {
         return db.auction.updateMany({
             where: {

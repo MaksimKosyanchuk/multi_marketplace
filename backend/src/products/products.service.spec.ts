@@ -11,7 +11,12 @@ import { ProductsService } from './products.service';
 import { LoggerService } from '../logger/logger.service';
 import { ProductStatus, ProductType } from '@prisma/client';
 import * as fileUtils from '../common/utils/file';
-import { ProductRepository } from '../database';
+import {
+    AuctionRepository,
+    CartRepository,
+    OutboxRepository,
+    ProductRepository,
+} from '../database';
 
 jest.mock('../common/utils/file', () => ({
     deleteFile: jest.fn().mockResolvedValue(undefined),
@@ -137,6 +142,9 @@ describe('ProductsService', () => {
                     },
                 },
                 ProductRepository,
+                AuctionRepository,
+                CartRepository,
+                OutboxRepository,
             ],
         }).compile();
 
@@ -246,11 +254,7 @@ describe('ProductsService', () => {
             const result = await service.findOne('prod-1');
 
             expect(prisma.product.findUnique).toHaveBeenCalledWith({
-                where: {
-                    id: 'prod-1',
-                    status: ProductStatus.ACTIVE,
-                    isArchived: false,
-                },
+                where: { id: 'prod-1' },
                 include: {
                     category: true,
                     reviews: {

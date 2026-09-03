@@ -22,4 +22,8 @@ export class CartRepository {
     clear(cartId: string, db: DatabaseClient = this.prisma) {
         return db.cartItem.deleteMany({ where: { cartId } });
     }
+
+    removeProduct(productId: string, db: DatabaseClient = this.prisma) {
+        return db.cartItem.deleteMany({ where: { productId } });
+    }
 }

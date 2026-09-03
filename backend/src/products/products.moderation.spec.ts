@@ -1,6 +1,12 @@
 import { BadRequestException } from '@nestjs/common';
 import { ProductStatus } from '@prisma/client';
 import { ProductsService } from './products.service';
+import {
+    AuctionRepository,
+    CartRepository,
+    OutboxRepository,
+    ProductRepository,
+} from '../database';
 
 describe('ProductsService moderation', () => {
     const product = {
@@ -36,6 +42,10 @@ describe('ProductsService moderation', () => {
             prisma as never,
             redis as never,
             logger as never,
+            new ProductRepository(prisma as never),
+            new AuctionRepository(prisma as never),
+            new CartRepository(prisma as never),
+            new OutboxRepository(prisma as never),
         );
         prisma.$transaction.mockImplementation((operation: unknown) =>
             typeof operation === 'function'

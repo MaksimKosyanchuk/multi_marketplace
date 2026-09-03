@@ -18,7 +18,12 @@ import {
 import { deleteFile } from '../common/utils/file';
 import { LoggerService } from '../logger/logger.service';
 import { getCorrelationId } from '../common/correlation/correlation.context';
-import { ProductRepository } from '../database';
+import {
+    AuctionRepository,
+    CartRepository,
+    OutboxRepository,
+    ProductRepository,
+} from '../database';
 
 interface ProductWithCategory {
     id: string;
@@ -59,6 +64,9 @@ export class ProductsService {
         private redis: RedisService,
         private logger: LoggerService,
         private readonly productRepository: ProductRepository,
+        private readonly auctionRepository: AuctionRepository,
+        private readonly cartRepository: CartRepository,
+        private readonly outboxRepository: OutboxRepository,
     ) {}
 
     async findAll(query: QueryProductDto): Promise<PaginatedProductsResult> {
@@ -106,18 +114,18 @@ export class ProductsService {
                   : { createdAt: 'desc' };
 
         const [items, total] = await this.prisma.$transaction([
-            this.prisma.product.findMany({
+            this.productRepository.findCatalog(
                 where,
                 orderBy,
-                skip: (page - 1) * limit,
-                take: limit,
-                include: {
+                (page - 1) * limit,
+                limit,
+                {
                     category: true,
                     auction: { select: { id: true, status: true } },
                     reviews: { select: { rating: true } },
                 },
-            }),
-            this.prisma.product.count({ where }),
+            ),
+            this.productRepository.count(where),
         ]);
 
         const result: PaginatedProductsResult = {
@@ -179,18 +187,18 @@ export class ProductsService {
                   ? { price: 'desc' }
                   : { createdAt: 'desc' };
         const [items, total] = await this.prisma.$transaction([
-            this.prisma.product.findMany({
+            this.productRepository.findCatalog(
                 where,
                 orderBy,
-                skip: (page - 1) * limit,
-                take: limit,
-                include: {
+                (page - 1) * limit,
+                limit,
+                {
                     category: true,
                     auction: { select: { id: true } },
                     reviews: { select: { rating: true } },
                 },
-            }),
-            this.prisma.product.count({ where }),
+            ),
+            this.productRepository.count(where),
         ]);
         return {
             items: items.map((item) => {
@@ -217,29 +225,32 @@ export class ProductsService {
     async submitForApproval(id: string, sellerId: string) {
         await this.findOwnedProduct(id, sellerId);
         const product = await this.prisma.$transaction(async (tx) => {
-            const claimed = await tx.product.updateMany({
-                where: {
-                    id,
+            const claimed = await this.productRepository.claimStatus(
+                id,
+                {
                     sellerId,
                     status: ProductStatus.DRAFT,
                     isArchived: false,
                 },
-                data: { status: ProductStatus.PENDING_APPROVAL },
-            });
+                { status: ProductStatus.PENDING_APPROVAL },
+                tx,
+            );
             if (!claimed.count) {
                 throw new BadRequestException(
                     'Only non-archived draft products can be submitted for approval',
                 );
             }
-            const submitted = await tx.product.findUniqueOrThrow({
-                where: { id },
-                include: {
-                    category: true,
-                    auction: { select: { id: true, status: true } },
-                },
-            });
-            await tx.outboxEvent.create({
-                data: {
+            const submitted =
+                await this.productRepository.findOrThrowWithDetails(
+                    id,
+                    {
+                        category: true,
+                        auction: { select: { id: true, status: true } },
+                    },
+                    tx,
+                );
+            await this.outboxRepository.create(
+                {
                     aggregateType: 'Product',
                     aggregateId: id,
                     type: 'product.submitted_for_approval',
@@ -250,7 +261,8 @@ export class ProductsService {
                     },
                     idempotencyKey: `product-submitted-for-approval:${id}:${submitted.version}`,
                 },
-            });
+                tx,
+            );
             return submitted;
         });
         await this.invalidateProductCaches(id);
@@ -286,17 +298,17 @@ export class ProductsService {
                   ? { price: 'desc' }
                   : { createdAt: 'asc' };
         const [items, total] = await this.prisma.$transaction([
-            this.prisma.product.findMany({
+            this.productRepository.findCatalog(
                 where,
                 orderBy,
-                skip: (page - 1) * limit,
-                take: limit,
-                include: {
+                (page - 1) * limit,
+                limit,
+                {
                     category: true,
                     auction: { select: { id: true, status: true } },
                 },
-            }),
-            this.prisma.product.count({ where }),
+            ),
+            this.productRepository.count(where),
         ]);
         return {
             items,
@@ -318,9 +330,7 @@ export class ProductsService {
         status: ProductStatus,
         comment?: string,
     ) {
-        const existing = await this.prisma.product.findUnique({
-            where: { id },
-        });
+        const existing = await this.productRepository.findById(id);
         if (!existing) throw new NotFoundException('Product not found');
         if (
             existing.status !== ProductStatus.PENDING_APPROVAL ||
@@ -332,42 +342,40 @@ export class ProductsService {
         }
 
         const product = await this.prisma.$transaction(async (tx) => {
-            const claimed = await tx.product.updateMany({
-                where: {
-                    id,
+            const claimed = await this.productRepository.claimStatus(
+                id,
+                {
                     status: ProductStatus.PENDING_APPROVAL,
                     isArchived: false,
                 },
-                data: {
+                {
                     status,
                     version: { increment: 1 },
                 },
-            });
+                tx,
+            );
             if (!claimed.count) {
                 throw new BadRequestException(
                     'Product was already processed by another administrator',
                 );
             }
-            const updated = await tx.product.findUniqueOrThrow({
-                where: { id },
-                include: { category: true, auction: true },
-            });
+            const updated = await this.productRepository.findOrThrowWithDetails(
+                id,
+                { category: true, auction: true },
+                tx,
+            );
             if (
                 status === ProductStatus.ACTIVE &&
                 updated.type === ProductType.AUCTION &&
                 updated.auction
             ) {
-                await tx.auction.updateMany({
-                    where: {
-                        id: updated.auction.id,
-                        status: AuctionStatus.DRAFT,
-                        startsAt: { lte: new Date() },
-                    },
-                    data: { status: AuctionStatus.ACTIVE },
-                });
+                await this.auctionRepository.activateDraftIfStarted(
+                    updated.auction.id,
+                    tx,
+                );
             }
-            await tx.outboxEvent.create({
-                data: {
+            await this.outboxRepository.create(
+                {
                     aggregateType: 'Product',
                     aggregateId: id,
                     type:
@@ -383,7 +391,8 @@ export class ProductsService {
                     },
                     idempotencyKey: `product-moderated:${id}:${updated.version}:${status}`,
                 },
-            });
+                tx,
+            );
             return updated;
         });
         await this.invalidateProductCaches(id);
@@ -400,15 +409,13 @@ export class ProductsService {
         }
         if (cached) return JSON.parse(cached) as ProductWithCategory;
 
-        const product = await this.prisma.product.findUnique({
-            where: { id, status: ProductStatus.ACTIVE, isArchived: false },
-            include: {
-                category: true,
-                reviews: { select: { rating: true } },
-            },
-        });
+        const product =
+            await this.productRepository.findByIdWithCatalogDetails(id);
 
         if (!product) {
+            throw new NotFoundException('Product not found');
+        }
+        if (product.status !== ProductStatus.ACTIVE || product.isArchived) {
             throw new NotFoundException('Product not found');
         }
 
@@ -458,8 +465,8 @@ export class ProductsService {
                     },
                     tx,
                 );
-                await tx.outboxEvent.create({
-                    data: {
+                await this.outboxRepository.create(
+                    {
                         aggregateType: 'Product',
                         aggregateId: created.id,
                         type: 'product.created',
@@ -469,7 +476,8 @@ export class ProductsService {
                         },
                         idempotencyKey: `product-created:${created.id}:${created.version}`,
                     },
-                });
+                    tx,
+                );
                 return created;
             });
 
@@ -537,8 +545,8 @@ export class ProductsService {
                         },
                         tx,
                     );
-                    await tx.outboxEvent.create({
-                        data: {
+                    await this.outboxRepository.create(
+                        {
                             aggregateType: 'Product',
                             aggregateId: updated.id,
                             type: 'product.updated',
@@ -548,7 +556,8 @@ export class ProductsService {
                             },
                             idempotencyKey: `product-updated:${updated.id}:${updated.version}`,
                         },
-                    });
+                        tx,
+                    );
                     return updated;
                 },
             );
@@ -582,34 +591,30 @@ export class ProductsService {
         const existingProduct = await this.findOwnedProduct(id, sellerId);
 
         await this.prisma.$transaction(async (tx) => {
-            const claimed = await tx.product.updateMany({
-                where: { id, sellerId, isArchived: false },
-                data: {
+            const claimed = await this.productRepository.claimStatus(
+                id,
+                { sellerId, isArchived: false },
+                {
                     isArchived: true,
                     status: ProductStatus.ARCHIVED,
                     version: { increment: 1 },
                 },
-            });
+                tx,
+            );
             if (!claimed.count) {
                 throw new BadRequestException('Product is already archived');
             }
             if (existingProduct.type === 'AUCTION') {
-                await tx.auction.updateMany({
-                    where: {
-                        productId: id,
-                        status: {
-                            in: [AuctionStatus.DRAFT, AuctionStatus.ACTIVE],
-                        },
-                    },
-                    data: { status: AuctionStatus.CANCELLED },
-                });
+                await this.auctionRepository.cancelForProduct(id, tx);
             }
-            const archived = await tx.product.findUniqueOrThrow({
-                where: { id },
-            });
-            await tx.cartItem.deleteMany({ where: { productId: id } });
-            await tx.outboxEvent.create({
-                data: {
+            const archived = await this.productRepository.findOrThrow(
+                id,
+                {},
+                tx,
+            );
+            await this.cartRepository.removeProduct(id, tx);
+            await this.outboxRepository.create(
+                {
                     aggregateType: 'Product',
                     aggregateId: id,
                     type: 'product.archived',
@@ -619,7 +624,8 @@ export class ProductsService {
                     },
                     idempotencyKey: `product-archived:${archived.id}:${archived.version}`,
                 },
-            });
+                tx,
+            );
         });
 
         await this.invalidateProductCaches(id);
@@ -635,9 +641,8 @@ export class ProductsService {
     }
 
     private async ensureCategoryExists(categoryId: string) {
-        const category = await this.prisma.category.findUnique({
-            where: { id: categoryId },
-        });
+        const category =
+            await this.productRepository.categoryExists(categoryId);
         if (!category) throw new BadRequestException('Category not found');
     }
 
@@ -645,24 +650,28 @@ export class ProductsService {
         await this.findOwnedProduct(id, sellerId);
 
         const product = await this.prisma.$transaction(async (tx) => {
-            const claimed = await tx.product.updateMany({
-                where: { id, sellerId, isArchived: true },
-                data: {
+            const claimed = await this.productRepository.claimStatus(
+                id,
+                { sellerId, isArchived: true },
+                {
                     isArchived: false,
                     status: ProductStatus.DRAFT,
                     version: { increment: 1 },
                 },
-            });
+                tx,
+            );
             if (!claimed.count) {
                 throw new BadRequestException(
                     'Only archived products can be restored',
                 );
             }
-            const restored = await tx.product.findUniqueOrThrow({
-                where: { id },
-            });
-            await tx.outboxEvent.create({
-                data: {
+            const restored = await this.productRepository.findOrThrow(
+                id,
+                {},
+                tx,
+            );
+            await this.outboxRepository.create(
+                {
                     aggregateType: 'Product',
                     aggregateId: id,
                     type: 'product.restored',
@@ -673,7 +682,8 @@ export class ProductsService {
                     },
                     idempotencyKey: `product-restored:${restored.id}:${restored.version}`,
                 },
-            });
+                tx,
+            );
             return restored;
         });
 
@@ -688,10 +698,7 @@ export class ProductsService {
     }
 
     private async findOwnedProduct(id: string, sellerId: string) {
-        const product = await this.prisma.product.findUnique({
-            where: { id },
-            include: { category: true },
-        });
+        const product = await this.productRepository.findByIdWithCategory(id);
         if (!product) throw new NotFoundException('Product not found');
         if (product.sellerId !== sellerId) {
             throw new ForbiddenException('You do not own this product');

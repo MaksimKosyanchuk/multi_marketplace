@@ -38,6 +38,24 @@ export class ProductRepository {
         return db.product.findUnique({ where: { id: productId } });
     }
 
+    findByIdWithCategory(productId: string, db: DatabaseClient = this.prisma) {
+        return db.product.findUnique({
+            where: { id: productId },
+            include: { category: true },
+        });
+    }
+
+    findCatalog(
+        where: Prisma.ProductWhereInput,
+        orderBy: Prisma.ProductOrderByWithRelationInput,
+        skip: number,
+        take: number,
+        include: Prisma.ProductInclude,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.product.findMany({ where, orderBy, skip, take, include });
+    }
+
     findByIdWithCatalogDetails(
         productId: string,
         db: DatabaseClient = this.prisma,
@@ -49,6 +67,24 @@ export class ProductRepository {
                 reviews: { select: { rating: true } },
             },
         });
+    }
+
+    findCatalogDetails(
+        productId: string,
+        where: Prisma.ProductWhereInput,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.product.findFirst({
+            where: { id: productId, ...where },
+            include: {
+                category: true,
+                reviews: { select: { rating: true } },
+            },
+        });
+    }
+
+    categoryExists(categoryId: string, db: DatabaseClient = this.prisma) {
+        return db.category.findUnique({ where: { id: categoryId } });
     }
 
     findOwned(
@@ -105,6 +141,17 @@ export class ProductRepository {
     }
 
     findOrThrow(
+        productId: string,
+        include: Prisma.ProductInclude,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.product.findUniqueOrThrow({
+            where: { id: productId },
+            ...(Object.keys(include).length ? { include } : {}),
+        });
+    }
+
+    findOrThrowWithDetails(
         productId: string,
         include: Prisma.ProductInclude,
         db: DatabaseClient = this.prisma,
