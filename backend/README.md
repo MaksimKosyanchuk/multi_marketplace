@@ -478,8 +478,8 @@ LOAD_CONCURRENCY=4 \
 npm run test:load
 ```
 
-The harness first adds one unit to every user's cart outside the measured
-interval, then sends four checkouts concurrently. It asserts exactly two
+The harness first clears every user's cart and adds one unit outside the
+measured interval, then sends four checkouts concurrently. It asserts exactly two
 successful checkouts, two stock rejections, and no unexpected errors. It also
 reports RPS and p95 latency:
 

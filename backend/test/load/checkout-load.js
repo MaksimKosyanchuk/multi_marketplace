@@ -1,3 +1,5 @@
+const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
 async function main() {
     const baseUrl = process.env.LOAD_BASE_URL || 'http://localhost:3001';
     const tokens = (process.env.LOAD_TOKENS || process.env.LOAD_TOKEN || '')
@@ -22,7 +24,39 @@ async function main() {
         'content-type': 'application/json',
     });
 
+    const productResponse = await fetch(`${baseUrl}/products/${productId}`);
+    if (!productResponse.ok) {
+        throw new Error(
+            `Unable to inspect product: HTTP ${productResponse.status} ${await productResponse.text()}`,
+        );
+    }
+    const product = await productResponse.json();
+    if (
+        product.stock !== initialStock ||
+        product.type !== 'FIXED_PRICE' ||
+        product.status !== 'ACTIVE' ||
+        product.isArchived
+    ) {
+        throw new Error(
+            `Product precondition failed: expected ACTIVE FIXED_PRICE stock=${initialStock}, received ${JSON.stringify({
+                stock: product.stock,
+                type: product.type,
+                status: product.status,
+                isArchived: product.isArchived,
+            })}`,
+        );
+    }
+
     for (const token of tokens) {
+        const clearResponse = await fetch(baseUrl + '/cart', {
+            method: 'DELETE',
+            headers: headers(token),
+        });
+        if (!clearResponse.ok) {
+            throw new Error(
+                `Unable to clear cart: HTTP ${clearResponse.status} ${await clearResponse.text()}`,
+            );
+        }
         const response = await fetch(baseUrl + '/cart/items', {
             method: 'POST',
             headers: headers(token),
@@ -48,7 +82,7 @@ async function main() {
                 method: 'POST',
                 headers: {
                     ...headers(tokens[index % tokens.length]),
-                    'idempotency-key': `load-limited-stock-${index}`,
+                    'idempotency-key': `load-limited-stock-${runId}-${index}`,
                 },
             });
             if (response.status === 201) {
