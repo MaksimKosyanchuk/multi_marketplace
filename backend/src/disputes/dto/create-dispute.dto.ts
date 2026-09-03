@@ -11,7 +11,9 @@ export class CreateDisputeDto {
     @MaxLength(150)
     subject: string;
 
-    @ApiProperty({ example: 'Order did not arrive within the promised timeframe' })
+    @ApiProperty({
+        example: 'Order did not arrive within the promised timeframe',
+    })
     @IsString()
     @MaxLength(2000)
     description: string;

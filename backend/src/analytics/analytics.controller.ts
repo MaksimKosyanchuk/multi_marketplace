@@ -129,7 +129,11 @@ export class AnalyticsController {
     @Roles('ADMIN')
     @ApiProduces('application/json')
     @ApiOperation({ summary: 'Export analytics as JSON' })
-    @ApiResponse({ status: 200, description: 'Analytics JSON file', schema: { type: 'object' } })
+    @ApiResponse({
+        status: 200,
+        description: 'Analytics JSON file',
+        schema: { type: 'object' },
+    })
     @ApiResponse({ status: 401, description: 'Unauthorized' })
     @ApiResponse({ status: 403, description: 'ADMIN role required' })
     async exportJson(@Res() res: Response, @Query() query: DateFilterDto) {

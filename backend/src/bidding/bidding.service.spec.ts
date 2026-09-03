@@ -47,7 +47,9 @@ describe('BiddingService critical auction flows', () => {
                 }),
             },
         };
-        prisma.$transaction.mockImplementation((callback: Function) => callback(tx));
+        prisma.$transaction.mockImplementation((callback: Function) =>
+            callback(tx),
+        );
 
         await expect(
             service.placeBid('bidder-1', 'auction-1', 110, 'bid-key-1'),
@@ -74,7 +76,9 @@ describe('BiddingService critical auction flows', () => {
             },
             outboxEvent: { create: jest.fn() },
         };
-        prisma.$transaction.mockImplementation((callback: Function) => callback(tx));
+        prisma.$transaction.mockImplementation((callback: Function) =>
+            callback(tx),
+        );
 
         await service.placeBid('bidder-1', 'auction-1', 110, 'bid-key-1');
 
@@ -103,7 +107,9 @@ describe('BiddingService critical auction flows', () => {
                 updateMany: jest.fn().mockResolvedValue({ count: 0 }),
             },
         };
-        prisma.$transaction.mockImplementation((callback: Function) => callback(tx));
+        prisma.$transaction.mockImplementation((callback: Function) =>
+            callback(tx),
+        );
 
         await expect(
             service.placeBid('bidder-2', 'auction-1', 120, 'bid-key-2'),
@@ -125,14 +131,22 @@ describe('BiddingService critical auction flows', () => {
                         ...activeAuction,
                         endsAt: new Date(Date.now() - 1),
                     })
-                    .mockResolvedValueOnce({ ...activeAuction, status: AuctionStatus.SOLD }),
+                    .mockResolvedValueOnce({
+                        ...activeAuction,
+                        status: AuctionStatus.SOLD,
+                    }),
                 updateMany: jest.fn().mockResolvedValue({ count: 1 }),
                 update: jest.fn(),
             },
-            bid: { findFirst: jest.fn().mockResolvedValue(winner), update: jest.fn() },
+            bid: {
+                findFirst: jest.fn().mockResolvedValue(winner),
+                update: jest.fn(),
+            },
             outboxEvent: { create: jest.fn() },
         };
-        prisma.$transaction.mockImplementation((callback: Function) => callback(tx));
+        prisma.$transaction.mockImplementation((callback: Function) =>
+            callback(tx),
+        );
 
         await service.endAuction('auction-1');
 
@@ -163,10 +177,15 @@ describe('BiddingService critical auction flows', () => {
             product: { findUnique: jest.fn().mockResolvedValue(product) },
             auction: {
                 findUnique: jest.fn().mockResolvedValue(null),
-                create: jest.fn().mockResolvedValue({ id: 'auction-1', status: AuctionStatus.DRAFT }),
+                create: jest.fn().mockResolvedValue({
+                    id: 'auction-1',
+                    status: AuctionStatus.DRAFT,
+                }),
             },
         };
-        prisma.$transaction.mockImplementation((callback: Function) => callback(tx));
+        prisma.$transaction.mockImplementation((callback: Function) =>
+            callback(tx),
+        );
 
         await service.createAuction('seller-1', {
             productId: 'product-1',

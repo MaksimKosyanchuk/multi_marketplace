@@ -273,16 +273,12 @@ export class OrdersService {
                 this.redis.delByPattern('search:products:*'),
                 this.redis.delByPattern('products:detail:*'),
             ]);
-            await this.logger.log(
-                OrdersService.name,
-                'Order created',
-                {
-                    userId,
-                    totalAmount: order.totalAmount.toString(),
-                    orderId: order.id,
-                    operation: 'order.create',
-                },
-            );
+            await this.logger.log(OrdersService.name, 'Order created', {
+                userId,
+                totalAmount: order.totalAmount.toString(),
+                orderId: order.id,
+                operation: 'order.create',
+            });
             return order;
         } catch (error: unknown) {
             if (
@@ -360,7 +356,9 @@ export class OrdersService {
                 );
             }
             void this.logger.log(OrdersService.name, 'Payment pending', {
-                orderId, userId, operation: 'payment.pending',
+                orderId,
+                userId,
+                operation: 'payment.pending',
             });
             await new Promise((resolve) => setTimeout(resolve, 5000));
         }
@@ -537,7 +535,9 @@ export class OrdersService {
             return updated;
         } catch (error: unknown) {
             void this.logger.error(OrdersService.name, 'Payment failed', {
-                orderId, userId, operation: 'payment.failure',
+                orderId,
+                userId,
+                operation: 'payment.failure',
                 error: error instanceof Error ? error.message : String(error),
             });
             if (

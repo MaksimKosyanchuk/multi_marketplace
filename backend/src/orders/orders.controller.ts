@@ -121,7 +121,11 @@ export class OrdersController {
     @ApiOperation({ summary: 'Cancel a pending mock payment and order' })
     @ApiParam({ name: 'id', description: 'Order ID' })
     @ApiHeader({ name: 'idempotency-key', required: false })
-    @ApiResponse({ status: 200, description: 'Payment cancelled', type: OrderResponseDto })
+    @ApiResponse({
+        status: 200,
+        description: 'Payment cancelled',
+        type: OrderResponseDto,
+    })
     @ApiResponse({ status: 401, description: 'Unauthorized' })
     @ApiResponse({ status: 404, description: 'Order was not found' })
     cancelPayment(
@@ -190,7 +194,11 @@ export class OrdersController {
 
     @Get('resync')
     @ApiOperation({ summary: 'REST-resync orders after a WebSocket reconnect' })
-    @ApiResponse({ status: 200, description: 'Current user orders', type: [OrderResponseDto] })
+    @ApiResponse({
+        status: 200,
+        description: 'Current user orders',
+        type: [OrderResponseDto],
+    })
     @ApiResponse({ status: 401, description: 'Unauthorized' })
     resyncOrders(
         @Req() req: Request & { user: { id: string } },
@@ -214,7 +222,9 @@ export class OrdersController {
     @UseGuards(RolesGuard)
     @Roles(Role.SELLER)
     @Get('seller/:sellerOrderId')
-    @ApiOperation({ summary: 'Get a seller sub-order owned by the current seller' })
+    @ApiOperation({
+        summary: 'Get a seller sub-order owned by the current seller',
+    })
     @ApiParam({ name: 'sellerOrderId', description: 'Sub-order ID' })
     @ApiResponse({ status: 200, description: 'Seller sub-order' })
     @ApiResponse({ status: 401, description: 'Unauthorized' })

@@ -63,21 +63,28 @@ export class OrdersGateway
             if (role) await client.join(`role:${role}`);
             if (role === 'SELLER') await client.join(`seller:${userId}`);
             void this.logger.audit(OrdersGateway.name, 'WebSocket connected', {
-                socketId: client.id, userId,
+                socketId: client.id,
+                userId,
             });
         } catch (err: unknown) {
             const errorMessage =
                 err instanceof Error ? err.message : 'Unknown error';
-            void this.logger.error(OrdersGateway.name, 'WebSocket connection error', {
-                socketId: client.id, error: errorMessage,
-            });
+            void this.logger.error(
+                OrdersGateway.name,
+                'WebSocket connection error',
+                {
+                    socketId: client.id,
+                    error: errorMessage,
+                },
+            );
             client.disconnect();
         }
     }
 
     handleDisconnect(client: Socket) {
         void this.logger.audit(OrdersGateway.name, 'WebSocket disconnected', {
-            socketId: client.id, userId: client.data.userId,
+            socketId: client.id,
+            userId: client.data.userId,
         });
     }
 

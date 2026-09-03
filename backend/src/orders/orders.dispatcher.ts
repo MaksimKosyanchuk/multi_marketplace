@@ -72,15 +72,24 @@ export class OrdersDispatcher implements OnModuleInit, OnModuleDestroy {
                     ),
                 ),
             );
-            void this.logger.debug(OrdersDispatcher.name, 'Outbox events dispatched', {
-                queue: 'orders',
-                eventCount: events.length,
-            });
+            void this.logger.debug(
+                OrdersDispatcher.name,
+                'Outbox events dispatched',
+                {
+                    queue: 'orders',
+                    eventCount: events.length,
+                },
+            );
         } catch (error: unknown) {
-            void this.logger.error(OrdersDispatcher.name, 'Outbox dispatch failed', {
-                queue: 'orders',
-                error: error instanceof Error ? error.message : String(error),
-            });
+            void this.logger.error(
+                OrdersDispatcher.name,
+                'Outbox dispatch failed',
+                {
+                    queue: 'orders',
+                    error:
+                        error instanceof Error ? error.message : String(error),
+                },
+            );
             throw error;
         } finally {
             this.running = false;

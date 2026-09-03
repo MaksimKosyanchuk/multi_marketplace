@@ -91,7 +91,11 @@ export class AuthController {
     @Throttle({ default: { limit: 10, ttl: 60_000 } })
     @ApiOperation({ summary: 'Sign in with a Google OAuth2 access token' })
     @ApiBody({ type: GoogleLoginDto })
-    @ApiResponse({ status: 200, description: 'Google sign-in successful', type: AuthTokenResponseDto })
+    @ApiResponse({
+        status: 200,
+        description: 'Google sign-in successful',
+        type: AuthTokenResponseDto,
+    })
     @ApiResponse({ status: 400, description: 'Invalid access token' })
     @ApiResponse({ status: 401, description: 'Google authentication failed' })
     async googleLogin(
@@ -108,7 +112,11 @@ export class AuthController {
     @Throttle({ default: { limit: 10, ttl: 60_000 } })
     @ApiOperation({ summary: 'Complete Google registration' })
     @ApiBody({ type: GoogleRegisterCompleteDto })
-    @ApiResponse({ status: 201, description: 'Registration completed', type: AuthTokenResponseDto })
+    @ApiResponse({
+        status: 201,
+        description: 'Registration completed',
+        type: AuthTokenResponseDto,
+    })
     @ApiResponse({ status: 400, description: 'Invalid data' })
     @ApiResponse({ status: 409, description: 'User already exists' })
     async completeGoogleRegistration(

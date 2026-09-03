@@ -243,12 +243,16 @@ export class BiddingService {
                     auction.minBidIncrement,
                 );
                 if (bidAmount.lt(minimum)) {
-                    void this.logger.warn(BiddingService.name, 'Bid rejected: below minimum', {
-                        auctionId,
-                        bidderId,
-                        amount,
-                        minimum: minimum.toString(),
-                    });
+                    void this.logger.warn(
+                        BiddingService.name,
+                        'Bid rejected: below minimum',
+                        {
+                            auctionId,
+                            bidderId,
+                            amount,
+                            minimum: minimum.toString(),
+                        },
+                    );
                     throw new BadRequestException(
                         `Bid must be at least ${minimum.toString()}`,
                     );
@@ -265,13 +269,16 @@ export class BiddingService {
                         version: { increment: 1 },
                     },
                 });
-                if (!updated.count)
-                {
-                    void this.logger.warn(BiddingService.name, 'Bid rejected: concurrent auction update', {
-                        auctionId,
-                        bidderId,
-                        amount,
-                    });
+                if (!updated.count) {
+                    void this.logger.warn(
+                        BiddingService.name,
+                        'Bid rejected: concurrent auction update',
+                        {
+                            auctionId,
+                            bidderId,
+                            amount,
+                        },
+                    );
                     throw new ConflictException(
                         'Auction changed; retry the bid',
                     );
@@ -438,10 +445,14 @@ export class BiddingService {
                     idempotencyKey: `auction-checkout-expired:${auctionId}`,
                 },
             });
-            void this.logger.audit(BiddingService.name, 'Auction winner checkout expired', {
-                auctionId,
-                winnerId: auction.winnerId,
-            });
+            void this.logger.audit(
+                BiddingService.name,
+                'Auction winner checkout expired',
+                {
+                    auctionId,
+                    winnerId: auction.winnerId,
+                },
+            );
             return result;
         });
     }
@@ -579,12 +590,16 @@ export class BiddingService {
                     where: { id: auctionId },
                     data: { checkoutOrderId: order.id },
                 });
-                void this.logger.audit(BiddingService.name, 'Auction winner checkout created', {
-                    auctionId,
-                    orderId: order.id,
-                    winnerId,
-                    amount: auction.currentPrice.toString(),
-                });
+                void this.logger.audit(
+                    BiddingService.name,
+                    'Auction winner checkout created',
+                    {
+                        auctionId,
+                        orderId: order.id,
+                        winnerId,
+                        amount: auction.currentPrice.toString(),
+                    },
+                );
                 await tx.outboxEvent.createMany({
                     data: [
                         {

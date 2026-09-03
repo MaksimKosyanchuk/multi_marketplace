@@ -73,15 +73,24 @@ export class BiddingDispatcher implements OnModuleInit, OnModuleDestroy {
                     ),
                 ),
             );
-            void this.logger.debug(BiddingDispatcher.name, 'Auction events dispatched', {
-                queue: 'auctions',
-                eventCount: events.length,
-            });
+            void this.logger.debug(
+                BiddingDispatcher.name,
+                'Auction events dispatched',
+                {
+                    queue: 'auctions',
+                    eventCount: events.length,
+                },
+            );
         } catch (error: unknown) {
-            void this.logger.error(BiddingDispatcher.name, 'Auction dispatch failed', {
-                queue: 'auctions',
-                error: error instanceof Error ? error.message : String(error),
-            });
+            void this.logger.error(
+                BiddingDispatcher.name,
+                'Auction dispatch failed',
+                {
+                    queue: 'auctions',
+                    error:
+                        error instanceof Error ? error.message : String(error),
+                },
+            );
             throw error;
         } finally {
             this.running = false;

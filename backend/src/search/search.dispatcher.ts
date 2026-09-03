@@ -84,15 +84,24 @@ export class SearchDispatcher implements OnModuleInit, OnModuleDestroy {
                     ),
                 ),
             );
-            void this.logger.debug(SearchDispatcher.name, 'Search events dispatched', {
-                queue: 'search',
-                eventCount: events.length,
-            });
+            void this.logger.debug(
+                SearchDispatcher.name,
+                'Search events dispatched',
+                {
+                    queue: 'search',
+                    eventCount: events.length,
+                },
+            );
         } catch (error: unknown) {
-            void this.logger.error(SearchDispatcher.name, 'Search dispatch failed', {
-                queue: 'search',
-                error: error instanceof Error ? error.message : String(error),
-            });
+            void this.logger.error(
+                SearchDispatcher.name,
+                'Search dispatch failed',
+                {
+                    queue: 'search',
+                    error:
+                        error instanceof Error ? error.message : String(error),
+                },
+            );
             throw error;
         } finally {
             this.running = false;

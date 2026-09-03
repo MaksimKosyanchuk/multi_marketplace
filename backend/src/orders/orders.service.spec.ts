@@ -64,7 +64,10 @@ describe('OrdersService checkout', () => {
                 { provide: getQueueToken('orders'), useValue: queue },
                 { provide: RedisService, useValue: redis },
                 { provide: LoggerService, useValue: logger },
-                { provide: MockPaymentService, useValue: { authorize: jest.fn() } },
+                {
+                    provide: MockPaymentService,
+                    useValue: { authorize: jest.fn() },
+                },
             ],
         }).compile();
         service = module.get(OrdersService);

@@ -84,7 +84,9 @@ export class DisputesService {
                 },
             });
             void this.logger.audit(DisputesService.name, 'Dispute created', {
-                disputeId: dispute.id, sellerOrderId: dto.sellerOrderId, customerId,
+                disputeId: dispute.id,
+                sellerOrderId: dto.sellerOrderId,
+                customerId,
                 operation: 'dispute.create',
             });
             return dispute;
@@ -272,8 +274,11 @@ export class DisputesService {
                 },
             });
             void this.logger.audit(DisputesService.name, 'Dispute resolved', {
-                disputeId, adminId, status: dto.status,
-                refundAmount: refundAmount.toString(), operation: 'dispute.resolve',
+                disputeId,
+                adminId,
+                status: dto.status,
+                refundAmount: refundAmount.toString(),
+                operation: 'dispute.resolve',
             });
             return resolved;
         });

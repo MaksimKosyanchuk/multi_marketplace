@@ -141,7 +141,7 @@ describe('ProductsService', () => {
         prisma = module.get(PrismaService);
         redis = module.get(RedisService);
 
-        jest.clearAllMocks();
+        jest.resetAllMocks();
 
         mockPrismaService.$transaction.mockImplementation(
             async (transaction: unknown) => {
@@ -255,6 +255,8 @@ describe('ProductsService', () => {
         it('should return cached product if available in Redis', async () => {
             const cachedProduct = {
                 ...mockProduct,
+                createdAt: mockProduct.createdAt.toISOString(),
+                updatedAt: mockProduct.updatedAt.toISOString(),
                 rating: 4.5,
             };
 

@@ -27,8 +27,9 @@ export class SearchProcessor extends WorkerHost {
     }
 
     async process(job: Job<SearchJob>): Promise<void> {
-        return runWithCorrelationId(job.data.correlationId ?? randomUUID(), () =>
-            this.processJob(job),
+        return runWithCorrelationId(
+            job.data.correlationId ?? randomUUID(),
+            () => this.processJob(job),
         );
     }
 

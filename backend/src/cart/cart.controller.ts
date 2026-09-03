@@ -59,7 +59,10 @@ export class CartController {
         description: 'Invalid UUID or quantity less than 1',
     })
     @ApiResponse({ status: 401, description: 'Unauthorized' })
-    @ApiResponse({ status: 404, description: 'Product with the specified ID was not found' })
+    @ApiResponse({
+        status: 404,
+        description: 'Product with the specified ID was not found',
+    })
     addItem(
         @Req() req: Request & { user: { id: string } },
         @Body() dto: AddToCartDto,

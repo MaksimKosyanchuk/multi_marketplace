@@ -6,7 +6,14 @@ import {
     Query,
     UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+    ApiBearerAuth,
+    ApiOperation,
+    ApiParam,
+    ApiQuery,
+    ApiResponse,
+    ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthUser } from '../common/decorators/current-user.decorator';
@@ -21,7 +28,12 @@ export class NotificationsController {
 
     @Get()
     @ApiOperation({ summary: 'Get notifications for the current user' })
-    @ApiQuery({ name: 'unreadOnly', required: false, type: Boolean, description: 'Only unread notifications' })
+    @ApiQuery({
+        name: 'unreadOnly',
+        required: false,
+        type: Boolean,
+        description: 'Only unread notifications',
+    })
     @ApiResponse({ status: 200, description: 'Notification list' })
     @ApiResponse({ status: 401, description: 'Unauthorized' })
     list(

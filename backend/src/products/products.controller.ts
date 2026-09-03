@@ -45,8 +45,7 @@ export class ProductsController {
 
     @Get()
     @ApiOperation({
-        summary:
-            'Get products with filtering, pagination, and sorting',
+        summary: 'Get products with filtering, pagination, and sorting',
     })
     @ApiResponse({
         status: 200,
@@ -66,7 +65,11 @@ export class ProductsController {
     @Get('seller/me')
     @ApiBearerAuth('JWT-auth')
     @ApiOperation({ summary: 'Get products for the current seller' })
-    @ApiResponse({ status: 200, description: 'Seller product list', type: PaginatedProductsResponseDto })
+    @ApiResponse({
+        status: 200,
+        description: 'Seller product list',
+        type: PaginatedProductsResponseDto,
+    })
     @ApiResponse({ status: 401, description: 'Unauthorized' })
     @ApiResponse({ status: 403, description: 'SELLER role required' })
     findSellerProducts(
@@ -85,7 +88,11 @@ export class ProductsController {
     @ApiBearerAuth('JWT-auth')
     @ApiOperation({ summary: 'Submit a product for administrator review' })
     @ApiParam({ name: 'id', description: 'Product ID' })
-    @ApiResponse({ status: 200, description: 'Product submitted for review', type: ProductResponseDto })
+    @ApiResponse({
+        status: 200,
+        description: 'Product submitted for review',
+        type: ProductResponseDto,
+    })
     @ApiResponse({ status: 401, description: 'Unauthorized' })
     @ApiResponse({ status: 403, description: 'SELLER role required' })
     @ApiResponse({ status: 404, description: 'Product was not found' })
@@ -104,7 +111,11 @@ export class ProductsController {
     @Get('admin/pending-approval')
     @ApiBearerAuth('JWT-auth')
     @ApiOperation({ summary: 'Get products awaiting moderation' })
-    @ApiResponse({ status: 200, description: 'Products awaiting moderation', type: PaginatedProductsResponseDto })
+    @ApiResponse({
+        status: 200,
+        description: 'Products awaiting moderation',
+        type: PaginatedProductsResponseDto,
+    })
     @ApiResponse({ status: 401, description: 'Unauthorized' })
     @ApiResponse({ status: 403, description: 'ADMIN role required' })
     findPendingApproval(
@@ -122,7 +133,11 @@ export class ProductsController {
     @ApiOperation({ summary: 'Approve a product for publication' })
     @ApiParam({ name: 'id', description: 'Product ID' })
     @ApiBody({ type: ModerateProductDto })
-    @ApiResponse({ status: 200, description: 'Product approved', type: ProductResponseDto })
+    @ApiResponse({
+        status: 200,
+        description: 'Product approved',
+        type: ProductResponseDto,
+    })
     @ApiResponse({ status: 400, description: 'Invalid data' })
     @ApiResponse({ status: 401, description: 'Unauthorized' })
     @ApiResponse({ status: 403, description: 'ADMIN role required' })
@@ -146,7 +161,11 @@ export class ProductsController {
     @ApiOperation({ summary: 'Reject a product' })
     @ApiParam({ name: 'id', description: 'Product ID' })
     @ApiBody({ type: ModerateProductDto })
-    @ApiResponse({ status: 200, description: 'Product rejected', type: ProductResponseDto })
+    @ApiResponse({
+        status: 200,
+        description: 'Product rejected',
+        type: ProductResponseDto,
+    })
     @ApiResponse({ status: 400, description: 'Invalid data' })
     @ApiResponse({ status: 401, description: 'Unauthorized' })
     @ApiResponse({ status: 403, description: 'ADMIN role required' })
@@ -273,7 +292,9 @@ export class ProductsController {
     @Roles(Role.SELLER)
     @Patch(':id/restore')
     @ApiBearerAuth('JWT-auth')
-    @ApiOperation({ summary: 'Restore a product from the archive (ADMIN only)' })
+    @ApiOperation({
+        summary: 'Restore a product from the archive (ADMIN only)',
+    })
     @ApiParam({ name: 'id', description: 'Product ID', example: 'prod_999xyz' })
     @ApiResponse({
         status: 200,

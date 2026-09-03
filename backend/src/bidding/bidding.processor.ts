@@ -33,8 +33,9 @@ export class BiddingProcessor extends WorkerHost {
     }
 
     async process(job: Job<AuctionJobData>): Promise<void> {
-        return runWithCorrelationId(job.data.correlationId ?? randomUUID(), () =>
-            this.processJob(job),
+        return runWithCorrelationId(
+            job.data.correlationId ?? randomUUID(),
+            () => this.processJob(job),
         );
     }
 

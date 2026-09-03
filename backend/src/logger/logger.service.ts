@@ -92,7 +92,8 @@ export class LoggerService {
         meta?: Prisma.InputJsonValue,
     ): void {
         const correlationId = getCorrelationId();
-        void this.prisma.log.create({
+        void this.prisma.log
+            .create({
                 data: {
                     level,
                     context,
@@ -100,13 +101,15 @@ export class LoggerService {
                     correlationId,
                     meta,
                 },
-            }).catch((error: unknown) => {
-            console.error('[logger] Failed to write log to DB', {
-                context,
-                level,
-                correlationId,
-                error: error instanceof Error ? error.message : String(error),
-            });
+            })
+            .catch((error: unknown) => {
+                console.error('[logger] Failed to write log to DB', {
+                    context,
+                    level,
+                    correlationId,
+                    error:
+                        error instanceof Error ? error.message : String(error),
+                });
             });
     }
 }

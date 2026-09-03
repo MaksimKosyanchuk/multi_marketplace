@@ -1,7 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class KpiSummaryDto {
-    @ApiProperty({ example: 12500.5, description: 'Total revenue for the period' })
+    @ApiProperty({
+        example: 12500.5,
+        description: 'Total revenue for the period',
+    })
     totalRevenue: number;
 
     @ApiProperty({ example: 42, description: 'Total number of orders' })
@@ -24,7 +27,10 @@ export class TopProductDto {
     @ApiProperty({ example: 15, description: 'Units sold' })
     totalSold: number;
 
-    @ApiProperty({ example: 2250, description: 'Total revenue for the product' })
+    @ApiProperty({
+        example: 2250,
+        description: 'Total revenue for the product',
+    })
     totalRevenue: number;
 }
 

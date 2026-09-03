@@ -19,7 +19,9 @@ interface JwtPayload {
 }
 
 @WebSocketGateway({ cors: { origin: process.env.CLIENT_URL ?? false } })
-export class BiddingGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
+export class BiddingGateway
+    implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
     @WebSocketServer()
     server: Server;
 
@@ -72,14 +74,10 @@ export class BiddingGateway implements OnGatewayInit, OnGatewayConnection, OnGat
     }
 
     handleDisconnect(client: Socket): void {
-        void this.logger.audit(
-            BiddingGateway.name,
-            'WebSocket disconnected',
-            {
-                socketId: client.id,
-                userId: client.data.userId,
-            },
-        );
+        void this.logger.audit(BiddingGateway.name, 'WebSocket disconnected', {
+            socketId: client.id,
+            userId: client.data.userId,
+        });
     }
 
     @SubscribeMessage('auction_subscribe')

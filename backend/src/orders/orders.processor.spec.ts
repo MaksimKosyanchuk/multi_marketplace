@@ -3,11 +3,21 @@ import { OrdersProcessor } from './orders.processor';
 describe('OrdersProcessor outbox delivery', () => {
     it('does not emit or create a receipt when the event was already claimed', async () => {
         const prisma = {
-            outboxEvent: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+            outboxEvent: {
+                updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+            },
         };
-        const gateway = { emitOrderStatusUpdate: jest.fn(), emitStockUpdate: jest.fn() };
+        const gateway = {
+            emitOrderStatusUpdate: jest.fn(),
+            emitStockUpdate: jest.fn(),
+        };
         const redis = { setIfAbsent: jest.fn() };
-        const logger = { debug: jest.fn(), log: jest.fn(), audit: jest.fn(), error: jest.fn() };
+        const logger = {
+            debug: jest.fn(),
+            log: jest.fn(),
+            audit: jest.fn(),
+            error: jest.fn(),
+        };
         const processor = new OrdersProcessor(
             prisma as never,
             gateway as never,
@@ -34,7 +44,11 @@ describe('OrdersProcessor outbox delivery', () => {
                     id: 'event-1',
                     type: 'order.status-changed',
                     payload: {},
-                    order: { id: 'order-1', userId: 'user-1', status: 'SHIPPED' },
+                    order: {
+                        id: 'order-1',
+                        userId: 'user-1',
+                        status: 'SHIPPED',
+                    },
                     sellerOrder: null,
                 }),
                 update: jest.fn(),
@@ -44,9 +58,17 @@ describe('OrdersProcessor outbox delivery', () => {
                 create: jest.fn(),
             },
         };
-        const gateway = { emitOrderStatusUpdate: jest.fn(), emitStockUpdate: jest.fn() };
+        const gateway = {
+            emitOrderStatusUpdate: jest.fn(),
+            emitStockUpdate: jest.fn(),
+        };
         const redis = { setIfAbsent: jest.fn() };
-        const logger = { debug: jest.fn(), log: jest.fn(), audit: jest.fn(), error: jest.fn() };
+        const logger = {
+            debug: jest.fn(),
+            log: jest.fn(),
+            audit: jest.fn(),
+            error: jest.fn(),
+        };
         const processor = new OrdersProcessor(
             prisma as never,
             gateway as never,
