@@ -28,7 +28,7 @@ type ModalType = 'auth' | 'cart_success' | 'cart_error' | null;
 
 export const CatalogPage: React.FC = () => {
     const navigate = useNavigate();
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, socket } = useAuth();
 
     const [products, setProducts] = useState<Product[]>([]);
     const [cartItemIds, setCartItemIds] = useState<string[]>([]);
@@ -99,27 +99,56 @@ export const CatalogPage: React.FC = () => {
         void loadData();
     }, [fetchProducts, fetchCart]);
 
+    useEffect(() => {
+        if (!socket) return;
+
+        const handleStockUpdate = (payload: {
+            productId?: string;
+            quantity?: number;
+        }) => {
+            const { productId, quantity } = payload;
+            if (!productId || quantity === undefined) return;
+            setProducts((current) =>
+                current.map((product) =>
+                    product.id === productId
+                        ? { ...product, stock: quantity }
+                        : product,
+                ),
+            );
+        };
+        const handleReconnect = () => {
+            void fetchProducts();
+        };
+
+        socket.on('product_stock_updated', handleStockUpdate);
+        socket.on('connect', handleReconnect);
+        return () => {
+            socket.off('product_stock_updated', handleStockUpdate);
+            socket.off('connect', handleReconnect);
+        };
+    }, [socket, fetchProducts]);
+
     const handleAddToCart = async (product: Product) => {
         if (!isAuthenticated) {
             setModalType('auth');
             return;
         }
 
+        const wasAlreadyInCart = cartItemIds.includes(product.id);
+        setCartItemIds((prev) =>
+            prev.includes(product.id) ? prev : [...prev, product.id],
+        );
+
         try {
             await cartService.addToCart(product.id, 1);
-
-            setCartItemIds((prev) => {
-                if (prev.includes(product.id)) {
-                    return prev;
-                }
-
-                return [...prev, product.id];
-            });
 
             setSelectedProductName(product.name);
             setModalType('cart_success');
         } catch (err: unknown) {
             console.error('Помилка додавання в кошик:', err);
+            if (!wasAlreadyInCart) {
+                setCartItemIds((prev) => prev.filter((id) => id !== product.id));
+            }
             setModalType('cart_error');
         }
     };

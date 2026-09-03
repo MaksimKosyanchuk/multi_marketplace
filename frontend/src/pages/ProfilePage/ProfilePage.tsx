@@ -131,16 +131,34 @@ export const ProfilePage: React.FC = () => {
     );
 
     useEffect(() => {
-        if (!socket || !isCustomer) {
+        if (!socket || (!isCustomer && !isSeller)) {
             return;
         }
 
-        socket.on('order_status_updated', handleOrderUpdate);
+        const handleOrderStatusUpdate = () => {
+            if (isCustomer) void handleOrderUpdate();
+            if (isSeller) void fetchSales();
+        };
+        const handleReconnect = () => {
+            if (isCustomer) void fetchOrders();
+            if (isSeller) void fetchSales();
+        };
+
+        socket.on('order_status_updated', handleOrderStatusUpdate);
+        socket.on('connect', handleReconnect);
 
         return () => {
-            socket.off('order_status_updated', handleOrderUpdate);
+            socket.off('order_status_updated', handleOrderStatusUpdate);
+            socket.off('connect', handleReconnect);
         };
-    }, [socket, isCustomer, handleOrderUpdate]);
+    }, [
+        socket,
+        isCustomer,
+        isSeller,
+        handleOrderUpdate,
+        fetchOrders,
+        fetchSales,
+    ]);
 
     useEffect(() => {
         void fetchCategories();

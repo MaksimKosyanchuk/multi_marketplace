@@ -28,6 +28,14 @@ export class ProductResponseDto {
     @ApiProperty({ example: 50 })
     stock: number;
 
+    @ApiProperty({
+        example: 4.5,
+        description: 'Средний рейтинг по подтверждённым отзывам',
+        minimum: 0,
+        maximum: 5,
+    })
+    rating: number;
+
     @ApiProperty({ example: '/uploads/products/image-123.jpg', nullable: true })
     imageUrl?: string;
 

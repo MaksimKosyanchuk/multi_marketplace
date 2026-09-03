@@ -260,6 +260,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                         </span>
                     </div>
 
+                    {product.rating !== undefined && (
+                        <div aria-label={`Рейтинг: ${product.rating.toFixed(1)} з 5`}>
+                            {'★'.repeat(Math.round(product.rating))}
+                            {'☆'.repeat(5 - Math.round(product.rating))}
+                            <span> {product.rating.toFixed(1)}</span>
+                        </div>
+                    )}
+
                     {isAdmin && product.status && (
                         <span
                             className={`${styles.statusBadge} ${styles[`status${product.status}`]}`}

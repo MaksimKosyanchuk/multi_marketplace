@@ -71,6 +71,13 @@ export class SearchService implements OnModuleInit {
                 `Meilisearch settings unavailable: ${error instanceof Error ? error.message : 'unknown error'}`,
             );
         }
+        try {
+            await this.reindexAllProducts();
+        } catch (error: unknown) {
+            this.logger.warn(
+                `Meilisearch reindex unavailable: ${error instanceof Error ? error.message : 'unknown error'}`,
+            );
+        }
     }
 
     async search(query: QueryProductDto) {
@@ -107,7 +114,22 @@ export class SearchService implements OnModuleInit {
             );
             if (!response.ok)
                 throw new Error(`Meilisearch returned ${response.status}`);
-            return await response.json();
+            const result = (await response.json()) as {
+                estimatedTotalHits?: number;
+                hits?: unknown[];
+            };
+            if (
+                result.estimatedTotalHits === 0 &&
+                (await this.prisma.product.count({
+                    where: { status: ProductStatus.ACTIVE, isArchived: false },
+                })) > 0
+            ) {
+                this.logger.warn(
+                    'Meilisearch returned no products while PostgreSQL has active products; using PostgreSQL fallback',
+                );
+                return this.fallback(query);
+            }
+            return result;
         } catch (error: unknown) {
             this.logger.warn(
                 `Search unavailable, using PostgreSQL fallback: ${error instanceof Error ? error.message : 'unknown error'}`,
@@ -127,20 +149,60 @@ export class SearchService implements OnModuleInit {
               product.reviews.length
             : 0;
         await this.request(`/indexes/${this.index}/documents`, 'POST', [
-            {
-                id: product.id,
-                sellerId: product.sellerId,
-                categoryId: product.categoryId,
-                name: product.name,
-                description: product.description,
-                price: Number(product.price),
-                stock: product.stock,
-                type: product.type,
-                status: product.status,
-                isArchived: product.isArchived,
-                rating,
-            } satisfies SearchDocument,
+            this.toSearchDocument(product, rating),
         ]);
+    }
+
+    private async reindexAllProducts(): Promise<void> {
+        const products = await this.prisma.product.findMany({
+            include: { reviews: { select: { rating: true } } },
+        });
+        if (!products.length) return;
+
+        await this.request(
+            `/indexes/${this.index}/documents`,
+            'POST',
+            products.map((product) => {
+                const rating = product.reviews.length
+                    ? product.reviews.reduce(
+                          (sum, review) => sum + review.rating,
+                          0,
+                      ) / product.reviews.length
+                    : 0;
+                return this.toSearchDocument(product, rating);
+            }),
+        );
+        this.logger.log(`Indexed ${products.length} existing products`);
+    }
+
+    private toSearchDocument(
+        product: {
+            id: string;
+            sellerId: string;
+            categoryId: string;
+            name: string;
+            description: string;
+            price: unknown;
+            stock: number;
+            type: ProductType;
+            status: ProductStatus;
+            isArchived: boolean;
+        },
+        rating: number,
+    ): SearchDocument {
+        return {
+            id: product.id,
+            sellerId: product.sellerId,
+            categoryId: product.categoryId,
+            name: product.name,
+            description: product.description,
+            price: Number(product.price),
+            stock: product.stock,
+            type: product.type,
+            status: product.status,
+            isArchived: product.isArchived,
+            rating,
+        };
     }
 
     async deleteProduct(productId: string): Promise<void> {
@@ -199,7 +261,10 @@ export class SearchService implements OnModuleInit {
                 await Promise.all([
                     tx.product.findMany({
                         where,
-                        include: { category: true },
+                        include: {
+                            category: true,
+                            reviews: { select: { rating: true } },
+                        },
                         orderBy:
                             query.sort === 'price_asc'
                                 ? { price: 'asc' }
@@ -227,7 +292,15 @@ export class SearchService implements OnModuleInit {
                     }),
                 ]);
             return {
-                hits,
+                hits: hits.map((product) => ({
+                    ...product,
+                    rating: product.reviews.length
+                        ? product.reviews.reduce(
+                              (sum, review) => sum + review.rating,
+                              0,
+                          ) / product.reviews.length
+                        : 0,
+                })),
                 estimatedTotalHits: total,
                 page: query.page,
                 limit: query.limit,
