@@ -12,6 +12,7 @@ describe('ProductsService moderation', () => {
     const tx = {
         product: {
             updateMany: jest.fn(),
+            update: jest.fn(),
             findUniqueOrThrow: jest.fn(),
         },
         outboxEvent: { create: jest.fn() },
@@ -54,7 +55,10 @@ describe('ProductsService moderation', () => {
                 status: ProductStatus.PENDING_APPROVAL,
                 isArchived: false,
             },
-            data: { status: ProductStatus.ACTIVE },
+            data: {
+                status: ProductStatus.ACTIVE,
+                version: { increment: 1 },
+            },
         });
         expect(tx.outboxEvent.create).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -69,6 +73,7 @@ describe('ProductsService moderation', () => {
             }),
         );
         expect(result).toEqual(product);
+        expect(redis.delByPattern).toHaveBeenCalledWith('products:list:*');
     });
 
     it('rejects moderation for a product that is not pending', async () => {
@@ -90,7 +95,10 @@ describe('ProductsService moderation', () => {
 
         expect(tx.product.updateMany).toHaveBeenCalledWith(
             expect.objectContaining({
-                data: { status: ProductStatus.REJECTED },
+                data: {
+                    status: ProductStatus.REJECTED,
+                    version: { increment: 1 },
+                },
             }),
         );
         expect(tx.outboxEvent.create).toHaveBeenCalledWith(
@@ -98,5 +106,29 @@ describe('ProductsService moderation', () => {
                 data: expect.objectContaining({ type: 'product.rejected' }),
             }),
         );
+        expect(redis.delByPattern).toHaveBeenCalledWith('products:list:*');
+    });
+
+    it('restores an archived product as a draft', async () => {
+        prisma.product.findUnique.mockResolvedValue({
+            ...product,
+            isArchived: true,
+        });
+        tx.product.update.mockResolvedValue({
+            ...product,
+            isArchived: false,
+            status: ProductStatus.DRAFT,
+        });
+
+        await service.restore('product-1', 'seller-1');
+
+        expect(tx.product.updateMany).toHaveBeenCalledWith({
+            where: { id: 'product-1', sellerId: 'seller-1', isArchived: true },
+            data: {
+                isArchived: false,
+                status: ProductStatus.DRAFT,
+                version: { increment: 1 },
+            },
+        });
     });
 });

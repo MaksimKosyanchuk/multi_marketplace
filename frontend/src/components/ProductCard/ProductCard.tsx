@@ -15,7 +15,9 @@ interface ProductCardProps {
     isAdmin?: boolean;
     isInCart?: boolean;
     onEdit?: (product: Product) => void;
+    onDelete?: (product: Product) => void;
     onRestore?: (product: Product) => Promise<void> | void;
+    onPublish?: (product: Product) => Promise<void> | void;
     onAddToCart?: (product: Product) => Promise<void> | void;
 }
 
@@ -35,7 +37,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     isAdmin = false,
     isInCart = false,
     onEdit,
+    onDelete,
     onRestore,
+    onPublish,
     onAddToCart,
 }) => {
     const navigate = useNavigate();
@@ -58,6 +62,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     const isValidPrice = !isNaN(numericPrice) && numericPrice >= 0;
 
     const isOutOfStock = product.stock <= 0;
+    const isArchived = product.isArchived || product.status === 'ARCHIVED';
 
     const fullImageUrl = product.imageUrl
         ? getImageUrl(product.imageUrl)
@@ -120,7 +125,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
     const renderActionButton = () => {
         if (isAdmin) {
-            if (product.isArchived) {
+            if (isArchived) {
                 return (
                     <Button
                         variant="secondary"
@@ -133,14 +138,37 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                 );
             }
 
+            if (product.status === 'DRAFT') {
+                return (
+                    <div className={styles.footer}>
+                        <Button
+                            variant="primary"
+                            size="medium"
+                            onClick={() => onPublish?.(product)}
+                            className={styles.addBtn}
+                        >
+                            Опублікувати
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            size="medium"
+                            onClick={() => onDelete?.(product)}
+                            className={styles.deleteBtn}
+                        >
+                            Видалити
+                        </Button>
+                    </div>
+                );
+            }
+
             return (
                 <Button
                     variant="secondary"
                     size="medium"
-                    onClick={() => onEdit?.(product)}
-                    className={styles.addBtn}
+                    onClick={() => onDelete?.(product)}
+                    className={styles.deleteBtn}
                 >
-                    Редагувати
+                    Видалити
                 </Button>
             );
         }
@@ -187,14 +215,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     return (
         <>
             <div
-                className={`${styles.card} ${product.isArchived ? styles.archivedCard : ''}`}
+                className={`${styles.card} ${isArchived ? styles.archivedCard : ''}`}
             >
-                {product.isArchived && (
+                {isArchived && (
                     <div className={styles.archivedBadge}>В архіві</div>
                 )}
 
                 {/* Плашка "Немає в наявності" для клієнтської частини */}
-                {!isAdmin && isOutOfStock && !product.isArchived && (
+                {!isAdmin && isOutOfStock && !isArchived && (
                     <div className={styles.outOfStockBadge}>
                         Немає в наявності
                     </div>

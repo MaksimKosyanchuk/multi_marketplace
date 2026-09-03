@@ -66,4 +66,11 @@ export const productService = {
         );
         return response;
     },
+
+    submitForApproval: async (id: string): Promise<Product> => {
+        const { data: response } = await api.patch<Product>(
+            `/products/${id}/submit-for-approval`,
+        );
+        return response;
+    },
 };

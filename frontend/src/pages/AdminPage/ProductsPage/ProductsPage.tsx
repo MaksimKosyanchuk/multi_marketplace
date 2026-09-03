@@ -334,6 +334,24 @@ export default function ProductsPage() {
         }
     };
 
+    const handlePublishProductInline = async (productToPublish: Product) => {
+        try {
+            const updated = await productService.submitForApproval(productToPublish.id);
+            setProducts((prev) =>
+                prev.map((p) => (p.id === productToPublish.id ? updated : p)),
+            );
+        } catch (err: unknown) {
+            console.error('Помилка при публікації товару:', err);
+            setError('Не вдалося відправити товар на модерацію.');
+        }
+    };
+
+    const handleDeleteProductInline = (product: Product) => {
+        setSelectedProduct(product);
+        setShowDeleteConfirm(true);
+        setModalMode('edit');
+    };
+
     return (
         <div className={styles.container}>
             <div className={styles.header}>
@@ -362,7 +380,9 @@ export default function ProductsPage() {
                             product={product}
                             isAdmin={true}
                             onEdit={handleOpenEditModal}
+                            onDelete={handleDeleteProductInline}
                             onRestore={handleRestoreProductInline}
+                            onPublish={handlePublishProductInline}
                         />
                     ))}
                 </div>

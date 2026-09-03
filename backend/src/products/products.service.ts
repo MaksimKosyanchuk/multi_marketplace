@@ -266,7 +266,10 @@ export class ProductsService {
                     status: ProductStatus.PENDING_APPROVAL,
                     isArchived: false,
                 },
-                data: { status },
+                data: {
+                    status,
+                    version: { increment: 1 },
+                },
             });
             if (!claimed.count) {
                 throw new BadRequestException(
@@ -440,9 +443,19 @@ export class ProductsService {
         await this.findOwnedProduct(id, sellerId);
 
         await this.prisma.$transaction(async (tx) => {
-            const archived = await tx.product.update({
+            const claimed = await tx.product.updateMany({
+                where: { id, sellerId, isArchived: false },
+                data: {
+                    isArchived: true,
+                    status: ProductStatus.ARCHIVED,
+                    version: { increment: 1 },
+                },
+            });
+            if (!claimed.count) {
+                throw new BadRequestException('Product is already archived');
+            }
+            const archived = await tx.product.findUniqueOrThrow({
                 where: { id },
-                data: { isArchived: true },
             });
             await tx.cartItem.deleteMany({ where: { productId: id } });
             await tx.outboxEvent.create({
@@ -475,16 +488,30 @@ export class ProductsService {
         await this.findOwnedProduct(id, sellerId);
 
         const product = await this.prisma.$transaction(async (tx) => {
-            const restored = await tx.product.update({
+            const claimed = await tx.product.updateMany({
+                where: { id, sellerId, isArchived: true },
+                data: {
+                    isArchived: false,
+                    status: ProductStatus.DRAFT,
+                    version: { increment: 1 },
+                },
+            });
+            if (!claimed.count) {
+                throw new BadRequestException('Only archived products can be restored');
+            }
+            const restored = await tx.product.findUniqueOrThrow({
                 where: { id },
-                data: { isArchived: false },
             });
             await tx.outboxEvent.create({
                 data: {
                     aggregateType: 'Product',
                     aggregateId: id,
-                    type: 'product.updated',
-                    payload: { productId: id, correlationId: getCorrelationId() },
+                    type: 'product.restored',
+                    payload: {
+                        productId: id,
+                        status: ProductStatus.DRAFT,
+                        correlationId: getCorrelationId(),
+                    },
                     idempotencyKey: `product-restored:${restored.id}:${restored.version}`,
                 },
             });
