@@ -1,7 +1,8 @@
 import React from 'react';
 import styles from '../../ProfilePage.module.css';
 import { AuctionCard } from '../../../../components/AuctionCard/AuctionCard';
-import type { Auction, Product } from '../../../../types';
+import type { Auction } from '../../../../types';
+import type { Product } from '../../../../types/product.type';
 
 interface AuctionHistoryTabProps {
     auctionHistory: Auction[];
