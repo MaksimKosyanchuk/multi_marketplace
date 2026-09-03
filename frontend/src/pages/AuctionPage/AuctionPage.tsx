@@ -92,12 +92,16 @@ const AuctionPage: React.FC = () => {
         const previousPrice = auction.currentPrice;
         setBidding(true);
         setError('');
-        setAuction({ ...auction, currentPrice: bidAmount });
+        setAuction((current) => current ? { ...current, currentPrice: bidAmount } : current);
         try {
             await auctionService.bid(auctionId, bidAmount);
             setAmount('');
         } catch (err: unknown) {
-            setAuction({ ...auction, currentPrice: previousPrice });
+            setAuction((current) =>
+                current && current.currentPrice === bidAmount
+                    ? { ...current, currentPrice: previousPrice }
+                    : current,
+            );
             const message =
                 err instanceof AxiosError && err.response?.data?.message;
             setError(
@@ -119,12 +123,7 @@ const AuctionPage: React.FC = () => {
     const isRunning =
         auction.status === 'ACTIVE' && now >= startsAt && now < endsAt;
     const canBid = user?.role === 'CUSTOMER';
-    const displayStatus =
-        now >= endsAt && auction.status === 'ACTIVE'
-            ? auction.bids.length > 0
-                ? 'SOLD'
-                : 'EXPIRED'
-            : auction.status;
+    const displayStatus = auction.status;
     const remainingMs = Math.max(0, endsAt - now);
     const remainingHours = Math.floor(remainingMs / 3_600_000);
     const remainingMinutes = Math.floor((remainingMs % 3_600_000) / 60_000);

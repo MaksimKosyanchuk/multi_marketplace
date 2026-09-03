@@ -310,9 +310,13 @@ export class SearchService implements OnModuleInit {
         const where: Prisma.ProductWhereInput = {
             status: ProductStatus.ACTIVE,
             isArchived: false,
-            OR: [
-                { type: ProductType.FIXED_PRICE },
-                { type: ProductType.AUCTION, auction: { status: 'ACTIVE' } },
+            AND: [
+                {
+                    OR: [
+                        { type: ProductType.FIXED_PRICE },
+                        { type: ProductType.AUCTION, auction: { status: 'ACTIVE' } },
+                    ],
+                },
             ],
             ...(query.search && {
                 OR: [

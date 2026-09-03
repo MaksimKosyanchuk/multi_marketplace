@@ -53,6 +53,7 @@ export const CartPage: React.FC = () => {
                 }
             } catch (err) {
                 console.error('Помилка завантаження кошика:', err);
+                if (isMounted) setErrorMessage('Не вдалося завантажити кошик. Спробуйте ще раз.');
             } finally {
                 if (isMounted) {
                     setIsLoading(false);
@@ -186,6 +187,19 @@ export const CartPage: React.FC = () => {
             0,
         )         ?? cart?.totalAmount
         ?? 0;
+    const sellerGroups = cart?.items.reduce<Record<string, { name: string; total: number }>>(
+        (groups, item) => {
+            const sellerId = item.product.sellerId;
+            const group = groups[sellerId] ?? {
+                name: item.product.seller?.nickName ?? item.product.seller?.email ?? sellerId,
+                total: 0,
+            };
+            group.total += item.product.price * item.quantity;
+            groups[sellerId] = group;
+            return groups;
+        },
+        {},
+    ) ?? {};
 
     if (isLoading) {
         return (
@@ -193,6 +207,10 @@ export const CartPage: React.FC = () => {
                 Завантаження кошика...
             </div>
         );
+    }
+
+    if (errorMessage && !cart) {
+        return <div className={styles.emptyContainer}><h2>{errorMessage}</h2></div>;
     }
 
     if (!cart || cart.items.length === 0) {
@@ -243,7 +261,7 @@ export const CartPage: React.FC = () => {
 
                             <div className={styles.itemInfo}>
                                 <Link
-                                    to={`/products/${item.product.id}`}
+                                    to={`/product/${item.product.id}`}
                                     className={styles.productName}
                                 >
                                     {item.product.name ?? item.product.title ?? 'Товар'}
@@ -352,6 +370,14 @@ export const CartPage: React.FC = () => {
                             )}{' '}
                             шт.
                         </span>
+                    </div>
+                    <div className={styles.sellerGroups}>
+                        {Object.entries(sellerGroups).map(([sellerId, group]) => (
+                            <div className={styles.summaryRow} key={sellerId}>
+                                <span>Продавець: {group.name}</span>
+                                <span>${group.total.toFixed(2)}</span>
+                            </div>
+                        ))}
                     </div>
 
                     <div

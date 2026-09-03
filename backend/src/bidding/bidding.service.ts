@@ -62,10 +62,6 @@ export class BiddingService {
                     'Only a draft, pending, or active auction product can be listed',
                 );
             }
-            if (product.stock < 1)
-                throw new BadRequestException(
-                    'Auction product is out of stock',
-                );
             const existing = await tx.auction.findUnique({
                 where: { productId: dto.productId },
             });
@@ -150,7 +146,7 @@ export class BiddingService {
                         productId: auction.productId,
                         correlationId: getCorrelationId(),
                     },
-                    idempotencyKey: `product-auction-status:${auctionId}:${status}`,
+                    idempotencyKey: `product-auction-status:${auctionId}:ACTIVE`,
                 },
             });
             return result;
@@ -297,34 +293,20 @@ export class BiddingService {
 
     async endAuction(auctionId: string) {
         return this.prisma.$transaction(async (tx) => {
-            const auction = await tx.auction.findUnique({
-                where: { id: auctionId },
-                include: {
-                    bids: {
-                        where: { status: BidStatus.ACTIVE },
-                        orderBy: { amount: 'desc' },
-                        take: 1,
-                    },
-                },
-            });
+            const auction = await tx.auction.findUnique({ where: { id: auctionId } });
             if (!auction || auction.status !== AuctionStatus.ACTIVE)
                 return auction;
-            const winner = auction.bids[0];
             if (new Date() < auction.endsAt) return auction;
-            const status = winner ? AuctionStatus.SOLD : AuctionStatus.EXPIRED;
             const claimed = await tx.auction.updateMany({
                 where: {
                     id: auctionId,
                     status: AuctionStatus.ACTIVE,
-                    version: auction.version,
                     endsAt: { lte: new Date() },
                 },
                 data: {
-                    status,
-                    winnerId: winner?.bidderId,
-                    checkoutExpiresAt: winner
-                        ? new Date(Date.now() + 15 * 60 * 1000)
-                        : null,
+                    status: AuctionStatus.EXPIRED,
+                    winnerId: null,
+                    checkoutExpiresAt: null,
                 },
             });
             if (!claimed.count)
@@ -332,6 +314,22 @@ export class BiddingService {
                     where: { id: auctionId },
                     include: auctionDetails,
                 });
+            const winner = await tx.bid.findFirst({
+                where: { auctionId, status: BidStatus.ACTIVE },
+                orderBy: { amount: 'desc' },
+            });
+            const status = winner ? AuctionStatus.SOLD : AuctionStatus.EXPIRED;
+            await tx.auction.update({
+                where: { id: auctionId },
+                data: {
+                    status,
+                    winnerId: winner?.bidderId ?? null,
+                    checkoutExpiresAt: winner
+                        ? new Date(Date.now() + 15 * 60 * 1000)
+                        : null,
+                    version: { increment: 1 },
+                },
+            });
             const result = await tx.auction.findUnique({
                 where: { id: auctionId },
                 include: auctionDetails,
@@ -460,22 +458,17 @@ export class BiddingService {
                         'Auction checkout window has expired',
                     );
                 }
-                const stock = await tx.product.updateMany({
-                    where: {
-                        id: auction.productId,
-                        type: ProductType.AUCTION,
-                        isArchived: false,
-                    },
-                    data: {
-                        stock: 0,
-                        status: ProductStatus.SOLD,
-                        version: { increment: 1 },
-                    },
+                if (
+                    auction.product.type !== ProductType.AUCTION ||
+                    auction.product.isArchived ||
+                    auction.product.status !== ProductStatus.ACTIVE
+                ) {
+                    throw new BadRequestException('Auction product is no longer available');
+                }
+                await tx.product.update({
+                    where: { id: auction.productId },
+                    data: { status: ProductStatus.SOLD, version: { increment: 1 } },
                 });
-                if (!stock.count)
-                    throw new BadRequestException(
-                        'Auction product is no longer available',
-                    );
                 const commissionRate = new Prisma.Decimal('0.10');
                 const commissionAmount =
                     auction.currentPrice.mul(commissionRate);

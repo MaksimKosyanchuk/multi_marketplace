@@ -364,7 +364,12 @@ export const ProfilePage: React.FC = () => {
     const handleReview = async (orderItemId: string) => {
         const rating = Number(window.prompt('Оцінка від 1 до 5'));
         if (!Number.isInteger(rating) || rating < 1 || rating > 5) return;
-        await reviewService.create(orderItemId, rating, window.prompt('Ваш коментар') ?? undefined);
+        try {
+            await reviewService.create(orderItemId, rating, window.prompt('Ваш коментар') ?? undefined);
+        } catch {
+            setErrorMessage('Не вдалося залишити відгук.');
+            return;
+        }
         const productId = orders
             .flatMap((order) => order.sellerOrders ?? [])
             .flatMap((sellerOrder) => sellerOrder.items)
@@ -379,8 +384,12 @@ export const ProfilePage: React.FC = () => {
         const subject = window.prompt('Тема спору');
         const description = window.prompt('Опишіть проблему');
         if (!subject || !description) return;
-        await disputeService.open(sellerOrderId, subject, description);
-        await fetchDisputes();
+        try {
+            await disputeService.open(sellerOrderId, subject, description);
+            await fetchDisputes();
+        } catch {
+            setErrorMessage('Не вдалося відкрити спір.');
+        }
     };
 
     const handleSellerOrderStatusChange = async (

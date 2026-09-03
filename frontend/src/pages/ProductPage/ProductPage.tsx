@@ -3,6 +3,8 @@ import { useParams } from 'react-router-dom';
 import { productService } from '../../services/productService';
 import { reviewService } from '../../services/reviewService';
 import { cartService } from '../../services/cartService';
+import { onStockUpdate } from '../../services/socketClient';
+import { useAuth } from '../../context/AuthContext/useAuth';
 import { Button } from '../../components/Ui/Button/Button';
 import type { Product } from '../../types/product.type';
 import type { ReviewSummary } from '../../types/marketplace.type';
@@ -13,6 +15,8 @@ export default function ProductPage() {
     const [product, setProduct] = useState<Product | null>(null);
     const [reviews, setReviews] = useState<ReviewSummary | null>(null);
     const [added, setAdded] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const { socket } = useAuth();
 
     useEffect(() => {
         if (!id) return;
@@ -20,9 +24,17 @@ export default function ProductPage() {
             .then(([loadedProduct, loadedReviews]) => {
                 setProduct(loadedProduct);
                 setReviews(loadedReviews);
-            });
-    }, [id]);
+            })
+            .catch(() => setError('Не вдалося завантажити товар'));
+        if (!socket) return;
+        return onStockUpdate((update) => {
+            if (update.productId === id) {
+                setProduct((current) => current ? { ...current, stock: update.quantity } : current);
+            }
+        });
+    }, [id, socket]);
 
+    if (error) return <div className={styles.container}>{error}</div>;
     if (!product) return <div className={styles.container}>Завантаження...</div>;
 
     const addToCart = async () => {

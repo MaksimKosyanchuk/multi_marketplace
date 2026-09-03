@@ -7,11 +7,15 @@ import styles from './DisputesPage.module.css';
 export default function DisputesPage() {
     const [disputes, setDisputes] = useState<Dispute[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
     const load = async () => {
         setLoading(true);
+        setError(null);
         try {
             setDisputes(await disputeService.listAll());
+        } catch {
+            setError('Не вдалося завантажити спори');
         } finally {
             setLoading(false);
         }
@@ -27,7 +31,7 @@ export default function DisputesPage() {
     return (
         <div className={styles.container}>
             <h1>Спори</h1>
-            {loading ? <p>Завантаження...</p> : disputes.length === 0 ? <p>Спорів немає.</p> : (
+            {loading ? <p>Завантаження...</p> : error ? <p>{error}</p> : disputes.length === 0 ? <p>Спорів немає.</p> : (
                 <div className={styles.list}>
                     {disputes.map((dispute) => (
                         <article className={styles.card} key={dispute.id}>

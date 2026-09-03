@@ -150,7 +150,7 @@ export default function DashBoardPage(): React.ReactNode {
                         <div className={styles.kpiCard}>
                             <span className={styles.kpiLabel}>Комісія платформи</span>
                             <strong className={styles.kpiValue}>
-                                ${data.summary.totalRevenue.toFixed(2)}
+                                ${(data.summary.platformCommission ?? data.summary.totalRevenue).toFixed(2)}
                             </strong>
                         </div>
                         <div className={styles.kpiCard}>

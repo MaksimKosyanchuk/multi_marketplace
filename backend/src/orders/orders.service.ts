@@ -1321,6 +1321,10 @@ export class OrdersService {
                         'Order item cannot be refunded in the current status',
                     );
                 }
+                await tx.sellerOrder.update({
+                    where: { id: item.sellerOrderId },
+                    data: { updatedAt: new Date() },
+                });
                 const refunded = await tx.refund.aggregate({
                     where: {
                         orderItemId,
@@ -1341,11 +1345,16 @@ export class OrdersService {
                         status === PaymentStatus.PAID ||
                         status === PaymentStatus.PARTIALLY_REFUNDED,
                 );
+                if (!payment) {
+                    throw new BadRequestException(
+                        'Order has no successful payment to refund',
+                    );
+                }
                 const refund = await tx.refund.create({
                     data: {
                         sellerOrderId: item.sellerOrderId,
                         orderItemId,
-                        paymentId: payment?.id,
+                        paymentId: payment.id,
                         amount,
                         quantity,
                         reason: reason.trim() || 'Refund requested',

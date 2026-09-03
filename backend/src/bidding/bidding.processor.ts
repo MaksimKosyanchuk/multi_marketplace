@@ -40,7 +40,19 @@ export class BiddingProcessor extends WorkerHost {
 
     private async processJob(job: Job<AuctionJobData>): Promise<void> {
         if (job.name === 'start-auction') {
-            await this.biddingService.startAuction(job.data.auctionId);
+            const auction = await this.biddingService.startAuction(job.data.auctionId);
+            if (auction?.status === 'DRAFT') {
+                await this.auctionsQueue.add(
+                    'start-auction',
+                    { auctionId: auction.id, correlationId: getCorrelationId() },
+                    {
+                        delay: 30_000,
+                        jobId: `auction-start-retry-${auction.id}-${Date.now()}`,
+                        attempts: 5,
+                        backoff: { type: 'exponential', delay: 1000 },
+                    },
+                );
+            }
             return;
         }
         if (job.name === 'end-auction') {
