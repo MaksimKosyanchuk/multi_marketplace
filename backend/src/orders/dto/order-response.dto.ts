@@ -9,7 +9,7 @@ export class OrderItemResponseDto {
     productId: string;
 
     @ApiProperty({
-        example: 'Беспроводная мышь',
+        example: 'Wireless mouse',
         description: 'Product name at the time of ordering',
     })
     productName: string;

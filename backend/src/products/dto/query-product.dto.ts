@@ -22,7 +22,7 @@ export enum ProductSort {
 
 export class QueryProductDto {
     @ApiPropertyOptional({
-        description: 'Поисковая строка по названию или описанию',
+        description: 'Search text matching the name or description',
         example: 'Sony',
     })
     @IsOptional()
@@ -30,7 +30,7 @@ export class QueryProductDto {
     search?: string;
 
     @ApiPropertyOptional({
-        description: 'Фильтр по UUID категории',
+        description: 'Filter by category UUID',
         example: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
     })
     @IsOptional()
@@ -38,7 +38,7 @@ export class QueryProductDto {
     categoryId?: string;
 
     @ApiPropertyOptional({
-        description: 'Минимальная цена',
+        description: 'Minimum price',
         example: 100,
         minimum: 0,
     })
@@ -49,7 +49,7 @@ export class QueryProductDto {
     minPrice?: number;
 
     @ApiPropertyOptional({
-        description: 'Максимальная цена',
+        description: 'Maximum price',
         example: 500,
         minimum: 0,
     })
@@ -61,7 +61,7 @@ export class QueryProductDto {
 
     @ApiPropertyOptional({
         enum: ProductSort,
-        description: 'Сортировка списка товаров',
+        description: 'Product list sort order',
         example: ProductSort.NEWEST,
     })
     @IsOptional()
@@ -69,7 +69,7 @@ export class QueryProductDto {
     sort?: ProductSort;
 
     @ApiPropertyOptional({
-        description: 'Номер страницы',
+        description: 'Page number',
         default: 1,
         minimum: 1,
     })
@@ -80,7 +80,7 @@ export class QueryProductDto {
     page: number = 1;
 
     @ApiPropertyOptional({
-        description: 'Количество товаров на странице',
+        description: 'Number of products per page',
         default: 10,
         minimum: 1,
         maximum: 100,
@@ -93,7 +93,7 @@ export class QueryProductDto {
     limit: number = 10;
 
     @ApiPropertyOptional({
-        description: 'Включить ли архивные (мягко удаленные) товары в выдачу',
+        description: 'Whether to include archived (soft-deleted) products',
         default: false,
     })
     @IsOptional()
@@ -101,13 +101,13 @@ export class QueryProductDto {
     @Transform(({ value }) => value === 'true' || value === true)
     includeArchived?: boolean;
 
-    @ApiPropertyOptional({ description: 'Фильтр по seller UUID' })
+    @ApiPropertyOptional({ description: 'Filter by seller UUID' })
     @IsOptional()
     @IsUUID()
     sellerId?: string;
 
     @ApiPropertyOptional({
-        description: 'Минимальный рейтинг товара',
+        description: 'Minimum product rating',
         minimum: 0,
         maximum: 5,
     })
@@ -118,13 +118,13 @@ export class QueryProductDto {
     @Max(5)
     minRating?: number;
 
-    @ApiPropertyOptional({ description: 'Только товары в наличии' })
+    @ApiPropertyOptional({ description: 'Only products currently in stock' })
     @IsOptional()
     @IsBoolean()
     @Transform(({ value }) => value === 'true' || value === true)
     inStock?: boolean;
 
-    @ApiPropertyOptional({ enum: ProductType, description: 'Тип товара' })
+    @ApiPropertyOptional({ enum: ProductType, description: 'Product type' })
     @IsOptional()
     @IsEnum(ProductType)
     type?: ProductType;

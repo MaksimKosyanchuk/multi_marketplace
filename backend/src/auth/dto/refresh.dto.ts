@@ -4,7 +4,7 @@ import { IsString, MinLength } from 'class-validator';
 export class RefreshDto {
     @ApiProperty({
         example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-        description: 'Refresh токен для обновления сессии',
+        description: 'Refresh token used to renew the session',
         minLength: 20,
     })
     @IsString()

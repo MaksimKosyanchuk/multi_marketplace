@@ -23,8 +23,8 @@ export class CreateProductDto {
     @IsEnum(ProductType)
     type?: ProductType;
     @ApiProperty({
-        example: 'Беспроводные наушники Sony WH-1000XM5',
-        description: 'Название товара (макс. 150 символов)',
+        example: 'Sony WH-1000XM5 wireless headphones',
+        description: 'Product name (maximum 150 characters)',
         maxLength: 150,
     })
     @IsString()
@@ -32,8 +32,8 @@ export class CreateProductDto {
     name: string;
 
     @ApiPropertyOptional({
-        example: 'Флагманские наушники с отличным шумоподавлением.',
-        description: 'Описание товара',
+        example: 'Flagship headphones with excellent noise cancellation.',
+        description: 'Product description',
     })
     @IsOptional()
     @IsString()
@@ -41,7 +41,7 @@ export class CreateProductDto {
 
     @ApiProperty({
         example: 399.99,
-        description: 'Цена товара (до 2 знаков после запятой)',
+        description: 'Product price (up to 2 decimal places)',
         minimum: 0.01,
     })
     @Type(() => Number)
@@ -51,7 +51,7 @@ export class CreateProductDto {
 
     @ApiProperty({
         example: 50,
-        description: 'Количество на складе',
+        description: 'Stock quantity',
         minimum: 0,
     })
     @Type(() => Number)
@@ -61,14 +61,14 @@ export class CreateProductDto {
 
     @ApiProperty({
         example: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
-        description: 'UUID категории товара',
+        description: 'Product category UUID',
     })
     @IsUUID()
     categoryId: string;
 
     @ApiPropertyOptional({
         example: 'https://example.com/images/headphones.jpg',
-        description: 'Внешний URL изображения товара',
+        description: 'External product image URL',
         nullable: true,
     })
     @IsOptional()
@@ -78,7 +78,7 @@ export class CreateProductDto {
     @ApiPropertyOptional({
         type: 'string',
         format: 'binary',
-        description: 'Файл изображения для загрузки (multipart/form-data)',
+        description: 'Image file to upload (multipart/form-data)',
     })
     @IsOptional()
     image?: any;

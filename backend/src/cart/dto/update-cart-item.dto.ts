@@ -4,7 +4,7 @@ import { IsInt, Min } from 'class-validator';
 export class UpdateCartItemDto {
     @ApiProperty({
         example: 3,
-        description: 'Новое количество товара в корзине (минимум 1)',
+        description: 'New product quantity in the cart (minimum 1)',
         minimum: 1,
     })
     @IsInt()

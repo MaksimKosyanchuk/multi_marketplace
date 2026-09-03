@@ -5,7 +5,7 @@ import { IsOptional, IsUrl, ValidateIf } from 'class-validator';
 export class UpdateProductDto extends PartialType(CreateProductDto) {
     @ApiPropertyOptional({
         example: 'https://example.com/images/new-headphones.jpg',
-        description: 'Внешний URL изображения товара или null для удаления',
+        description: 'External product image URL, or null to remove it',
         nullable: true,
     })
     @IsOptional()

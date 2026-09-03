@@ -9,7 +9,7 @@ export class DateFilterDto {
     @IsOptional()
     @IsString()
     @Matches(/^\d{4}-\d{2}-\d{2}$/, {
-        message: 'Параметр "from" должен быть в формате YYYY-MM-DD',
+        message: 'The "from" parameter must use the YYYY-MM-DD format',
     })
     from?: string;
 
@@ -20,7 +20,7 @@ export class DateFilterDto {
     @IsOptional()
     @IsString()
     @Matches(/^\d{4}-\d{2}-\d{2}$/, {
-        message: 'Параметр "to" должен быть в формате YYYY-MM-DD',
+        message: 'The "to" parameter must use the YYYY-MM-DD format',
     })
     to?: string;
 }

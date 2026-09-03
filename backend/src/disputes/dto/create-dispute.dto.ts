@@ -6,12 +6,12 @@ export class CreateDisputeDto {
     @IsUUID()
     sellerOrderId: string;
 
-    @ApiProperty({ example: 'Товар не доставлен' })
+    @ApiProperty({ example: 'Product was not delivered' })
     @IsString()
     @MaxLength(150)
     subject: string;
 
-    @ApiProperty({ example: 'Заказ не прибыл в обещанный срок' })
+    @ApiProperty({ example: 'Order did not arrive within the promised timeframe' })
     @IsString()
     @MaxLength(2000)
     description: string;

@@ -4,14 +4,14 @@ import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
 export class RegisterDto {
     @ApiProperty({
         example: 'newuser@example.com',
-        description: 'Email для регистрации',
+        description: 'Email address for registration',
     })
     @IsEmail()
     email: string;
 
     @ApiProperty({
         example: 'StrongPassword123!',
-        description: 'Пароль (от 8 до 72 символов)',
+        description: 'Password (8 to 72 characters)',
         minLength: 8,
         maxLength: 72,
     })
@@ -22,7 +22,7 @@ export class RegisterDto {
 
     @ApiProperty({
         example: 'JohnDoe',
-        description: 'Отображаемый никнейм (от 2 до 40 символов)',
+        description: 'Display nickname (2 to 40 characters)',
         minLength: 2,
         maxLength: 40,
     })

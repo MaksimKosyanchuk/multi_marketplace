@@ -3,8 +3,8 @@ import { IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class ModerateProductDto {
     @ApiProperty({
-        example: 'Товар соответствует правилам площадки',
-        description: 'Комментарий администратора по результату проверки',
+        example: 'Product complies with marketplace rules',
+        description: 'Administrator comment about the review result',
         required: false,
     })
     @IsOptional()

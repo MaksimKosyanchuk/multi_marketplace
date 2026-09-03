@@ -15,7 +15,7 @@ export class ResolveDisputeDto {
     ])
     status: DisputeStatus;
 
-    @ApiPropertyOptional({ example: 'Возврат одобрен' })
+    @ApiPropertyOptional({ example: 'Refund approved' })
     @IsOptional()
     @IsString()
     @MaxLength(2000)

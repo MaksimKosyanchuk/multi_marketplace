@@ -40,7 +40,7 @@ async function bootstrap() {
 
     const config = new DocumentBuilder()
         .setTitle('Marketplace API')
-        .setDescription('API документация маркетплейса')
+        .setDescription('Marketplace API documentation')
         .setVersion('1.0')
         .addBearerAuth(
             {
@@ -48,7 +48,7 @@ async function bootstrap() {
                 scheme: 'bearer',
                 bearerFormat: 'JWT',
                 name: 'JWT',
-                description: 'Введите JWT токен',
+                description: 'Enter the JWT token',
                 in: 'header',
             },
             'JWT-auth',

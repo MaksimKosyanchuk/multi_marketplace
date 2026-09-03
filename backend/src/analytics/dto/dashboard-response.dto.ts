@@ -16,7 +16,7 @@ export class TopProductDto {
     productId: string;
 
     @ApiProperty({
-        example: 'Кроссовки Nike Air',
+        example: 'Nike Air sneakers',
         description: 'Product name',
     })
     productName: string;

@@ -5,19 +5,19 @@ export class ProductCategoryResponseDto {
     @ApiProperty({ example: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11' })
     id: string;
 
-    @ApiProperty({ example: 'Электроника' })
+    @ApiProperty({ example: 'Electronics' })
     name: string;
 }
 
 export class ProductResponseDto {
-    @ApiProperty({ example: 'prod_999xyz', description: 'ID товара' })
+    @ApiProperty({ example: 'prod_999xyz', description: 'Product ID' })
     id: string;
 
-    @ApiProperty({ example: 'Беспроводные наушники Sony WH-1000XM5' })
+    @ApiProperty({ example: 'Sony WH-1000XM5 wireless headphones' })
     name: string;
 
     @ApiProperty({
-        example: 'Флагманские наушники с отличным шумоподавлением.',
+        example: 'Flagship headphones with excellent noise cancellation.',
         nullable: true,
     })
     description?: string;
@@ -30,7 +30,7 @@ export class ProductResponseDto {
 
     @ApiProperty({
         example: 4.5,
-        description: 'Средний рейтинг по подтверждённым отзывам',
+        description: 'Average rating from verified reviews',
         minimum: 0,
         maximum: 5,
     })
@@ -53,7 +53,7 @@ export class ProductResponseDto {
 
     @ApiProperty({
         example: false,
-        description: 'Флаг мягкого удаления (в архиве)',
+        description: 'Soft-delete flag (archived)',
     })
     isArchived: boolean;
 
@@ -70,16 +70,16 @@ export class PaginatedProductsResponseDto {
 
     @ApiProperty({
         example: 150,
-        description: 'Общее количество найденных товаров',
+        description: 'Total number of products found',
     })
     total: number;
 
-    @ApiProperty({ example: 1, description: 'Текущая страница' })
+    @ApiProperty({ example: 1, description: 'Current page' })
     page: number;
 
-    @ApiProperty({ example: 10, description: 'Размер страницы' })
+    @ApiProperty({ example: 10, description: 'Page size' })
     limit: number;
 
-    @ApiProperty({ example: 15, description: 'Всего страниц' })
+    @ApiProperty({ example: 15, description: 'Total pages' })
     totalPages: number;
 }

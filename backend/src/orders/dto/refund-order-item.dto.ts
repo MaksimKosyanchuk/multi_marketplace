@@ -13,7 +13,7 @@ export class RefundOrderItemDto {
     @IsPositive()
     quantity: number;
 
-    @ApiPropertyOptional({ example: 'Товар повреждён' })
+    @ApiPropertyOptional({ example: 'Product was damaged' })
     @IsOptional()
     @IsString()
     @MaxLength(500)
