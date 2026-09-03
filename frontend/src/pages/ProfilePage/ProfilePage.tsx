@@ -23,12 +23,15 @@ import ProductsPage from '../AdminPage/ProductsPage/ProductsPage';
 import styles from './ProfilePage.module.css';
 import { useAuth } from '../../context/AuthContext/useAuth';
 import { Role, type SellerOrder, type Auction } from '../../types';
+import type { Dispute } from '../../types/marketplace.type';
+import { reviewService } from '../../services/reviewService';
+import { disputeService } from '../../services/disputeService';
 import { AuctionCard } from '../../components/AuctionCard/AuctionCard';
 import { OrderStatusBadge } from '../../components/OrderStatusBadge/OrderStatusBadge';
 import { analyticsService, type SellerAnalytics, type SalesTimelineItem } from '../../services/analyticsService';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from 'recharts';
 
-type ActiveTab = 'info' | 'orders' | 'sales' | 'products' | 'auctions' | 'auctionHistory';
+type ActiveTab = 'info' | 'orders' | 'sales' | 'disputes' | 'products' | 'auctions' | 'auctionHistory';
 
 export const ProfilePage: React.FC = () => {
     const { user, socket } = useAuth();
@@ -40,6 +43,7 @@ export const ProfilePage: React.FC = () => {
     const [activeTab, setActiveTab] = useState<ActiveTab>('info');
     const [orders, setOrders] = useState<Order[]>([]);
     const [sales, setSales] = useState<SellerOrder[]>([]);
+    const [disputes, setDisputes] = useState<Dispute[]>([]);
     const [sellerAnalytics, setSellerAnalytics] = useState<SellerAnalytics | null>(null);
     const [sellerTimeline, setSellerTimeline] = useState<SalesTimelineItem[]>([]);
     const [activeAuctionBids, setActiveAuctionBids] = useState(0);
@@ -135,6 +139,16 @@ export const ProfilePage: React.FC = () => {
         }
     }, [isSeller]);
 
+    const fetchDisputes = useCallback(async () => {
+        try {
+            setDisputes(await (isSeller
+                ? disputeService.listSeller()
+                : disputeService.listCustomer()));
+        } catch {
+            setErrorMessage('Не вдалося завантажити спори.');
+        }
+    }, [isSeller]);
+
     const fetchCategories = useCallback(async () => {
         if (!isSeller) {
             return;
@@ -180,6 +194,9 @@ export const ProfilePage: React.FC = () => {
 
         if (tab === 'sales' && isSeller) {
             void fetchSales();
+        }
+        if (tab === 'disputes' && (isCustomer || isSeller)) {
+            void fetchDisputes();
         }
         if ((tab === 'auctionHistory' && isCustomer) || (tab === 'auctions' && isSeller)) {
             void fetchAuctionHistory();
@@ -338,6 +355,21 @@ export const ProfilePage: React.FC = () => {
         }
     };
 
+    const handleReview = async (orderItemId: string) => {
+        const rating = Number(window.prompt('Оцінка від 1 до 5'));
+        if (!Number.isInteger(rating) || rating < 1 || rating > 5) return;
+        await reviewService.create(orderItemId, rating, window.prompt('Ваш коментар') ?? undefined);
+        await fetchOrders();
+    };
+
+    const handleOpenDispute = async (sellerOrderId: string) => {
+        const subject = window.prompt('Тема спору');
+        const description = window.prompt('Опишіть проблему');
+        if (!subject || !description) return;
+        await disputeService.open(sellerOrderId, subject, description);
+        await fetchDisputes();
+    };
+
     const handleSellerOrderStatusChange = async (
         sellerOrderId: string,
         status: 'PROCESSING' | 'SHIPPED' | 'COMPLETED',
@@ -376,10 +408,38 @@ export const ProfilePage: React.FC = () => {
                             onPay={handlePayOrder}
                             onCancel={handleCancelOrder}
                             onSellerCancel={handleCancelSellerOrder}
+                            onReview={handleReview}
+                            onOpenDispute={handleOpenDispute}
                         />
                     ))}
                 </div>
             )}
+        </div>
+    );
+
+    const renderDisputes = () => (
+        <div className={styles.section}>
+            <h2>Мої спори</h2>
+            <div className={styles.salesList}>
+                {disputes.length === 0 ? <p>Спорів немає.</p> : disputes.map((dispute) => (
+                    <article className={styles.saleCard} key={dispute.id}>
+                        <div className={styles.saleHeader}>
+                            <strong>{dispute.subject}</strong>
+                            <span className={`${styles.disputeBadge} ${styles[`dispute${dispute.status}`] ?? ''}`}>
+                                {{
+                                    OPEN: 'Відкритий',
+                                    UNDER_REVIEW: 'На розгляді',
+                                    RESOLVED_FOR_CUSTOMER: 'Вирішено на користь покупця',
+                                    RESOLVED_FOR_SELLER: 'Вирішено на користь продавця',
+                                    CLOSED: 'Закритий',
+                                }[dispute.status] ?? dispute.status}
+                            </span>
+                        </div>
+                        <p>{dispute.description}</p>
+                        {dispute.resolution && <p><strong>Рішення:</strong> {dispute.resolution}</p>}
+                    </article>
+                ))}
+            </div>
         </div>
     );
 
@@ -661,6 +721,7 @@ export const ProfilePage: React.FC = () => {
         ? ([
               { key: 'orders', label: 'Історія покупок' },
               { key: 'sales', label: 'Мої продажі' },
+              { key: 'disputes', label: 'Мої спори' },
               { key: 'auctions', label: 'Аукціони' },
               { key: 'products', label: 'Товари' },
               { key: 'info', label: 'Мої дані' },
@@ -670,6 +731,7 @@ export const ProfilePage: React.FC = () => {
               ...(isCustomer
                   ? [
                         { key: 'orders', label: 'Історія покупок' },
+                        { key: 'disputes', label: 'Мої спори' },
                         { key: 'auctionHistory', label: 'Історія аукціонів' },
                     ]
                   : []),
@@ -747,6 +809,7 @@ export const ProfilePage: React.FC = () => {
 
             {activeTab === 'orders' && (isCustomer || isSeller) && renderCustomerOrders()}
             {activeTab === 'sales' && isSeller && renderSellerSales()}
+            {activeTab === 'disputes' && (isCustomer || isSeller) && renderDisputes()}
             {activeTab === 'auctionHistory' && isCustomer && renderAuctionHistory()}
             {activeTab === 'auctions' && isSeller && renderSellerAuctions()}
             {activeTab === 'products' && isSeller && <ProductsPage sellerMode />}

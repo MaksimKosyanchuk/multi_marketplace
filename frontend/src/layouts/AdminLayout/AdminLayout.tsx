@@ -6,6 +6,7 @@ import styles from './AdminLayout.module.css';
 const adminNavItems: SidebarItem[] = [
     { id: 'dashboard', label: 'Дашборд', icon: '📊', to: '/admin/dashboard' }, 
     { id: 'orders', label: 'Замовлення', icon: '📦', to: '/admin/orders' },
+    { id: 'disputes', label: 'Спори', icon: '⚖️', to: '/admin/disputes' },
     { id: 'approvals', label: 'Одобрення', icon: '✅', to: '/admin/approvals' },
     { id: 'categories', label: 'Категорії', icon: '📁', to: '/admin/categories' },
     { id: 'site', label: '← На сайт', icon: '🏠', to: '/' },

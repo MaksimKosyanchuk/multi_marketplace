@@ -101,13 +101,29 @@ export class ProductsService {
                 include: {
                     category: true,
                     auction: { select: { id: true, status: true } },
+                    reviews: { select: { rating: true } },
                 },
             }),
             this.prisma.product.count({ where }),
         ]);
 
         const result: PaginatedProductsResult = {
-            items: items,
+            items: items.map((item) => {
+                const reviews = (item as ProductWithCategory & {
+                    reviews?: { rating: number }[];
+                }).reviews;
+                if (!reviews) return item;
+                const { reviews: _reviews, ...withoutReviews } = item as typeof item & {
+                    reviews: { rating: number }[];
+                };
+                return {
+                    ...withoutReviews,
+                    rating: reviews.length
+                        ? reviews.reduce((sum, review) => sum + review.rating, 0) /
+                          reviews.length
+                        : 0,
+                };
+            }),
             meta: { total, page, limit, pageCount: Math.ceil(total / limit) },
         };
 
@@ -152,12 +168,31 @@ export class ProductsService {
                 orderBy,
                 skip: (page - 1) * limit,
                 take: limit,
-                include: { category: true, auction: { select: { id: true } } },
+                include: {
+                    category: true,
+                    auction: { select: { id: true } },
+                    reviews: { select: { rating: true } },
+                },
             }),
             this.prisma.product.count({ where }),
         ]);
         return {
-            items,
+            items: items.map((item) => {
+                const reviews = (item as ProductWithCategory & {
+                    reviews?: { rating: number }[];
+                }).reviews;
+                if (!reviews) return item;
+                const { reviews: _reviews, ...withoutReviews } = item as typeof item & {
+                    reviews: { rating: number }[];
+                };
+                return {
+                    ...withoutReviews,
+                    rating: reviews.length
+                        ? reviews.reduce((sum, review) => sum + review.rating, 0) /
+                          reviews.length
+                        : 0,
+                };
+            }),
             meta: { total, page, limit, pageCount: Math.ceil(total / limit) },
         };
     }
@@ -335,6 +370,7 @@ export class ProductsService {
             throw new NotFoundException('Product not found');
         }
 
+        if (!('reviews' in product)) return product;
         const result = {
             ...product,
             rating: product.reviews.length

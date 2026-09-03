@@ -1,16 +1,18 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { DisputeStatus } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class ResolveDisputeDto {
     @ApiProperty({
         enum: [
             DisputeStatus.RESOLVED_FOR_CUSTOMER,
             DisputeStatus.RESOLVED_FOR_SELLER,
-            DisputeStatus.CLOSED,
         ],
     })
-    @IsEnum(DisputeStatus)
+    @IsIn([
+        DisputeStatus.RESOLVED_FOR_CUSTOMER,
+        DisputeStatus.RESOLVED_FOR_SELLER,
+    ])
     status: DisputeStatus;
 
     @ApiPropertyOptional({ example: 'Возврат одобрен' })

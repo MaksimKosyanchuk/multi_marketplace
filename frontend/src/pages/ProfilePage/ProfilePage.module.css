@@ -157,6 +157,12 @@
     margin-top: 4px;
 }
 
+.disputeBadge { display: inline-flex; padding: 5px 11px; border-radius: 999px; font-size: .82rem; font-weight: 700; }
+.disputeOPEN { background: #fee2e2; color: #b91c1c; }
+.disputeUNDER_REVIEW { background: #fef3c7; color: #92400e; }
+.disputeRESOLVED_FOR_CUSTOMER { background: #dcfce7; color: #166534; }
+.disputeRESOLVED_FOR_SELLER { background: #dbeafe; color: #1d4ed8; }
+
 .saleAmount {
     font-weight: 700;
     color: #15803d;

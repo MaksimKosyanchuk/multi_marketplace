@@ -25,6 +25,7 @@ import DashboardPage from './pages/AdminPage/DashboardPage/DashboardPage';
 import OrdersPage from './pages/AdminPage/OrdersPage/OrdersPage';
 import CategoriesPage from './pages/AdminPage/CategoriesPage/CategoriesPage';
 import ApprovalsPage from './pages/AdminPage/ApprovalsPage/ApprovalsPage';
+import DisputesPage from './pages/AdminPage/DisputesPage/DisputesPage';
 
 import NotFoundPage from './pages/NotFoundPage/NotFoundPage';
 
@@ -75,6 +76,7 @@ export function App() {
                                 element={<DashboardPage />}
                             />
                             <Route path="orders" element={<OrdersPage />} />
+                            <Route path="disputes" element={<DisputesPage />} />
                         </Route>
                     </Route>
 

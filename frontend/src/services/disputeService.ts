@@ -6,6 +6,18 @@ export const disputeService = {
         const { data } = await api.get<Dispute[]>('/disputes/my');
         return data;
     },
+    async listCustomer(): Promise<Dispute[]> {
+        const { data } = await api.get<Dispute[]>('/disputes/customer');
+        return data;
+    },
+    async listSeller(): Promise<Dispute[]> {
+        const { data } = await api.get<Dispute[]>('/disputes/seller');
+        return data;
+    },
+    async listAll(): Promise<Dispute[]> {
+        const { data } = await api.get<Dispute[]>('/disputes/admin');
+        return data;
+    },
     async open(
         sellerOrderId: string,
         subject: string,

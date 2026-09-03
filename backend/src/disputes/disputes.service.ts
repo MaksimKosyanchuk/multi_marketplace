@@ -83,21 +83,41 @@ export class DisputesService {
         });
     }
 
-    async listForUser(userId: string, role: string) {
-        const where: Prisma.DisputeWhereInput =
-            role === 'ADMIN'
-                ? {}
-                : {
-                      OR: [
-                          { openedById: userId },
-                          { sellerOrder: { sellerId: userId } },
-                      ],
-                  };
+    private list(where: Prisma.DisputeWhereInput) {
         return this.prisma.dispute.findMany({
             where,
-            include: { sellerOrder: true },
+            include: {
+                sellerOrder: {
+                    include: {
+                        order: true,
+                        seller: { select: { id: true, nickName: true } },
+                        items: true,
+                    },
+                },
+                openedBy: { select: { id: true, nickName: true } },
+                resolvedBy: { select: { id: true, nickName: true } },
+                history: { orderBy: { createdAt: 'asc' } },
+            },
             orderBy: { createdAt: 'desc' },
         });
+    }
+
+    listForCustomer(customerId: string) {
+        return this.list({ openedById: customerId });
+    }
+
+    listForSeller(sellerId: string) {
+        return this.list({ sellerOrder: { sellerId } });
+    }
+
+    listForAdmin() {
+        return this.list({});
+    }
+
+    async listForUser(userId: string, role: string) {
+        if (role === 'ADMIN') return this.listForAdmin();
+        if (role === 'SELLER') return this.listForSeller(userId);
+        return this.listForCustomer(userId);
     }
 
     async resolve(adminId: string, disputeId: string, dto: ResolveDisputeDto) {
@@ -117,7 +137,6 @@ export class DisputesService {
                 ![
                     DisputeStatus.RESOLVED_FOR_CUSTOMER,
                     DisputeStatus.RESOLVED_FOR_SELLER,
-                    DisputeStatus.CLOSED,
                 ].some((status) => status === dto.status)
             ) {
                 throw new ConflictException('Invalid dispute resolution status');

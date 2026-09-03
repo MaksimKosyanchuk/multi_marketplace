@@ -12,6 +12,8 @@ interface OrderItemProps {
     onCancel?: (orderId: string) => Promise<void>;
     onSellerCancel?: (sellerOrderId: string) => Promise<void>;
     onStatusChange?: (orderId: string, status: OrderStatus) => Promise<void>;
+    onReview?: (orderItemId: string) => Promise<void>;
+    onOpenDispute?: (sellerOrderId: string) => Promise<void>;
     isAdmin?: boolean;
 }
 
@@ -33,6 +35,8 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
     onCancel,
     onSellerCancel,
     onStatusChange,
+    onReview,
+    onOpenDispute,
     isAdmin = false,
 }) => {
     const [isProcessing, setIsProcessing] = useState(false);
@@ -227,6 +231,20 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
                                 <div className={styles.sellerOrderMeta}>
                                     ${Number(sellerOrder.subtotal).toFixed(2)}
                                 </div>
+                                {sellerOrder.status === 'COMPLETED' && (
+                                    <div className={styles.sellerOrderActions}>
+                                        {onReview && sellerOrder.items.map((item) => (
+                                            <Button key={item.id} variant="secondary" size="small" onClick={() => void onReview(item.id)}>
+                                                Залишити відгук
+                                            </Button>
+                                        ))}
+                                        {onOpenDispute && (
+                                            <Button variant="secondary" size="small" onClick={() => void onOpenDispute(sellerOrder.id)}>
+                                                Почати спір
+                                            </Button>
+                                        )}
+                                    </div>
+                                )}
                                 {onSellerCancel && sellerCanCancel(sellerOrder) && (
                                     <div className={styles.sellerOrderActions}>
                                         <Button
