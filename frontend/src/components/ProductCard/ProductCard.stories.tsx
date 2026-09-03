@@ -24,7 +24,7 @@ const mockProduct: Product = {
 };
 
 const meta: Meta<typeof ProductCard> = {
-    title: 'Ui/ProductCard',
+    title: 'UI/ProductCard',
     component: ProductCard,
     tags: ['autodocs'],
     decorators: [

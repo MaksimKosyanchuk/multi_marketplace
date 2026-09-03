@@ -15,7 +15,7 @@ const mockOrder: Order = {
 };
 
 const meta: Meta<typeof OrderItemCard> = {
-    title: 'Ui/OrderItemCard',
+    title: 'UI/OrderItemCard',
     component: OrderItemCard,
     tags: ['autodocs'],
     decorators: [
