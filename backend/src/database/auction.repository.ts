@@ -49,6 +49,25 @@ export class AuctionRepository {
         });
     }
 
+    /** Atomically claims the winner checkout window before binding an order. */
+    claimWinnerCheckout(
+        auctionId: string,
+        winnerId: string,
+        checkoutOrderId: string,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.auction.updateMany({
+            where: {
+                id: auctionId,
+                status: AuctionStatus.SOLD,
+                winnerId,
+                checkoutOrderId: null,
+                checkoutExpiresAt: { gt: new Date() },
+            },
+            data: { checkoutOrderId },
+        });
+    }
+
     findByProductId(productId: string, db: DatabaseClient = this.prisma) {
         return db.auction.findUnique({ where: { productId } });
     }
@@ -136,6 +155,7 @@ export class AuctionRepository {
                 status: AuctionStatus.SOLD,
                 winnerId,
                 checkoutExpiresAt,
+                checkoutOrderId: null,
             },
             data: {
                 status: AuctionStatus.EXPIRED,

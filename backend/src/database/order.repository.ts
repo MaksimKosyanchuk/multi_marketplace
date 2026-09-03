@@ -314,6 +314,16 @@ export class OrderRepository {
         });
     }
 
+    /** Row lock so concurrent partial refunds serialize on the same seller order. */
+    lockSellerOrderForUpdate(
+        sellerOrderId: string,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.$queryRaw<Array<{ id: string }>>`
+            SELECT id FROM "SellerOrder" WHERE id = ${sellerOrderId} FOR UPDATE
+        `;
+    }
+
     findOrderForCancellation(
         orderId: string,
         db: DatabaseClient = this.prisma,

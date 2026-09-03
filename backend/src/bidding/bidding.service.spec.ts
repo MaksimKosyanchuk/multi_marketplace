@@ -21,7 +21,9 @@ describe('BiddingService critical auction flows', () => {
     const logger = { audit: jest.fn(), warn: jest.fn() };
     const prisma = {
         bid: { findUnique: jest.fn() },
+        payment: { findUnique: jest.fn() },
         $transaction: jest.fn(),
+        $queryRaw: jest.fn(),
     };
     let service: BiddingService;
 
@@ -49,6 +51,7 @@ describe('BiddingService critical auction flows', () => {
             new ProductRepository(prisma as never),
         );
         prisma.bid.findUnique.mockResolvedValue(null);
+        prisma.payment.findUnique.mockResolvedValue(null);
     });
 
     it('rejects a bid at or after the auction deadline', async () => {
@@ -212,5 +215,169 @@ describe('BiddingService critical auction flows', () => {
             where: { id: 'product-1' },
         });
         expect(tx.product).not.toHaveProperty('updateMany');
+    });
+
+    it('accepts a last-second bid while the deadline is still in the future', async () => {
+        const tx = {
+            auction: {
+                findUnique: jest.fn().mockResolvedValue({
+                    ...activeAuction,
+                    endsAt: new Date(Date.now() + 25),
+                }),
+                updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+            },
+            bid: {
+                updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+                create: jest.fn().mockResolvedValue({
+                    id: 'bid-last',
+                    bidderId: 'bidder-1',
+                    auctionId: 'auction-1',
+                    amount: new Prisma.Decimal('110'),
+                }),
+            },
+            outboxEvent: { create: jest.fn() },
+        };
+        prisma.$transaction.mockImplementation(
+            (callback: (txContext: typeof tx) => unknown) => callback(tx),
+        );
+
+        await expect(
+            service.placeBid('bidder-1', 'auction-1', 110, 'bid-last-second'),
+        ).resolves.toMatchObject({ id: 'bid-last' });
+    });
+
+    it('rejects a bid when endAuction already claimed the expired auction', async () => {
+        const tx = {
+            auction: {
+                findUnique: jest.fn().mockResolvedValue({
+                    ...activeAuction,
+                    status: AuctionStatus.EXPIRED,
+                    endsAt: new Date(Date.now() - 1),
+                }),
+            },
+        };
+        prisma.$transaction.mockImplementation(
+            (callback: (txContext: typeof tx) => unknown) => callback(tx),
+        );
+
+        await expect(
+            service.placeBid('bidder-1', 'auction-1', 110, 'bid-after-end'),
+        ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects winner checkout after the checkout window expires', async () => {
+        const tx = {
+            payment: { findUnique: jest.fn().mockResolvedValue(null) },
+            auction: {
+                findUnique: jest.fn().mockResolvedValue({
+                    id: 'auction-1',
+                    status: AuctionStatus.SOLD,
+                    winnerId: 'winner-1',
+                    checkoutOrderId: null,
+                    checkoutExpiresAt: new Date(Date.now() - 1_000),
+                    currentPrice: new Prisma.Decimal('110'),
+                    productId: 'product-1',
+                    product: {
+                        id: 'product-1',
+                        sellerId: 'seller-1',
+                        name: 'Lot',
+                        type: ProductType.AUCTION,
+                        status: ProductStatus.ACTIVE,
+                        isArchived: false,
+                    },
+                }),
+            },
+        };
+        prisma.$transaction.mockImplementation(
+            (callback: (txContext: typeof tx) => unknown) => callback(tx),
+        );
+
+        await expect(
+            service.checkoutWinner('winner-1', 'auction-1', 'winner-checkout-1'),
+        ).rejects.toThrow('Auction checkout window has expired');
+    });
+
+    it('rolls back winner checkout when expire claims the window first', async () => {
+        const tx = {
+            payment: { findUnique: jest.fn().mockResolvedValue(null) },
+            auction: {
+                findUnique: jest.fn().mockResolvedValue({
+                    id: 'auction-1',
+                    status: AuctionStatus.SOLD,
+                    winnerId: 'winner-1',
+                    checkoutOrderId: null,
+                    checkoutExpiresAt: new Date(Date.now() + 60_000),
+                    currentPrice: new Prisma.Decimal('110'),
+                    productId: 'product-1',
+                    product: {
+                        id: 'product-1',
+                        sellerId: 'seller-1',
+                        name: 'Lot',
+                        type: ProductType.AUCTION,
+                        status: ProductStatus.ACTIVE,
+                        isArchived: false,
+                    },
+                }),
+                updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+            },
+            product: { update: jest.fn() },
+            order: {
+                create: jest.fn().mockResolvedValue({
+                    id: 'order-1',
+                    userId: 'winner-1',
+                    sellerOrders: [{ id: 'seller-order-1' }],
+                }),
+            },
+            outboxEvent: { createMany: jest.fn() },
+        };
+        prisma.$transaction.mockImplementation(
+            (callback: (txContext: typeof tx) => unknown) => callback(tx),
+        );
+
+        await expect(
+            service.checkoutWinner('winner-1', 'auction-1', 'winner-checkout-2'),
+        ).rejects.toThrow('Auction checkout window has expired');
+        expect(tx.auction.updateMany).toHaveBeenCalledWith(
+            expect.objectContaining({
+                where: expect.objectContaining({
+                    id: 'auction-1',
+                    status: AuctionStatus.SOLD,
+                    winnerId: 'winner-1',
+                    checkoutOrderId: null,
+                }),
+                data: { checkoutOrderId: 'order-1' },
+            }),
+        );
+    });
+
+    it('does not expire a winner window after checkout was claimed', async () => {
+        const checkoutExpiresAt = new Date(Date.now() - 1_000);
+        const tx = {
+            auction: {
+                findUnique: jest.fn().mockResolvedValue({
+                    id: 'auction-1',
+                    status: AuctionStatus.SOLD,
+                    winnerId: 'winner-1',
+                    checkoutExpiresAt,
+                    checkoutOrderId: 'order-1',
+                }),
+                updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+            },
+            outboxEvent: { create: jest.fn() },
+        };
+        prisma.$transaction.mockImplementation(
+            (callback: (txContext: typeof tx) => unknown) => callback(tx),
+        );
+
+        await service.expireWinnerCheckout('auction-1');
+
+        expect(tx.auction.updateMany).toHaveBeenCalledWith(
+            expect.objectContaining({
+                where: expect.objectContaining({
+                    checkoutOrderId: null,
+                }),
+            }),
+        );
+        expect(tx.outboxEvent.create).not.toHaveBeenCalled();
     });
 });

@@ -559,10 +559,17 @@ export class BiddingService {
                         },
                         { sellerOrders: { include: { items: true } } },
                     );
-                    await auctionRepository.updateCheckoutOrder(
-                        auctionId,
-                        order.id,
-                    );
+                    const claimedCheckout =
+                        await auctionRepository.claimWinnerCheckout(
+                            auctionId,
+                            winnerId,
+                            order.id,
+                        );
+                    if (!claimedCheckout.count) {
+                        throw new BadRequestException(
+                            'Auction checkout window has expired',
+                        );
+                    }
                     void this.logger.audit(
                         BiddingService.name,
                         'Auction winner checkout created',

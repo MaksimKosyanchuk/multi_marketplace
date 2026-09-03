@@ -49,4 +49,33 @@ describe('marketplace socket reconnect', () => {
             expect.any(Function),
         );
     });
+
+    it('restores auction subscription after a disconnect mid-auction', async () => {
+        const onReconnect = vi.fn().mockResolvedValue(undefined);
+        connectMarketplaceSocket('token', onReconnect);
+        const connectHandler = vi.mocked(socket.on).mock.calls.find(
+            ([event]) => event === 'connect',
+        )?.[1] as (() => void) | undefined;
+        expect(connectHandler).toBeDefined();
+        connectHandler?.();
+
+        socket.emit.mockImplementation(
+            (_event: string, _payload: unknown, callback?: (response: unknown) => void) => {
+                callback?.({ subscribed: true });
+            },
+        );
+        await subscribeToAuction('auction-live');
+        socket.connected = false;
+
+        connectMarketplaceSocket('token', onReconnect);
+        socket.connected = true;
+        connectHandler?.();
+
+        expect(onReconnect).toHaveBeenCalled();
+        expect(socket.emit).toHaveBeenCalledWith(
+            'auction_subscribe',
+            { auctionId: 'auction-live' },
+            expect.any(Function),
+        );
+    });
 });

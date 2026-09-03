@@ -333,4 +333,192 @@ describe('OrdersService checkout', () => {
             }),
         ).rejects.toThrow('Cannot change seller order');
     });
+
+    it('rejects a second concurrent refund that would exceed item quantity', async () => {
+        const orderItem = {
+            id: 'item-1',
+            productId: 'product-1',
+            quantity: 2,
+            unitPrice: new Prisma.Decimal('50'),
+            sellerOrderId: 'seller-order-1',
+            sellerOrder: {
+                id: 'seller-order-1',
+                status: SellerOrderStatus.PROCESSING,
+                commissionRate: new Prisma.Decimal('0.10'),
+                orderId: 'order-1',
+                order: {
+                    userId: 'customer-1',
+                    payments: [
+                        {
+                            id: 'payment-1',
+                            status: 'PAID',
+                            amount: new Prisma.Decimal('100'),
+                        },
+                    ],
+                },
+            },
+        };
+        const tx = {
+            $queryRaw: jest.fn().mockResolvedValue([{ id: 'seller-order-1' }]),
+            orderItem: { findUnique: jest.fn().mockResolvedValue(orderItem) },
+            sellerOrder: {
+                update: jest.fn().mockResolvedValue({
+                    id: 'seller-order-1',
+                    items: [],
+                    seller: {},
+                    order: {},
+                }),
+            },
+            refund: {
+                findUnique: jest.fn().mockResolvedValue(null),
+                aggregate: jest
+                    .fn()
+                    .mockResolvedValue({ _sum: { quantity: 2, amount: null } }),
+                create: jest.fn(),
+            },
+            payment: { update: jest.fn() },
+            ledgerEntry: { create: jest.fn() },
+            outboxEvent: { create: jest.fn() },
+            product: { update: jest.fn() },
+        };
+        prisma.refund = { findUnique: jest.fn().mockResolvedValue(null) };
+        transaction.mockImplementation(
+            (callback: (client: typeof tx) => unknown) => callback(tx),
+        );
+
+        await expect(
+            service.refundOrderItem(
+                'customer-1',
+                'item-1',
+                1,
+                'race',
+                'refund-race-2',
+            ),
+        ).rejects.toThrow('Refund quantity exceeds the refundable quantity');
+        expect(tx.$queryRaw).toHaveBeenCalled();
+        expect(tx.refund.create).not.toHaveBeenCalled();
+    });
+
+    it('returns the existing refund for a repeated idempotency key', async () => {
+        const existing = {
+            id: 'refund-1',
+            orderItemId: 'item-1',
+            quantity: 1,
+        };
+        prisma.refund = { findUnique: jest.fn().mockResolvedValue(existing) };
+
+        await expect(
+            service.refundOrderItem(
+                'customer-1',
+                'item-1',
+                1,
+                'again',
+                'refund-idempotent',
+            ),
+        ).resolves.toEqual(existing);
+        expect(transaction).not.toHaveBeenCalled();
+    });
+
+    it('cancels only the targeted seller order and leaves sibling orders active', async () => {
+        const siblingStatuses = [
+            { status: SellerOrderStatus.CANCELLED },
+            { status: SellerOrderStatus.PROCESSING },
+        ];
+        const tx = {
+            outboxEvent: {
+                findUnique: jest.fn().mockResolvedValue(null),
+                create: jest.fn(),
+                createMany: jest.fn(),
+            },
+            sellerOrder: {
+                findUnique: jest.fn().mockResolvedValue({
+                    id: 'seller-order-1',
+                    sellerId: 'seller-1',
+                    orderId: 'order-1',
+                    status: SellerOrderStatus.PROCESSING,
+                    commissionRate: new Prisma.Decimal('0.10'),
+                    items: [
+                        {
+                            id: 'item-1',
+                            productId: 'product-1',
+                            quantity: 1,
+                            unitPrice: new Prisma.Decimal('100'),
+                        },
+                    ],
+                    order: {
+                        userId: 'customer-1',
+                        payments: [
+                            {
+                                id: 'payment-1',
+                                status: 'PAID',
+                                amount: new Prisma.Decimal('300'),
+                            },
+                        ],
+                    },
+                }),
+                updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+                update: jest.fn().mockResolvedValue({
+                    id: 'seller-order-1',
+                    sellerId: 'seller-1',
+                    status: SellerOrderStatus.CANCELLED,
+                    items: [],
+                    order: {},
+                    seller: {},
+                }),
+                findMany: jest.fn().mockResolvedValue(siblingStatuses),
+            },
+            refund: {
+                aggregate: jest
+                    .fn()
+                    .mockResolvedValue({ _sum: { quantity: 0, amount: null } }),
+                create: jest.fn(),
+            },
+            payment: { update: jest.fn() },
+            product: { update: jest.fn() },
+            ledgerEntry: { createMany: jest.fn(), create: jest.fn() },
+            order: {
+                update: jest.fn().mockResolvedValue({
+                    id: 'order-1',
+                    status: OrderStatus.PROCESSING,
+                }),
+                findUnique: jest.fn().mockResolvedValue({
+                    id: 'order-1',
+                    sellerOrders: [
+                        { id: 'seller-order-1', status: SellerOrderStatus.CANCELLED },
+                        { id: 'seller-order-2', status: SellerOrderStatus.PROCESSING },
+                    ],
+                    payments: [],
+                }),
+            },
+        };
+        prisma.outboxEvent = {
+            findUnique: jest.fn().mockResolvedValue({ id: 'event-cancel-1' }),
+        };
+        transaction.mockImplementation(
+            (callback: (client: typeof tx) => unknown) => callback(tx),
+        );
+
+        const result = await service.cancelSellerOrder(
+            'seller-1',
+            'seller-order-1',
+            'cancel-sibling-1',
+        );
+
+        expect(result.status).toBe(SellerOrderStatus.CANCELLED);
+        expect(tx.sellerOrder.updateMany).toHaveBeenCalledWith(
+            expect.objectContaining({
+                where: expect.objectContaining({ id: 'seller-order-1' }),
+            }),
+        );
+        expect(tx.order.update).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: { status: OrderStatus.PROCESSING },
+            }),
+        );
+        expect(tx.sellerOrder.findMany).toHaveBeenCalledWith({
+            where: { orderId: 'order-1' },
+            select: { status: true },
+        });
+        expect(tx.product.update).toHaveBeenCalled();
+    });
 });

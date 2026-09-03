@@ -604,6 +604,10 @@ describe('ProductsService', () => {
                     productId: 'prod-1',
                 },
             });
+            // Archive must clear the product from every cart, including other users.
+            expect(
+                mockTransactionPrisma.cartItem.deleteMany,
+            ).toHaveBeenCalledTimes(1);
 
             const outboxRemoveCall = mockTransactionPrisma.outboxEvent.create
                 .mock.calls[0] as unknown[];

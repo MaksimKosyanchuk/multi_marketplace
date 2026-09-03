@@ -1240,6 +1240,9 @@ export class OrdersService {
                             'Order item cannot be refunded in the current status',
                         );
                     }
+                    await orderRepository.lockSellerOrderForUpdate(
+                        item.sellerOrderId,
+                    );
                     await orderRepository.touchSellerOrder(item.sellerOrderId);
                     const refunded =
                         await orderRepository.sumRefundedQuantity(orderItemId);

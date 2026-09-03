@@ -35,9 +35,8 @@ asynchronous event delivery.
 
 ### Open requirements
 
-- Docker Compose configuration for the full required stack is not complete.
-- Full E2E coverage, deployment verification and complete benchmark history
-  remain open.
+- Full E2E coverage beyond the critical marketplace flows, deployment verification
+  and complete benchmark history remain open.
 
 ## Technology stack
 
@@ -54,14 +53,29 @@ The checkout stock mutation and multi-vendor order creation use one database
 transaction. Search indexing, notifications and real-time delivery use
 eventual consistency through the transactional outbox and BullMQ workers.
 
-## Running
+## Running with Docker Compose
+
+From the repository root:
+
+```bash
+docker compose up --build
+```
+
+This starts:
+
+- frontend on `http://localhost:5173`
+- backend API on `http://localhost:3001` (Swagger `/api/docs`)
+- PostgreSQL on `localhost:5432`
+- Redis on `localhost:6379`
+- Meilisearch on `http://localhost:7700`
+
+Backend applies Prisma migrations on startup. Stop with `docker compose down`.
+
+## Running without Docker
 
 Install dependencies in `backend/` and `frontend/`, configure environment
-variables from the project configuration, then start the backend and frontend
-development servers.
-
-Backend API: `http://localhost:3001`  
-Swagger: `http://localhost:3001/api/docs`
+variables from `.env.example`, then start PostgreSQL, Redis, Meilisearch and the
+backend/frontend development servers.
 
 ## Limited-stock load test
 
