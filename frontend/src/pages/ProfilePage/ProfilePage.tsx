@@ -6,8 +6,6 @@ import React, {
 } from 'react';
 import { AxiosError } from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { orderService, type Order } from '../../services/orderService';
-import { orderApi } from '../../services/orderApi';
 import { sellerAdminService } from '../../services/sellerAdminService';
 import {
     categoriesService,
@@ -16,13 +14,13 @@ import {
 import { productService } from '../../services/productService';
 import { auctionService } from '../../services/auctionService';
 import { sellerService } from '../../services/sellerService';
+import { disputeService } from '../../services/disputeService';
+import { orderApi } from '../../services/orderApi';
 import ProductsPage from '../AdminPage/ProductsPage/ProductsPage';
 import styles from './ProfilePage.module.css';
 import { useAuth } from '../../context/AuthContext/useAuth';
 import { Role, type SellerOrder, type Auction } from '../../types';
 import type { Dispute } from '../../types/marketplace.type';
-import { reviewService } from '../../services/reviewService';
-import { disputeService } from '../../services/disputeService';
 import { analyticsService, type SellerAnalytics, type SalesTimelineItem } from '../../services/analyticsService';
 import type { ActiveTab, AuctionFormState } from './components/types';
 import { ProfileTabsNav } from './components/ProfileTabsNav';
@@ -36,7 +34,7 @@ import { SellerAuctionsTab } from './components/seller/SellerAuctionsTab';
 import { CreateAuctionModal } from './components/seller/CreateAuctionModal';
 
 export const ProfilePage: React.FC = () => {
-    const { user, socket } = useAuth();
+    const { user } = useAuth();
     const navigate = useNavigate();
     const userRole = user?.role ?? Role.CUSTOMER;
     const isCustomer = userRole === Role.CUSTOMER;
@@ -44,15 +42,13 @@ export const ProfilePage: React.FC = () => {
     const isAdmin = userRole === Role.ADMIN;
 
     const [activeTab, setActiveTab] = useState<ActiveTab>('info');
-    const [orders, setOrders] = useState<Order[]>([]);
     const [sales, setSales] = useState<SellerOrder[]>([]);
-    const [disputes, setDisputes] = useState<Dispute[]>([]);
-    const [reviewedProductIds, setReviewedProductIds] = useState<Set<string>>(new Set());
     const [sellerAnalytics, setSellerAnalytics] = useState<SellerAnalytics | null>(null);
     const [sellerTimeline, setSellerTimeline] = useState<SalesTimelineItem[]>([]);
     const [activeAuctionBids, setActiveAuctionBids] = useState(0);
     const [sellerComparison, setSellerComparison] = useState<{ revenueChange: number | null; ordersChange: number | null } | null>(null);
     const [auctionHistory, setAuctionHistory] = useState<Auction[]>([]);
+    const [disputes, setDisputes] = useState<Dispute[]>([]);
     const [auctionForm, setAuctionForm] = useState<AuctionFormState>({
         name: '',
         description: '',
@@ -64,34 +60,9 @@ export const ProfilePage: React.FC = () => {
     const [isCreatingAuction, setIsCreatingAuction] = useState(false);
     const [isCreateAuctionOpen, setIsCreateAuctionOpen] = useState(false);
     const [categories, setCategories] = useState<Category[]>([]);
-    const [isLoadingOrders, setIsLoadingOrders] = useState<boolean>(false);
     const [isLoadingSales, setIsLoadingSales] = useState<boolean>(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [sellerApplicationStatus, setSellerApplicationStatus] = useState<string | null>(null);
-
-    const fetchOrders = useCallback(async () => {
-        setIsLoadingOrders(true);
-
-        try {
-            const data = await orderService.getMyOrders();
-
-            startTransition(() => {
-                setOrders(data);
-            });
-            if (isCustomer) {
-                const reviews = await reviewService.listMine();
-                setReviewedProductIds(new Set(reviews.map((review) => review.productId)));
-            }
-        } catch (err) {
-            console.error('Помилка завантаження замовлень:', err);
-
-            startTransition(() => {
-                setErrorMessage('Не вдалося завантажити список замовлень.');
-            });
-        } finally {
-            setIsLoadingOrders(false);
-        }
-    }, [isCustomer]);
 
     const fetchSales = useCallback(async () => {
         setIsLoadingSales(true);
@@ -196,10 +167,6 @@ export const ProfilePage: React.FC = () => {
     const handleTabChange = (tab: ActiveTab) => {
         setActiveTab(tab);
 
-        if (tab === 'orders' && (isCustomer || isSeller)) {
-            void fetchOrders();
-        }
-
         if (tab === 'sales' && isSeller) {
             void fetchSales();
         }
@@ -211,142 +178,12 @@ export const ProfilePage: React.FC = () => {
         }
     };
 
-    const handleOrderUpdate = useCallback(
-        async (payload?: { orderId?: string; status?: string }) => {
-            if (payload?.orderId && payload.status) {
-                setOrders((current) =>
-                    current.map((order) =>
-                        order.id === payload.orderId
-                            ? { ...order, status: payload.status as Order['status'] }
-                            : order,
-                    ),
-                );
-            }
-            if (payload?.status === 'PAYMENT_PENDING') {
-                return;
-            }
-            try {
-                const newOrders = await orderService.getMyOrders();
-
-                startTransition(() => {
-                    setOrders(newOrders);
-                });
-            } catch (err) {
-                console.error(
-                    'Помилка оновлення замовлень через WebSocket:',
-                    err,
-                );
-            }
-        },
-        [],
-    );
-
-    useEffect(() => {
-        if (!socket || (!isCustomer && !isSeller)) {
-            return;
-        }
-
-        const handleOrderStatusUpdate = (payload?: { orderId?: string; status?: string }) => {
-            if (isCustomer) void handleOrderUpdate(payload);
-            if (isSeller) void fetchSales();
-        };
-        const handleReconnect = () => {
-            if (isCustomer) void fetchOrders();
-            if (isSeller) void fetchSales();
-        };
-
-        socket.on('order_status_updated', handleOrderStatusUpdate);
-        socket.on('connect', handleReconnect);
-
-        return () => {
-            socket.off('order_status_updated', handleOrderStatusUpdate);
-            socket.off('connect', handleReconnect);
-        };
-    }, [
-        socket,
-        isCustomer,
-        isSeller,
-        handleOrderUpdate,
-        fetchOrders,
-        fetchSales,
-    ]);
-
     useEffect(() => {
         queueMicrotask(() => {
             void fetchCategories();
             void fetchSellerApplication();
         });
     }, [fetchCategories, fetchSellerApplication]);
-
-    const handlePayOrder = async (orderId: string) => {
-        try {
-            setOrders((current) =>
-                current.map((order) =>
-                    order.id === orderId
-                        ? { ...order, status: 'PAYMENT_PENDING' }
-                        : order,
-                ),
-            );
-            await orderService.payOrder(orderId);
-            setOrders((current) =>
-                current.map((order) =>
-                    order.id === orderId
-                        ? { ...order, status: 'PROCESSING' }
-                        : order,
-                ),
-            );
-            await fetchOrders();
-        } catch (err) {
-            if (err instanceof AxiosError && err.response?.data?.message) {
-                setErrorMessage(
-                    Array.isArray(err.response.data.message)
-                        ? err.response.data.message[0]
-                        : err.response.data.message,
-                );
-            } else {
-                setErrorMessage('Помилка при оплаті замовлення.');
-            }
-        }
-    };
-
-    const handleCancelOrder = async (orderId: string) => {
-        try {
-            const order = orders.find((current) => current.id === orderId);
-            if (order?.status === 'PAYMENT_PENDING') {
-                await orderApi.cancelPendingPayment(orderId);
-            } else {
-                await orderService.cancelOrder(orderId);
-            }
-            await fetchOrders();
-        } catch (err) {
-            if (err instanceof AxiosError && err.response?.data?.message) {
-                setErrorMessage(
-                    Array.isArray(err.response.data.message)
-                        ? err.response.data.message[0]
-                        : err.response.data.message,
-                );
-            } else {
-                setErrorMessage('Помилка при скасуванні замовлення.');
-            }
-        }
-    };
-
-    const handleCancelSellerOrder = async (sellerOrderId: string) => {
-        try {
-            await orderApi.cancelCustomerSellerOrder(sellerOrderId);
-            await fetchOrders();
-        } catch (err) {
-            if (err instanceof AxiosError && err.response?.data?.message) {
-                setErrorMessage(
-                    Array.isArray(err.response.data.message)
-                        ? err.response.data.message[0]
-                        : err.response.data.message,
-                );
-            } else {
-                setErrorMessage('Помилка при скасуванні замовлення продавця.');
-            }
-        }
-    };
 
     const handleCancelOwnSellerOrder = async (sellerOrderId: string) => {
         try {
@@ -362,37 +199,6 @@ export const ProfilePage: React.FC = () => {
             } else {
                 setErrorMessage('Помилка при скасуванні субзамовлення.');
             }
-        }
-    };
-
-    const handleReview = async (orderItemId: string) => {
-        const rating = Number(window.prompt('Оцінка від 1 до 5'));
-        if (!Number.isInteger(rating) || rating < 1 || rating > 5) return;
-        try {
-            await reviewService.create(orderItemId, rating, window.prompt('Ваш коментар') ?? undefined);
-        } catch {
-            setErrorMessage('Не вдалося залишити відгук.');
-            return;
-        }
-        const productId = orders
-            .flatMap((order) => order.sellerOrders ?? [])
-            .flatMap((sellerOrder) => sellerOrder.items)
-            .find((item) => item.id === orderItemId)?.productId;
-        if (productId) {
-            setReviewedProductIds((current) => new Set(current).add(productId));
-        }
-        await fetchOrders();
-    };
-
-    const handleOpenDispute = async (sellerOrderId: string) => {
-        const subject = window.prompt('Тема спору');
-        const description = window.prompt('Опишіть проблему');
-        if (!subject || !description) return;
-        try {
-            await disputeService.open(sellerOrderId, subject, description);
-            await fetchDisputes();
-        } catch {
-            setErrorMessage('Не вдалося відкрити спір.');
         }
     };
 
@@ -532,16 +338,7 @@ export const ProfilePage: React.FC = () => {
                 />
             )}
             {activeTab === 'orders' && (isCustomer || isSeller) && (
-                <CustomerOrdersTab
-                    orders={orders}
-                    isLoadingOrders={isLoadingOrders}
-                    reviewedProductIds={reviewedProductIds}
-                    onPay={handlePayOrder}
-                    onCancel={handleCancelOrder}
-                    onSellerCancel={handleCancelSellerOrder}
-                    onReview={handleReview}
-                    onOpenDispute={handleOpenDispute}
-                />
+                <CustomerOrdersTab onError={setErrorMessage} />
             )}
             {activeTab === 'sales' && isSeller && (
                 <SellerSalesTab
