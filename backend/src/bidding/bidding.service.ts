@@ -21,6 +21,7 @@ import { Queue } from 'bullmq';
 import { getCorrelationId } from '../common/correlation/correlation.context';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAuctionDto } from './dto/create-auction.dto';
+import { LoggerService } from '../logger/logger.service';
 
 const auctionDetails = {
     product: true,
@@ -32,6 +33,7 @@ export class BiddingService {
     constructor(
         private readonly prisma: PrismaService,
         @InjectQueue('auctions') private readonly auctionsQueue: Queue,
+        private readonly logger: LoggerService,
     ) {}
 
     async createAuction(sellerId: string, dto: CreateAuctionDto) {
@@ -53,9 +55,9 @@ export class BiddingService {
             }
             if (
                 product.type !== ProductType.AUCTION ||
-                product.status !== ProductStatus.DRAFT &&
+                (product.status !== ProductStatus.DRAFT &&
                     product.status !== ProductStatus.PENDING_APPROVAL &&
-                    product.status !== ProductStatus.ACTIVE ||
+                    product.status !== ProductStatus.ACTIVE) ||
                 product.isArchived
             ) {
                 throw new BadRequestException(
@@ -103,6 +105,15 @@ export class BiddingService {
                 },
             );
         }
+        void this.logger.audit(BiddingService.name, 'Auction created', {
+            auctionId: auction.id,
+            productId: dto.productId,
+            sellerId,
+            startsAt: startsAt.toISOString(),
+            endsAt: endsAt.toISOString(),
+            startingPrice: dto.startingPrice,
+            minBidIncrement: dto.minBidIncrement,
+        });
         return auction;
     }
 
@@ -148,6 +159,10 @@ export class BiddingService {
                     },
                     idempotencyKey: `product-auction-status:${auctionId}:ACTIVE`,
                 },
+            });
+            void this.logger.audit(BiddingService.name, 'Auction started', {
+                auctionId,
+                productId: auction.productId,
             });
             return result;
         });
@@ -228,6 +243,12 @@ export class BiddingService {
                     auction.minBidIncrement,
                 );
                 if (bidAmount.lt(minimum)) {
+                    void this.logger.warn(BiddingService.name, 'Bid rejected: below minimum', {
+                        auctionId,
+                        bidderId,
+                        amount,
+                        minimum: minimum.toString(),
+                    });
                     throw new BadRequestException(
                         `Bid must be at least ${minimum.toString()}`,
                     );
@@ -245,9 +266,16 @@ export class BiddingService {
                     },
                 });
                 if (!updated.count)
+                {
+                    void this.logger.warn(BiddingService.name, 'Bid rejected: concurrent auction update', {
+                        auctionId,
+                        bidderId,
+                        amount,
+                    });
                     throw new ConflictException(
                         'Auction changed; retry the bid',
                     );
+                }
                 await tx.bid.updateMany({
                     where: { auctionId, status: BidStatus.ACTIVE },
                     data: { status: BidStatus.OUTBID },
@@ -276,6 +304,12 @@ export class BiddingService {
                 });
                 return { bid, currentPrice: bidAmount };
             });
+            void this.logger.audit(BiddingService.name, 'Bid accepted', {
+                auctionId,
+                bidderId,
+                bidId: result.bid.id,
+                amount: result.bid.amount.toString(),
+            });
             return result.bid;
         } catch (error: unknown) {
             if (
@@ -293,7 +327,9 @@ export class BiddingService {
 
     async endAuction(auctionId: string) {
         return this.prisma.$transaction(async (tx) => {
-            const auction = await tx.auction.findUnique({ where: { id: auctionId } });
+            const auction = await tx.auction.findUnique({
+                where: { id: auctionId },
+            });
             if (!auction || auction.status !== AuctionStatus.ACTIVE)
                 return auction;
             if (new Date() < auction.endsAt) return auction;
@@ -339,6 +375,12 @@ export class BiddingService {
                     where: { id: winner.id },
                     data: { status: BidStatus.WON },
                 });
+            void this.logger.audit(BiddingService.name, 'Auction ended', {
+                auctionId,
+                status,
+                winnerId: winner?.bidderId ?? null,
+                winningBidId: winner?.id ?? null,
+            });
             await tx.outboxEvent.create({
                 data: {
                     aggregateType: 'Auction',
@@ -395,6 +437,10 @@ export class BiddingService {
                     payload: { auctionId, correlationId: getCorrelationId() },
                     idempotencyKey: `auction-checkout-expired:${auctionId}`,
                 },
+            });
+            void this.logger.audit(BiddingService.name, 'Auction winner checkout expired', {
+                auctionId,
+                winnerId: auction.winnerId,
             });
             return result;
         });
@@ -463,11 +509,16 @@ export class BiddingService {
                     auction.product.isArchived ||
                     auction.product.status !== ProductStatus.ACTIVE
                 ) {
-                    throw new BadRequestException('Auction product is no longer available');
+                    throw new BadRequestException(
+                        'Auction product is no longer available',
+                    );
                 }
                 await tx.product.update({
                     where: { id: auction.productId },
-                    data: { status: ProductStatus.SOLD, version: { increment: 1 } },
+                    data: {
+                        status: ProductStatus.SOLD,
+                        version: { increment: 1 },
+                    },
                 });
                 const commissionRate = new Prisma.Decimal('0.10');
                 const commissionAmount =
@@ -527,6 +578,12 @@ export class BiddingService {
                 await tx.auction.update({
                     where: { id: auctionId },
                     data: { checkoutOrderId: order.id },
+                });
+                void this.logger.audit(BiddingService.name, 'Auction winner checkout created', {
+                    auctionId,
+                    orderId: order.id,
+                    winnerId,
+                    amount: auction.currentPrice.toString(),
                 });
                 await tx.outboxEvent.createMany({
                     data: [

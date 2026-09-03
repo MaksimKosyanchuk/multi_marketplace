@@ -10,6 +10,8 @@ import {
     getCorrelationId,
     runWithCorrelationId,
 } from '../common/correlation/correlation.context';
+import { LoggerService } from '../logger/logger.service';
+import { randomUUID } from 'node:crypto';
 
 interface AuctionJobData {
     auctionId: string;
@@ -25,26 +27,39 @@ export class BiddingProcessor extends WorkerHost {
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
         private readonly gateway: BiddingGateway,
+        private readonly logger: LoggerService,
     ) {
         super();
     }
 
     async process(job: Job<AuctionJobData>): Promise<void> {
-        if (job.data.correlationId) {
-            return runWithCorrelationId(job.data.correlationId, () =>
-                this.processJob(job),
-            );
-        }
-        return this.processJob(job);
+        return runWithCorrelationId(job.data.correlationId ?? randomUUID(), () =>
+            this.processJob(job),
+        );
     }
 
     private async processJob(job: Job<AuctionJobData>): Promise<void> {
+        void this.logger.debug(
+            BiddingProcessor.name,
+            'Auction queue job processing',
+            {
+                jobId: job.id,
+                jobName: job.name,
+                auctionId: job.data.auctionId,
+                attempts: job.attemptsMade + 1,
+            },
+        );
         if (job.name === 'start-auction') {
-            const auction = await this.biddingService.startAuction(job.data.auctionId);
+            const auction = await this.biddingService.startAuction(
+                job.data.auctionId,
+            );
             if (auction?.status === 'DRAFT') {
                 await this.auctionsQueue.add(
                     'start-auction',
-                    { auctionId: auction.id, correlationId: getCorrelationId() },
+                    {
+                        auctionId: auction.id,
+                        correlationId: getCorrelationId(),
+                    },
                     {
                         delay: 30_000,
                         jobId: `auction-start-retry-${auction.id}-${Date.now()}`,

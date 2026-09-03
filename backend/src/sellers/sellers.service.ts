@@ -6,10 +6,14 @@ import {
 import { Role, SellerStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSellerApplicationDto } from './dto/create-seller-application.dto';
+import { LoggerService } from '../logger/logger.service';
 
 @Injectable()
 export class SellersService {
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly logger: LoggerService,
+    ) {}
 
     async apply(userId: string, dto: CreateSellerApplicationDto) {
         const existing = await this.prisma.sellerProfile.findUnique({
@@ -20,10 +24,12 @@ export class SellersService {
             throw new ConflictException('User is already an approved seller');
         }
         if (existing?.status === SellerStatus.PENDING) {
-            throw new ConflictException('Seller application is already pending');
+            throw new ConflictException(
+                'Seller application is already pending',
+            );
         }
 
-        return this.prisma.sellerProfile.upsert({
+        const application = await this.prisma.sellerProfile.upsert({
             where: { userId },
             create: { userId, ...dto },
             update: {
@@ -34,6 +40,16 @@ export class SellersService {
                 reviewedById: null,
             },
         });
+        void this.logger.audit(
+            SellersService.name,
+            'Seller application submitted',
+            {
+                userId,
+                sellerProfileId: application.id,
+                operation: 'seller_application.create',
+            },
+        );
+        return application;
     }
 
     async getMine(userId: string) {
@@ -46,7 +62,9 @@ export class SellersService {
     listApplications(status?: SellerStatus) {
         return this.prisma.sellerProfile.findMany({
             where: status ? { status } : undefined,
-            include: { user: { select: { id: true, email: true, nickName: true } } },
+            include: {
+                user: { select: { id: true, email: true, nickName: true } },
+            },
             orderBy: { createdAt: 'asc' },
         });
     }
@@ -56,9 +74,12 @@ export class SellersService {
             const profile = await tx.sellerProfile.findUnique({
                 where: { id: profileId },
             });
-            if (!profile) throw new NotFoundException('Seller application not found');
+            if (!profile)
+                throw new NotFoundException('Seller application not found');
             if (profile.status !== SellerStatus.PENDING) {
-                throw new ConflictException('Only pending applications can be approved');
+                throw new ConflictException(
+                    'Only pending applications can be approved',
+                );
             }
 
             const claimed = await tx.sellerProfile.updateMany({
@@ -71,18 +92,31 @@ export class SellersService {
                 },
             });
             if (!claimed.count)
-                throw new ConflictException('Application was already processed');
+                throw new ConflictException(
+                    'Application was already processed',
+                );
             await tx.user.update({
                 where: { id: profile.userId },
                 data: { role: Role.SELLER },
             });
 
-            return tx.sellerProfile.update({
+            const approved = await tx.sellerProfile.update({
                 where: { id: profileId },
                 data: {
                     status: SellerStatus.APPROVED,
                 },
             });
+            void this.logger.audit(
+                SellersService.name,
+                'Seller application approved',
+                {
+                    sellerProfileId: profileId,
+                    userId: profile.userId,
+                    adminId,
+                    operation: 'seller_application.approve',
+                },
+            );
+            return approved;
         });
     }
 
@@ -90,9 +124,12 @@ export class SellersService {
         const profile = await this.prisma.sellerProfile.findUnique({
             where: { id: profileId },
         });
-        if (!profile) throw new NotFoundException('Seller application not found');
+        if (!profile)
+            throw new NotFoundException('Seller application not found');
         if (profile.status !== SellerStatus.PENDING) {
-            throw new ConflictException('Only pending applications can be rejected');
+            throw new ConflictException(
+                'Only pending applications can be rejected',
+            );
         }
 
         const updated = await this.prisma.sellerProfile.updateMany({
@@ -106,6 +143,19 @@ export class SellersService {
         });
         if (!updated.count)
             throw new ConflictException('Application was already processed');
-        return this.prisma.sellerProfile.findUniqueOrThrow({ where: { id: profileId } });
+        const rejected = await this.prisma.sellerProfile.findUniqueOrThrow({
+            where: { id: profileId },
+        });
+        void this.logger.audit(
+            SellersService.name,
+            'Seller application rejected',
+            {
+                sellerProfileId: profileId,
+                userId: profile.userId,
+                adminId,
+                operation: 'seller_application.reject',
+            },
+        );
+        return rejected;
     }
 }

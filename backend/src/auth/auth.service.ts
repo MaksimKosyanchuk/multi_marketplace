@@ -1,7 +1,6 @@
 import {
     ConflictException,
     Injectable,
-    Logger,
     UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -19,25 +18,30 @@ import { Prisma } from '@prisma/client';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { GoogleRegisterCompleteDto } from './dto/google-register-complete.dto';
 import { RedisService } from '../redis/redis.service';
+import { LoggerService } from '../logger/logger.service';
 
 const SALT_ROUNDS = 10;
 
 @Injectable()
 export class AuthService {
-    private readonly logger = new Logger(AuthService.name);
-
     constructor(
         private readonly usersService: UsersService,
         private readonly jwtService: JwtService,
         private readonly config: ConfigService,
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
+        private readonly logger: LoggerService,
     ) {}
 
     async register(dto: RegisterDto) {
         const existing = await this.usersService.findByEmail(dto.email);
 
         if (existing) {
+            void this.logger.warn(
+                AuthService.name,
+                'Registration rejected: email already registered',
+                { email: dto.email },
+            );
             throw new ConflictException('Email is already registered');
         }
 
@@ -72,7 +76,10 @@ export class AuthService {
             throw error;
         }
 
-        this.logger.log(`User registered ${user.id}`);
+        void this.logger.log(AuthService.name, 'User registered', {
+            userId: user.id,
+            operation: 'register',
+        });
 
         return this.issueTokens(user.id, user.email, user.role);
     }
@@ -81,6 +88,11 @@ export class AuthService {
         const user = await this.usersService.findByEmail(dto.email);
 
         if (!user) {
+            void this.logger.warn(
+                AuthService.name,
+                'Login failed: user not found',
+                { email: dto.email },
+            );
             throw new UnauthorizedException('Invalid credentials');
         }
 
@@ -89,10 +101,19 @@ export class AuthService {
             (await bcrypt.compare(dto.password, user.passwordHash));
 
         if (!matches) {
+            void this.logger.warn(
+                AuthService.name,
+                'Login failed: invalid password',
+                { userId: user.id },
+            );
             throw new UnauthorizedException('Invalid credentials');
         }
 
         await this.invalidateRefreshTokens(user.id);
+        void this.logger.log(AuthService.name, 'User logged in', {
+            userId: user.id,
+            operation: 'login',
+        });
         return this.issueTokens(user.id, user.email, user.role);
     }
 

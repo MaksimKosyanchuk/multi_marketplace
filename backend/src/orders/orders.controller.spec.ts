@@ -185,7 +185,11 @@ describe('OrdersController', () => {
                 status: SellerOrderStatus.SHIPPED,
                 trackingNumber: 'UA123',
             };
-            await controller.updateSellerOrderStatus(sellerReq, 'seller-order-1', dto);
+            await controller.updateSellerOrderStatus(
+                sellerReq,
+                'seller-order-1',
+                dto,
+            );
             expect(updateSellerOrderStatusMock).toHaveBeenCalledWith(
                 'seller-1',
                 'seller-order-1',

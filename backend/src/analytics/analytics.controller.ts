@@ -118,6 +118,8 @@ export class AnalyticsController {
             'Content-Disposition',
             `attachment; filename="analytics_${new Date().toISOString().slice(0, 10)}.json"`,
         );
-        return res.send(await this.analyticsService.generateDashboardJson(query));
+        return res.send(
+            await this.analyticsService.generateDashboardJson(query),
+        );
     }
 }

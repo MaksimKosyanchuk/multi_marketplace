@@ -38,7 +38,9 @@ describe('ProductsService moderation', () => {
             logger as never,
         );
         prisma.$transaction.mockImplementation((operation: unknown) =>
-            typeof operation === 'function' ? operation(tx) : Promise.resolve([]),
+            typeof operation === 'function'
+                ? operation(tx)
+                : Promise.resolve([]),
         );
         tx.product.updateMany.mockResolvedValue({ count: 1 });
         tx.product.findUniqueOrThrow.mockResolvedValue(product);
@@ -47,7 +49,11 @@ describe('ProductsService moderation', () => {
     it('approves only a pending product and records an outbox event', async () => {
         prisma.product.findUnique.mockResolvedValue(product);
 
-        const result = await service.approve('product-1', 'admin-1', 'Approved');
+        const result = await service.approve(
+            'product-1',
+            'admin-1',
+            'Approved',
+        );
 
         expect(tx.product.updateMany).toHaveBeenCalledWith({
             where: {

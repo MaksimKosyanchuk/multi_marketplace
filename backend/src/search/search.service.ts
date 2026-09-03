@@ -7,6 +7,7 @@ import {
     ProductSort,
     QueryProductDto,
 } from '../products/dto/query-product.dto';
+import { LoggerService } from '../logger/logger.service';
 
 type SearchDocument = {
     id: string;
@@ -39,6 +40,7 @@ export class SearchService implements OnModuleInit {
         private readonly prisma: PrismaService,
         config: ConfigService,
         private readonly redis: RedisService,
+        private readonly auditLogger: LoggerService,
     ) {
         this.host = config.get<string>(
             'MEILISEARCH_URL',
@@ -75,11 +77,14 @@ export class SearchService implements OnModuleInit {
                 'PUT',
                 ['price', 'rating', 'createdAt'],
             );
-            await this.request(
-                '/indexes/products/settings/faceting',
-                'PUT',
-                ['categoryId', 'sellerId', 'type', 'rating', 'price', 'stock'],
-            );
+            await this.request('/indexes/products/settings/faceting', 'PUT', [
+                'categoryId',
+                'sellerId',
+                'type',
+                'rating',
+                'price',
+                'stock',
+            ]);
         } catch (error: unknown) {
             this.logger.warn(
                 `Meilisearch settings unavailable: ${error instanceof Error ? error.message : 'unknown error'}`,
@@ -204,9 +209,15 @@ export class SearchService implements OnModuleInit {
         await this.request(
             `/indexes/${this.index}/documents?primaryKey=id`,
             'POST',
-            [
-            this.toSearchDocument(product, rating),
-            ],
+            [this.toSearchDocument(product, rating)],
+        );
+        void this.auditLogger.audit(
+            SearchService.name,
+            'Search index success',
+            {
+                productId,
+                operation: 'search.index',
+            },
         );
     }
 
@@ -245,13 +256,15 @@ export class SearchService implements OnModuleInit {
         }
         if (this.reindexPromise) return;
 
-        this.reindexPromise = this.reindexAllProducts().catch((error: unknown) => {
-            this.logger.warn(
-                `Meilisearch recovery failed: ${error instanceof Error ? error.message : 'unknown error'}`,
-            );
-        }).finally(() => {
-            this.reindexPromise = undefined;
-        });
+        this.reindexPromise = this.reindexAllProducts()
+            .catch((error: unknown) => {
+                this.logger.warn(
+                    `Meilisearch recovery failed: ${error instanceof Error ? error.message : 'unknown error'}`,
+                );
+            })
+            .finally(() => {
+                this.reindexPromise = undefined;
+            });
     }
 
     private toSearchDocument(
@@ -285,7 +298,9 @@ export class SearchService implements OnModuleInit {
             rating,
             createdAt: product.createdAt.toISOString(),
             ...(product.auction ? { auctionId: product.auction.id } : {}),
-            ...(product.auction ? { auctionStatus: product.auction.status } : {}),
+            ...(product.auction
+                ? { auctionStatus: product.auction.status }
+                : {}),
         };
     }
 
@@ -293,6 +308,14 @@ export class SearchService implements OnModuleInit {
         await this.request(
             `/indexes/${this.index}/documents/${productId}`,
             'DELETE',
+        );
+        void this.auditLogger.audit(
+            SearchService.name,
+            'Search index delete success',
+            {
+                productId,
+                operation: 'search.delete',
+            },
         );
     }
 
@@ -314,7 +337,10 @@ export class SearchService implements OnModuleInit {
                 {
                     OR: [
                         { type: ProductType.FIXED_PRICE },
-                        { type: ProductType.AUCTION, auction: { status: 'ACTIVE' } },
+                        {
+                            type: ProductType.AUCTION,
+                            auction: { status: 'ACTIVE' },
+                        },
                     ],
                 },
             ],

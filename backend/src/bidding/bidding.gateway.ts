@@ -1,6 +1,7 @@
 import {
     ConnectedSocket,
     OnGatewayConnection,
+    OnGatewayDisconnect,
     OnGatewayInit,
     SubscribeMessage,
     WebSocketGateway,
@@ -8,9 +9,9 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
-import { Logger } from '@nestjs/common';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { LoggerService } from '../logger/logger.service';
 
 interface JwtPayload {
     sub?: string;
@@ -18,7 +19,7 @@ interface JwtPayload {
 }
 
 @WebSocketGateway({ cors: { origin: process.env.CLIENT_URL ?? false } })
-export class BiddingGateway implements OnGatewayInit, OnGatewayConnection {
+export class BiddingGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
     @WebSocketServer()
     server: Server;
 
@@ -26,9 +27,8 @@ export class BiddingGateway implements OnGatewayInit, OnGatewayConnection {
         private readonly notifications: NotificationsService,
         private readonly prisma: PrismaService,
         private readonly jwt: JwtService,
+        private readonly logger: LoggerService,
     ) {}
-
-    private readonly logger = new Logger(BiddingGateway.name);
 
     async handleConnection(client: Socket): Promise<void> {
         try {
@@ -36,6 +36,12 @@ export class BiddingGateway implements OnGatewayInit, OnGatewayConnection {
             if (!token) {
                 client.disconnect();
                 return;
+            }
+
+            handleDisconnect(client: Socket): void {
+                void this.logger.audit(BiddingGateway.name, 'WebSocket disconnected', {
+                    socketId: client.id, userId: client.data.userId,
+                });
             }
             const payload = await this.jwt.verifyAsync<JwtPayload>(token);
             if (!payload.sub) {
@@ -48,9 +54,10 @@ export class BiddingGateway implements OnGatewayInit, OnGatewayConnection {
             if (payload.role === 'SELLER')
                 await client.join(`seller:${payload.sub}`);
         } catch (error: unknown) {
-            this.logger.warn(
-                `Rejected auction socket: ${error instanceof Error ? error.message : 'invalid token'}`,
-            );
+            void this.logger.warn(BiddingGateway.name, 'WebSocket connection rejected', {
+                socketId: client.id,
+                error: error instanceof Error ? error.message : 'invalid token',
+            });
             client.disconnect();
         }
     }

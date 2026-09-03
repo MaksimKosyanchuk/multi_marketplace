@@ -27,20 +27,31 @@ describe('OrdersService checkout', () => {
     const logger = { log: jest.fn() };
 
     const firstProduct = {
-        id: 'product-1', sellerId: 'seller-1', name: 'Keyboard',
-        price: new Prisma.Decimal('100.00'), stock: 4,
-        status: ProductStatus.ACTIVE, type: ProductType.FIXED_PRICE,
+        id: 'product-1',
+        sellerId: 'seller-1',
+        name: 'Keyboard',
+        price: new Prisma.Decimal('100.00'),
+        stock: 4,
+        status: ProductStatus.ACTIVE,
+        type: ProductType.FIXED_PRICE,
         isArchived: false,
     };
     const secondProduct = {
-        id: 'product-2', sellerId: 'seller-2', name: 'Monitor',
-        price: new Prisma.Decimal('200.00'), stock: 2,
-        status: ProductStatus.ACTIVE, type: ProductType.FIXED_PRICE,
+        id: 'product-2',
+        sellerId: 'seller-2',
+        name: 'Monitor',
+        price: new Prisma.Decimal('200.00'),
+        stock: 2,
+        status: ProductStatus.ACTIVE,
+        type: ProductType.FIXED_PRICE,
         isArchived: false,
     };
     const createdOrder = {
-        id: 'order-1', userId: 'customer-1', status: OrderStatus.NEW,
-        subtotal: new Prisma.Decimal('400'), totalAmount: new Prisma.Decimal('400'),
+        id: 'order-1',
+        userId: 'customer-1',
+        status: OrderStatus.NEW,
+        subtotal: new Prisma.Decimal('400'),
+        totalAmount: new Prisma.Decimal('400'),
         sellerOrders: [],
     };
 
@@ -60,13 +71,17 @@ describe('OrdersService checkout', () => {
     });
 
     it('requires an idempotency key', async () => {
-        await expect(service.checkout('customer-1', '')).rejects.toThrow(BadRequestException);
+        await expect(service.checkout('customer-1', '')).rejects.toThrow(
+            BadRequestException,
+        );
         expect(transaction).not.toHaveBeenCalled();
     });
 
     it('returns an earlier checkout for the same idempotency key', async () => {
         prisma.payment.findUnique.mockResolvedValue({ order: createdOrder });
-        await expect(service.checkout('customer-1', 'checkout-1')).resolves.toEqual(createdOrder);
+        await expect(
+            service.checkout('customer-1', 'checkout-1'),
+        ).resolves.toEqual(createdOrder);
         expect(transaction).not.toHaveBeenCalled();
     });
 
@@ -85,23 +100,45 @@ describe('OrdersService checkout', () => {
             order: { create: jest.fn().mockResolvedValue(createdOrder) },
             outboxEvent: { createMany: jest.fn() },
         };
-        transaction.mockImplementation((callback: (client: typeof tx) => unknown) => callback(tx));
+        transaction.mockImplementation(
+            (callback: (client: typeof tx) => unknown) => callback(tx),
+        );
 
-        await expect(service.checkout('customer-1', 'checkout-1')).resolves.toEqual(createdOrder);
+        await expect(
+            service.checkout('customer-1', 'checkout-1'),
+        ).resolves.toEqual(createdOrder);
 
         expect(tx.product.updateMany).toHaveBeenCalledTimes(2);
-        expect(tx.order.create).toHaveBeenCalledWith(expect.objectContaining({
-            data: expect.objectContaining({
-                userId: 'customer-1',
-                subtotal: new Prisma.Decimal('400'),
-                sellerOrders: expect.objectContaining({ create: expect.arrayContaining([
-                    expect.objectContaining({ sellerId: 'seller-1', items: expect.any(Object), ledgerEntries: expect.any(Object) }),
-                    expect.objectContaining({ sellerId: 'seller-2', items: expect.any(Object), ledgerEntries: expect.any(Object) }),
-                ]) }),
-                payments: expect.objectContaining({ create: expect.objectContaining({ idempotencyKey: 'checkout-1' }) }),
+        expect(tx.order.create).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({
+                    userId: 'customer-1',
+                    subtotal: new Prisma.Decimal('400'),
+                    sellerOrders: expect.objectContaining({
+                        create: expect.arrayContaining([
+                            expect.objectContaining({
+                                sellerId: 'seller-1',
+                                items: expect.any(Object),
+                                ledgerEntries: expect.any(Object),
+                            }),
+                            expect.objectContaining({
+                                sellerId: 'seller-2',
+                                items: expect.any(Object),
+                                ledgerEntries: expect.any(Object),
+                            }),
+                        ]),
+                    }),
+                    payments: expect.objectContaining({
+                        create: expect.objectContaining({
+                            idempotencyKey: 'checkout-1',
+                        }),
+                    }),
+                }),
             }),
-        }));
-        expect(tx.cartItem.deleteMany).toHaveBeenCalledWith({ where: { cartId: 'cart-1' } });
+        );
+        expect(tx.cartItem.deleteMany).toHaveBeenCalledWith({
+            where: { cartId: 'cart-1' },
+        });
         expect(tx.outboxEvent.createMany).toHaveBeenCalledTimes(1);
         expect(redis.delByPattern).toHaveBeenCalledWith('products:list:*');
     });
@@ -111,8 +148,12 @@ describe('OrdersService checkout', () => {
             payment: { findUnique: jest.fn().mockResolvedValue(null) },
             cart: { findUnique: jest.fn().mockResolvedValue(null) },
         };
-        transaction.mockImplementation((callback: (client: typeof tx) => unknown) => callback(tx));
-        await expect(service.checkout('customer-1', 'checkout-1')).rejects.toThrow('Cart is empty');
+        transaction.mockImplementation(
+            (callback: (client: typeof tx) => unknown) => callback(tx),
+        );
+        await expect(
+            service.checkout('customer-1', 'checkout-1'),
+        ).rejects.toThrow('Cart is empty');
     });
 
     it('does not allow a seller to read an unrelated order', async () => {
@@ -121,51 +162,92 @@ describe('OrdersService checkout', () => {
             sellerOrders: [{ sellerId: 'seller-2', items: [] }],
         });
         (prisma as Record<string, unknown>).order = { findUnique };
-        await expect(service.findOne('seller-1', Role.SELLER, 'order-1')).rejects.toThrow('access');
+        await expect(
+            service.findOne('seller-1', Role.SELLER, 'order-1'),
+        ).rejects.toThrow('access');
     });
 
     it.each([
         [[SellerOrderStatus.NEW], OrderStatus.NEW],
-        [[SellerOrderStatus.PROCESSING, SellerOrderStatus.PROCESSING], OrderStatus.PROCESSING],
-        [[SellerOrderStatus.SHIPPED, SellerOrderStatus.PROCESSING], OrderStatus.SHIPPED],
-        [[SellerOrderStatus.COMPLETED, SellerOrderStatus.SHIPPED], OrderStatus.COMPLETED],
-        [[SellerOrderStatus.CANCELLED, SellerOrderStatus.PROCESSING], OrderStatus.PROCESSING],
+        [
+            [SellerOrderStatus.PROCESSING, SellerOrderStatus.PROCESSING],
+            OrderStatus.PROCESSING,
+        ],
+        [
+            [SellerOrderStatus.SHIPPED, SellerOrderStatus.PROCESSING],
+            OrderStatus.SHIPPED,
+        ],
+        [
+            [SellerOrderStatus.COMPLETED, SellerOrderStatus.SHIPPED],
+            OrderStatus.COMPLETED,
+        ],
+        [
+            [SellerOrderStatus.CANCELLED, SellerOrderStatus.PROCESSING],
+            OrderStatus.PROCESSING,
+        ],
         [[SellerOrderStatus.CANCELLED], OrderStatus.CANCELLED],
-    ])('derives parent status from seller-order statuses', (statuses, expected) => {
-        expect(deriveOrderStatus(statuses)).toBe(expected);
-    });
+    ])(
+        'derives parent status from seller-order statuses',
+        (statuses, expected) => {
+            expect(deriveOrderStatus(statuses)).toBe(expected);
+        },
+    );
 
     it('updates an owned seller order, derives parent status, and records outbox events', async () => {
         const tx = {
             sellerOrder: {
                 findUnique: jest.fn().mockResolvedValue({
-                    id: 'seller-order-1', sellerId: 'seller-1', orderId: 'order-1',
+                    id: 'seller-order-1',
+                    sellerId: 'seller-1',
+                    orderId: 'order-1',
                     status: SellerOrderStatus.PROCESSING,
                     order: { id: 'order-1', status: OrderStatus.PROCESSING },
                 }),
                 update: jest.fn().mockResolvedValue({
-                    id: 'seller-order-1', sellerId: 'seller-1',
-                    status: SellerOrderStatus.SHIPPED, items: [], order: {}, seller: {},
+                    id: 'seller-order-1',
+                    sellerId: 'seller-1',
+                    status: SellerOrderStatus.SHIPPED,
+                    items: [],
+                    order: {},
+                    seller: {},
                 }),
-                findMany: jest.fn().mockResolvedValue([
-                    { status: SellerOrderStatus.SHIPPED },
-                    { status: SellerOrderStatus.PROCESSING },
-                ]),
+                findMany: jest
+                    .fn()
+                    .mockResolvedValue([
+                        { status: SellerOrderStatus.SHIPPED },
+                        { status: SellerOrderStatus.PROCESSING },
+                    ]),
             },
-            order: { update: jest.fn().mockResolvedValue({ id: 'order-1', status: OrderStatus.PARTIALLY_SHIPPED }) },
+            order: {
+                update: jest.fn().mockResolvedValue({
+                    id: 'order-1',
+                    status: OrderStatus.PARTIALLY_SHIPPED,
+                }),
+            },
             outboxEvent: { createMany: jest.fn() },
         };
-        transaction.mockImplementation((callback: (client: typeof tx) => unknown) => callback(tx));
+        transaction.mockImplementation(
+            (callback: (client: typeof tx) => unknown) => callback(tx),
+        );
 
-        const result = await service.updateSellerOrderStatus('seller-1', 'seller-order-1', {
-            status: SellerOrderStatus.SHIPPED,
-            trackingNumber: 'UA123',
-        });
+        const result = await service.updateSellerOrderStatus(
+            'seller-1',
+            'seller-order-1',
+            {
+                status: SellerOrderStatus.SHIPPED,
+                trackingNumber: 'UA123',
+            },
+        );
 
         expect(result.order.status).toBe(OrderStatus.PARTIALLY_SHIPPED);
-        expect(tx.sellerOrder.update).toHaveBeenCalledWith(expect.objectContaining({
-            data: expect.objectContaining({ status: SellerOrderStatus.SHIPPED, trackingNumber: 'UA123' }),
-        }));
+        expect(tx.sellerOrder.update).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({
+                    status: SellerOrderStatus.SHIPPED,
+                    trackingNumber: 'UA123',
+                }),
+            }),
+        );
         expect(tx.outboxEvent.createMany).toHaveBeenCalledTimes(1);
     });
 
@@ -173,16 +255,22 @@ describe('OrdersService checkout', () => {
         const tx = {
             sellerOrder: {
                 findUnique: jest.fn().mockResolvedValue({
-                    id: 'seller-order-1', sellerId: 'seller-1', orderId: 'order-1',
+                    id: 'seller-order-1',
+                    sellerId: 'seller-1',
+                    orderId: 'order-1',
                     status: SellerOrderStatus.NEW,
                     order: { id: 'order-1', status: OrderStatus.NEW },
                 }),
             },
         };
-        transaction.mockImplementation((callback: (client: typeof tx) => unknown) => callback(tx));
+        transaction.mockImplementation(
+            (callback: (client: typeof tx) => unknown) => callback(tx),
+        );
 
-        await expect(service.updateSellerOrderStatus('seller-1', 'seller-order-1', {
-            status: SellerOrderStatus.COMPLETED,
-        })).rejects.toThrow('Cannot change seller order');
+        await expect(
+            service.updateSellerOrderStatus('seller-1', 'seller-order-1', {
+                status: SellerOrderStatus.COMPLETED,
+            }),
+        ).rejects.toThrow('Cannot change seller order');
     });
 });

@@ -16,12 +16,14 @@ import { CreateDisputeDto } from './dto/create-dispute.dto';
 import { ResolveDisputeDto } from './dto/resolve-dispute.dto';
 import { getCorrelationId } from '../common/correlation/correlation.context';
 import { MockPaymentService } from '../payments/mock-payment.service';
+import { LoggerService } from '../logger/logger.service';
 
 @Injectable()
 export class DisputesService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly mockPayment: MockPaymentService,
+        private readonly logger: LoggerService,
     ) {}
 
     async open(customerId: string, dto: CreateDisputeDto) {
@@ -43,7 +45,9 @@ export class DisputesService {
             const existing = await tx.dispute.findFirst({
                 where: {
                     sellerOrderId: dto.sellerOrderId,
-                    status: { in: [DisputeStatus.OPEN, DisputeStatus.UNDER_REVIEW] },
+                    status: {
+                        in: [DisputeStatus.OPEN, DisputeStatus.UNDER_REVIEW],
+                    },
                 },
             });
             if (existing)
@@ -78,6 +82,10 @@ export class DisputesService {
                     },
                     idempotencyKey: `dispute-opened:${dispute.id}`,
                 },
+            });
+            void this.logger.audit(DisputesService.name, 'Dispute created', {
+                disputeId: dispute.id, sellerOrderId: dto.sellerOrderId, customerId,
+                operation: 'dispute.create',
             });
             return dispute;
         });
@@ -130,12 +138,18 @@ export class DisputesService {
                 where: { id: disputeId },
                 include: {
                     sellerOrder: {
-                        include: { items: true, order: { include: { payments: true } } },
+                        include: {
+                            items: true,
+                            order: { include: { payments: true } },
+                        },
                     },
                 },
             });
             if (!dispute) throw new NotFoundException('Dispute not found');
-            if (dispute.status !== DisputeStatus.OPEN && dispute.status !== DisputeStatus.UNDER_REVIEW)
+            if (
+                dispute.status !== DisputeStatus.OPEN &&
+                dispute.status !== DisputeStatus.UNDER_REVIEW
+            )
                 throw new ConflictException('Dispute is already resolved');
             if (
                 ![
@@ -143,7 +157,9 @@ export class DisputesService {
                     DisputeStatus.RESOLVED_FOR_SELLER,
                 ].some((status) => status === dto.status)
             ) {
-                throw new ConflictException('Invalid dispute resolution status');
+                throw new ConflictException(
+                    'Invalid dispute resolution status',
+                );
             }
             const shouldRefund =
                 dto.status === DisputeStatus.RESOLVED_FOR_CUSTOMER &&
@@ -168,9 +184,12 @@ export class DisputesService {
                         },
                         _sum: { quantity: true },
                     });
-                    const quantity = item.quantity - (refunded._sum.quantity ?? 0);
+                    const quantity =
+                        item.quantity - (refunded._sum.quantity ?? 0);
                     if (quantity <= 0) continue;
-                    const amount = new Prisma.Decimal(item.unitPrice).mul(quantity);
+                    const amount = new Prisma.Decimal(item.unitPrice).mul(
+                        quantity,
+                    );
                     refundAmount = refundAmount.add(amount);
                     const providerRefund = this.mockPayment.refund(
                         payment.id,
@@ -211,12 +230,11 @@ export class DisputesService {
                 await tx.payment.update({
                     where: { id: payment.id },
                     data: {
-                        status:
-                            (totalRefunded._sum.amount ?? new Prisma.Decimal(0)).gte(
-                                payment.amount,
-                            )
-                                ? PaymentStatus.REFUNDED
-                                : PaymentStatus.PARTIALLY_REFUNDED,
+                        status: (
+                            totalRefunded._sum.amount ?? new Prisma.Decimal(0)
+                        ).gte(payment.amount)
+                            ? PaymentStatus.REFUNDED
+                            : PaymentStatus.PARTIALLY_REFUNDED,
                     },
                 });
             }
@@ -252,6 +270,10 @@ export class DisputesService {
                     },
                     idempotencyKey: `dispute-resolved:${disputeId}:${dto.status}`,
                 },
+            });
+            void this.logger.audit(DisputesService.name, 'Dispute resolved', {
+                disputeId, adminId, status: dto.status,
+                refundAmount: refundAmount.toString(), operation: 'dispute.resolve',
             });
             return resolved;
         });

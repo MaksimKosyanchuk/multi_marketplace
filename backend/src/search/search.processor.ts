@@ -5,6 +5,8 @@ import { SearchService } from './search.service';
 import { OutboxStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { runWithCorrelationId } from '../common/correlation/correlation.context';
+import { LoggerService } from '../logger/logger.service';
+import { randomUUID } from 'node:crypto';
 
 interface SearchJob {
     eventId: string;
@@ -19,20 +21,28 @@ export class SearchProcessor extends WorkerHost {
         private readonly search: SearchService,
         private readonly redis: RedisService,
         private readonly prisma: PrismaService,
+        private readonly logger: LoggerService,
     ) {
         super();
     }
 
     async process(job: Job<SearchJob>): Promise<void> {
-        if (job.data.correlationId) {
-            return runWithCorrelationId(job.data.correlationId, () =>
-                this.processJob(job),
-            );
-        }
-        return this.processJob(job);
+        return runWithCorrelationId(job.data.correlationId ?? randomUUID(), () =>
+            this.processJob(job),
+        );
     }
 
     private async processJob(job: Job<SearchJob>): Promise<void> {
+        void this.logger.debug(
+            SearchProcessor.name,
+            'Search queue processing',
+            {
+                jobId: job.id,
+                eventId: job.data.eventId,
+                productId: job.data.productId,
+                attempts: job.attemptsMade + 1,
+            },
+        );
         const eventId = job.data.eventId;
         const claimed = await this.prisma.outboxEvent.updateMany({
             where: {
@@ -87,6 +97,18 @@ export class SearchProcessor extends WorkerHost {
                 },
             });
         } catch (error: unknown) {
+            void this.logger.error(
+                SearchProcessor.name,
+                'Search queue processing failed',
+                {
+                    jobId: job.id,
+                    eventId,
+                    productId: job.data.productId,
+                    attempts: job.attemptsMade + 1,
+                    error:
+                        error instanceof Error ? error.message : String(error),
+                },
+            );
             await this.prisma.outboxEvent.update({
                 where: { id: eventId },
                 data: {

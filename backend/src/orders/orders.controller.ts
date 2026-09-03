@@ -246,7 +246,9 @@ export class OrdersController {
     @UseGuards(RolesGuard)
     @Roles(Role.CUSTOMER)
     @Post('suborders/:sellerOrderId/cancel')
-    @ApiOperation({ summary: 'Отменить sub-заказ покупателем с возвратом средств' })
+    @ApiOperation({
+        summary: 'Отменить sub-заказ покупателем с возвратом средств',
+    })
     cancelCustomerSuborder(
         @Req() req: Request & { user: { id: string } },
         @Param('sellerOrderId') sellerOrderId: string,

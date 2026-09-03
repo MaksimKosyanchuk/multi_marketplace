@@ -3,6 +3,7 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { OutboxStatus } from '@prisma/client';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
+import { LoggerService } from '../logger/logger.service';
 
 @Injectable()
 export class BiddingDispatcher implements OnModuleInit, OnModuleDestroy {
@@ -12,6 +13,7 @@ export class BiddingDispatcher implements OnModuleInit, OnModuleDestroy {
     constructor(
         private readonly prisma: PrismaService,
         @InjectQueue('auctions') private readonly auctionsQueue: Queue,
+        private readonly logger: LoggerService,
     ) {}
 
     onModuleInit(): void {
@@ -71,6 +73,16 @@ export class BiddingDispatcher implements OnModuleInit, OnModuleDestroy {
                     ),
                 ),
             );
+            void this.logger.debug(BiddingDispatcher.name, 'Auction events dispatched', {
+                queue: 'auctions',
+                eventCount: events.length,
+            });
+        } catch (error: unknown) {
+            void this.logger.error(BiddingDispatcher.name, 'Auction dispatch failed', {
+                queue: 'auctions',
+                error: error instanceof Error ? error.message : String(error),
+            });
+            throw error;
         } finally {
             this.running = false;
         }

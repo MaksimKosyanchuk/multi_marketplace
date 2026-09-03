@@ -42,7 +42,10 @@ export class ProductResponseDto {
     @ApiProperty({ example: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11' })
     categoryId: string;
 
-    @ApiProperty({ enum: ProductStatus, example: ProductStatus.PENDING_APPROVAL })
+    @ApiProperty({
+        enum: ProductStatus,
+        example: ProductStatus.PENDING_APPROVAL,
+    })
     status: ProductStatus;
 
     @ApiProperty({ type: ProductCategoryResponseDto, nullable: true })

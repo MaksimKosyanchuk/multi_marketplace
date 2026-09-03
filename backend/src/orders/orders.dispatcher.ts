@@ -3,6 +3,7 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { OutboxStatus } from '@prisma/client';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
+import { LoggerService } from '../logger/logger.service';
 
 @Injectable()
 export class OrdersDispatcher implements OnModuleInit, OnModuleDestroy {
@@ -12,6 +13,7 @@ export class OrdersDispatcher implements OnModuleInit, OnModuleDestroy {
     constructor(
         private readonly prisma: PrismaService,
         @InjectQueue('orders') private readonly ordersQueue: Queue,
+        private readonly logger: LoggerService,
     ) {}
 
     onModuleInit(): void {
@@ -70,6 +72,16 @@ export class OrdersDispatcher implements OnModuleInit, OnModuleDestroy {
                     ),
                 ),
             );
+            void this.logger.debug(OrdersDispatcher.name, 'Outbox events dispatched', {
+                queue: 'orders',
+                eventCount: events.length,
+            });
+        } catch (error: unknown) {
+            void this.logger.error(OrdersDispatcher.name, 'Outbox dispatch failed', {
+                queue: 'orders',
+                error: error instanceof Error ? error.message : String(error),
+            });
+            throw error;
         } finally {
             this.running = false;
         }

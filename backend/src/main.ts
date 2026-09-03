@@ -38,8 +38,6 @@ async function bootstrap() {
         }),
     );
 
-    app.useGlobalFilters(new AllExceptionsFilter());
-
     const config = new DocumentBuilder()
         .setTitle('Marketplace API')
         .setDescription('API документация маркетплейса')

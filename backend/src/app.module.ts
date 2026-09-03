@@ -18,13 +18,15 @@ import { PaymentsModule } from './payments/payments.module';
 import { BiddingModule } from './bidding/bidding.module';
 import { SearchModule } from './search/search.module';
 import { MetricsModule } from './metrics/metrics.module';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { DisputesModule } from './disputes/disputes.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { CorrelationMiddleware } from './common/correlation/correlation.middleware';
+import { HttpLoggingInterceptor } from './common/interceptors/http-logging.interceptor';
+import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 
 @Module({
     imports: [
@@ -66,7 +68,12 @@ import { CorrelationMiddleware } from './common/correlation/correlation.middlewa
     ],
 
     controllers: [AppController],
-    providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
+    providers: [
+        AppService,
+        { provide: APP_GUARD, useClass: ThrottlerGuard },
+        { provide: APP_INTERCEPTOR, useClass: HttpLoggingInterceptor },
+        { provide: APP_FILTER, useClass: AllExceptionsFilter },
+    ],
 })
 export class AppModule implements NestModule {
     configure(consumer: MiddlewareConsumer): void {

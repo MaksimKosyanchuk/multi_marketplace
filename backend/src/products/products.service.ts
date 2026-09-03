@@ -9,7 +9,12 @@ import { RedisService } from '../redis/redis.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductSort, QueryProductDto } from './dto/query-product.dto';
-import { AuctionStatus, Prisma, ProductStatus, ProductType } from '@prisma/client';
+import {
+    AuctionStatus,
+    Prisma,
+    ProductStatus,
+    ProductType,
+} from '@prisma/client';
 import { deleteFile } from '../common/utils/file';
 import { LoggerService } from '../logger/logger.service';
 import { getCorrelationId } from '../common/correlation/correlation.context';
@@ -109,18 +114,20 @@ export class ProductsService {
 
         const result: PaginatedProductsResult = {
             items: items.map((item) => {
-                const reviews = (item as ProductWithCategory & {
-                    reviews?: { rating: number }[];
-                }).reviews;
+                const reviews = (
+                    item as ProductWithCategory & {
+                        reviews?: { rating: number }[];
+                    }
+                ).reviews;
                 if (!reviews) return item;
-                const { reviews: _reviews, ...withoutReviews } = item as typeof item & {
-                    reviews: { rating: number }[];
-                };
+                const { reviews: _reviews, ...withoutReviews } = item;
                 return {
                     ...withoutReviews,
                     rating: reviews.length
-                        ? reviews.reduce((sum, review) => sum + review.rating, 0) /
-                          reviews.length
+                        ? reviews.reduce(
+                              (sum, review) => sum + review.rating,
+                              0,
+                          ) / reviews.length
                         : 0,
                 };
             }),
@@ -139,9 +146,7 @@ export class ProductsService {
         const { page, limit, sort } = query;
         const where: Prisma.ProductWhereInput = {
             sellerId,
-            ...(query.includeArchived
-                ? {}
-                : { isArchived: false }),
+            ...(query.includeArchived ? {} : { isArchived: false }),
             ...(query.search && {
                 OR: [
                     { name: { contains: query.search, mode: 'insensitive' } },
@@ -178,18 +183,20 @@ export class ProductsService {
         ]);
         return {
             items: items.map((item) => {
-                const reviews = (item as ProductWithCategory & {
-                    reviews?: { rating: number }[];
-                }).reviews;
+                const reviews = (
+                    item as ProductWithCategory & {
+                        reviews?: { rating: number }[];
+                    }
+                ).reviews;
                 if (!reviews) return item;
-                const { reviews: _reviews, ...withoutReviews } = item as typeof item & {
-                    reviews: { rating: number }[];
-                };
+                const { reviews: _reviews, ...withoutReviews } = item;
                 return {
                     ...withoutReviews,
                     rating: reviews.length
-                        ? reviews.reduce((sum, review) => sum + review.rating, 0) /
-                          reviews.length
+                        ? reviews.reduce(
+                              (sum, review) => sum + review.rating,
+                              0,
+                          ) / reviews.length
                         : 0,
                 };
             }),
@@ -216,7 +223,10 @@ export class ProductsService {
             }
             const submitted = await tx.product.findUniqueOrThrow({
                 where: { id },
-                include: { category: true, auction: { select: { id: true, status: true } } },
+                include: {
+                    category: true,
+                    auction: { select: { id: true, status: true } },
+                },
             });
             await tx.outboxEvent.create({
                 data: {
@@ -237,7 +247,9 @@ export class ProductsService {
         return product;
     }
 
-    async findPendingApproval(query: QueryProductDto): Promise<PaginatedProductsResult> {
+    async findPendingApproval(
+        query: QueryProductDto,
+    ): Promise<PaginatedProductsResult> {
         const { page, limit, sort } = query;
         const where: Prisma.ProductWhereInput = {
             status: ProductStatus.PENDING_APPROVAL,
@@ -245,7 +257,12 @@ export class ProductsService {
             ...(query.search && {
                 OR: [
                     { name: { contains: query.search, mode: 'insensitive' } },
-                    { description: { contains: query.search, mode: 'insensitive' } },
+                    {
+                        description: {
+                            contains: query.search,
+                            mode: 'insensitive',
+                        },
+                    },
                 ],
             }),
             ...(query.categoryId && { categoryId: query.categoryId }),
@@ -264,7 +281,10 @@ export class ProductsService {
                 orderBy,
                 skip: (page - 1) * limit,
                 take: limit,
-                include: { category: true, auction: { select: { id: true, status: true } } },
+                include: {
+                    category: true,
+                    auction: { select: { id: true, status: true } },
+                },
             }),
             this.prisma.product.count({ where }),
         ]);
@@ -288,7 +308,9 @@ export class ProductsService {
         status: ProductStatus,
         comment?: string,
     ) {
-        const existing = await this.prisma.product.findUnique({ where: { id } });
+        const existing = await this.prisma.product.findUnique({
+            where: { id },
+        });
         if (!existing) throw new NotFoundException('Product not found');
         if (
             existing.status !== ProductStatus.PENDING_APPROVAL ||
@@ -320,7 +342,11 @@ export class ProductsService {
                 where: { id },
                 include: { category: true, auction: true },
             });
-            if (status === ProductStatus.ACTIVE && updated.type === ProductType.AUCTION && updated.auction) {
+            if (
+                status === ProductStatus.ACTIVE &&
+                updated.type === ProductType.AUCTION &&
+                updated.auction
+            ) {
                 await tx.auction.updateMany({
                     where: {
                         id: updated.auction.id,
@@ -334,9 +360,10 @@ export class ProductsService {
                 data: {
                     aggregateType: 'Product',
                     aggregateId: id,
-                    type: status === ProductStatus.ACTIVE
-                        ? 'product.approved'
-                        : 'product.rejected',
+                    type:
+                        status === ProductStatus.ACTIVE
+                            ? 'product.approved'
+                            : 'product.rejected',
                     payload: {
                         productId: id,
                         adminId,
@@ -374,8 +401,10 @@ export class ProductsService {
         const result = {
             ...product,
             rating: product.reviews.length
-                ? product.reviews.reduce((sum, review) => sum + review.rating, 0) /
-                  product.reviews.length
+                ? product.reviews.reduce(
+                      (sum, review) => sum + review.rating,
+                      0,
+                  ) / product.reviews.length
                 : 0,
         };
         await this.redis.set(cacheKey, JSON.stringify(result), this.CACHE_TTL);
@@ -410,7 +439,10 @@ export class ProductsService {
                         aggregateType: 'Product',
                         aggregateId: created.id,
                         type: 'product.created',
-                        payload: { productId: created.id, correlationId: getCorrelationId() },
+                        payload: {
+                            productId: created.id,
+                            correlationId: getCorrelationId(),
+                        },
                         idempotencyKey: `product-created:${created.id}:${created.version}`,
                     },
                 });
@@ -419,11 +451,12 @@ export class ProductsService {
 
             await this.invalidateProductCaches(product.id);
 
-            await this.logger.log(
-                ProductsService.name,
-                `Product created: ${product.id}`,
-                { productName: product.name },
-            );
+            await this.logger.log(ProductsService.name, 'Product created', {
+                productId: product.id,
+                sellerId,
+                productName: product.name,
+                operation: 'product.create',
+            });
             return product;
         } catch (error) {
             if (uploadedFilePath) {
@@ -483,7 +516,10 @@ export class ProductsService {
                             aggregateType: 'Product',
                             aggregateId: updated.id,
                             type: 'product.updated',
-                            payload: { productId: updated.id, correlationId: getCorrelationId() },
+                            payload: {
+                                productId: updated.id,
+                                correlationId: getCorrelationId(),
+                            },
                             idempotencyKey: `product-updated:${updated.id}:${updated.version}`,
                         },
                     });
@@ -500,11 +536,12 @@ export class ProductsService {
             }
 
             await this.invalidateProductCaches(id);
-            await this.logger.log(
-                ProductsService.name,
-                `Product updated: ${updatedProduct.id}`,
-                { productName: updatedProduct.name },
-            );
+            await this.logger.log(ProductsService.name, 'Product updated', {
+                productId: updatedProduct.id,
+                sellerId,
+                productName: updatedProduct.name,
+                operation: 'product.update',
+            });
             return updatedProduct;
         } catch (error) {
             if (uploadedFilePath) {
@@ -549,7 +586,10 @@ export class ProductsService {
                     aggregateType: 'Product',
                     aggregateId: id,
                     type: 'product.archived',
-                    payload: { productId: id, correlationId: getCorrelationId() },
+                    payload: {
+                        productId: id,
+                        correlationId: getCorrelationId(),
+                    },
                     idempotencyKey: `product-archived:${archived.id}:${archived.version}`,
                 },
             });
@@ -558,7 +598,11 @@ export class ProductsService {
         await this.invalidateProductCaches(id);
         await this.redis.delByPattern(`cart:*`);
 
-        await this.logger.log(ProductsService.name, `Product archived: ${id}`);
+        await this.logger.log(ProductsService.name, 'Product archived', {
+            productId: id,
+            sellerId,
+            operation: 'product.archive',
+        });
 
         return { success: true };
     }
@@ -583,7 +627,9 @@ export class ProductsService {
                 },
             });
             if (!claimed.count) {
-                throw new BadRequestException('Only archived products can be restored');
+                throw new BadRequestException(
+                    'Only archived products can be restored',
+                );
             }
             const restored = await tx.product.findUniqueOrThrow({
                 where: { id },
@@ -606,10 +652,11 @@ export class ProductsService {
 
         await this.invalidateProductCaches(id);
 
-        await this.logger.log(
-            ProductsService.name,
-            `Product restored: ${product.id}`,
-        );
+        await this.logger.log(ProductsService.name, 'Product restored', {
+            productId: product.id,
+            sellerId,
+            operation: 'product.restore',
+        });
         return product;
     }
 

@@ -20,7 +20,9 @@ export class ReviewsService {
 
     async create(authorId: string, dto: CreateReviewDto) {
         if (!Number.isInteger(dto.rating) || dto.rating < 1 || dto.rating > 5) {
-            throw new BadRequestException('Rating must be an integer from 1 to 5');
+            throw new BadRequestException(
+                'Rating must be an integer from 1 to 5',
+            );
         }
         const review = await this.prisma.$transaction(async (tx) => {
             const orderItem = await tx.orderItem.findUnique({
@@ -30,15 +32,23 @@ export class ReviewsService {
 
             if (!orderItem) throw new NotFoundException('Order item not found');
             if (orderItem.sellerOrder.order.userId !== authorId) {
-                throw new ForbiddenException('You can only review your own purchases');
+                throw new ForbiddenException(
+                    'You can only review your own purchases',
+                );
             }
             if (orderItem.sellerOrder.status !== 'COMPLETED') {
                 throw new ConflictException(
                     'A review requires a completed seller order',
                 );
             }
-            if (await tx.review.findUnique({ where: { orderItemId: dto.orderItemId } })) {
-                throw new ConflictException('This order item has already been reviewed');
+            if (
+                await tx.review.findUnique({
+                    where: { orderItemId: dto.orderItemId },
+                })
+            ) {
+                throw new ConflictException(
+                    'This order item has already been reviewed',
+                );
             }
 
             let review;

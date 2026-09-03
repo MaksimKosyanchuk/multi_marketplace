@@ -3,6 +3,8 @@ import { Job } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from './notifications.service';
 import { runWithCorrelationId } from '../common/correlation/correlation.context';
+import { LoggerService } from '../logger/logger.service';
+import { randomUUID } from 'node:crypto';
 
 interface NotificationJob {
     outboxEventId: string;
@@ -14,23 +16,30 @@ export class NotificationsProcessor extends WorkerHost {
     constructor(
         private readonly prisma: PrismaService,
         private readonly notifications: NotificationsService,
+        private readonly logger: LoggerService,
     ) {
         super();
     }
 
     async process(job: Job<NotificationJob>): Promise<void> {
         const correlationId = job.data.correlationId;
-        if (correlationId) {
-            return runWithCorrelationId(correlationId, () =>
-                this.processNotification(job),
-            );
-        }
-        return this.processNotification(job);
+        return runWithCorrelationId(correlationId ?? randomUUID(), () =>
+            this.processNotification(job),
+        );
     }
 
     private async processNotification(
         job: Job<NotificationJob>,
     ): Promise<void> {
+        void this.logger.debug(
+            NotificationsProcessor.name,
+            'Notification queue processing',
+            {
+                jobId: job.id,
+                outboxEventId: job.data.outboxEventId,
+                attempts: job.attemptsMade + 1,
+            },
+        );
         const event = await this.prisma.outboxEvent.findUnique({
             where: { id: job.data.outboxEventId },
             include: {
@@ -121,6 +130,17 @@ export class NotificationsProcessor extends WorkerHost {
                 },
             });
         } catch (error: unknown) {
+            void this.logger.error(
+                NotificationsProcessor.name,
+                'Notification processing failed',
+                {
+                    jobId: job.id,
+                    outboxEventId: event.id,
+                    attempts: job.attemptsMade + 1,
+                    error:
+                        error instanceof Error ? error.message : String(error),
+                },
+            );
             await this.prisma.eventConsumerReceipt.update({
                 where: { id: claimed.id },
                 data: {

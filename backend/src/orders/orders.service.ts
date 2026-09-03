@@ -62,7 +62,7 @@ export function deriveOrderStatus(statuses: SellerOrderStatus[]): OrderStatus {
 
     return highestActiveStatus === undefined
         ? OrderStatus.CANCELLED
-        : (highestActiveStatus as OrderStatus);
+        : highestActiveStatus;
 }
 
 @Injectable()
@@ -275,10 +275,12 @@ export class OrdersService {
             ]);
             await this.logger.log(
                 OrdersService.name,
-                `Order created: ${order.id}`,
+                'Order created',
                 {
                     userId,
                     totalAmount: order.totalAmount.toString(),
+                    orderId: order.id,
+                    operation: 'order.create',
                 },
             );
             return order;
@@ -317,16 +319,23 @@ export class OrdersService {
 
         const pendingOrder = await this.prisma.order.findUnique({
             where: { id: orderId },
-            include: { payments: true, sellerOrders: { select: { sellerId: true } } },
+            include: {
+                payments: true,
+                sellerOrders: { select: { sellerId: true } },
+            },
         });
         if (!pendingOrder) throw new NotFoundException('Order not found');
         if (pendingOrder.userId !== userId) {
-            throw new ForbiddenException('You do not have access to this order');
+            throw new ForbiddenException(
+                'You do not have access to this order',
+            );
         }
         if (
             (pendingOrder.status === OrderStatus.NEW ||
                 pendingOrder.status === OrderStatus.PAYMENT_PENDING) &&
-            pendingOrder.payments.some(({ status }) => status === PaymentStatus.PENDING)
+            pendingOrder.payments.some(
+                ({ status }) => status === PaymentStatus.PENDING,
+            )
         ) {
             await this.prisma.$transaction([
                 this.prisma.order.updateMany({
@@ -350,6 +359,9 @@ export class OrdersService {
                     OrderStatus.PAYMENT_PENDING,
                 );
             }
+            void this.logger.log(OrdersService.name, 'Payment pending', {
+                orderId, userId, operation: 'payment.pending',
+            });
             await new Promise((resolve) => setTimeout(resolve, 5000));
         }
 
@@ -407,10 +419,17 @@ export class OrdersService {
                 }
                 const sellerOrdersForPayment = await tx.sellerOrder.findMany({
                     where: { orderId },
-                    select: { id: true, status: true, sellerId: true, subtotal: true },
+                    select: {
+                        id: true,
+                        status: true,
+                        sellerId: true,
+                        subtotal: true,
+                    },
                 });
                 const payableAmount = sellerOrdersForPayment
-                    .filter(({ status }) => status !== SellerOrderStatus.CANCELLED)
+                    .filter(
+                        ({ status }) => status !== SellerOrderStatus.CANCELLED,
+                    )
                     .reduce(
                         (total, sellerOrder) => total.add(sellerOrder.subtotal),
                         new Prisma.Decimal(0),
@@ -459,23 +478,24 @@ export class OrdersService {
                     }
                     await this.logger.log(
                         OrdersService.name,
-                        `Mock payment to seller ${sellerOrder.sellerId} for sub-order ${orderId}: $${sellerOrder.subtotal.toString()}`,
+                        'Seller payment allocated',
                         {
                             orderId,
                             sellerOrderId: sellerOrder.id,
                             sellerId: sellerOrder.sellerId,
                             amount: sellerOrder.subtotal.toString(),
+                            operation: 'payment.success',
                         },
                     );
                 }
-                const updatedSellerOrderStatuses = await tx.sellerOrder.findMany({
-                    where: { orderId },
-                    select: { status: true },
-                });
+                const updatedSellerOrderStatuses =
+                    await tx.sellerOrder.findMany({
+                        where: { orderId },
+                        select: { status: true },
+                    });
                 if (
                     updatedSellerOrderStatuses.every(
-                        ({ status }) =>
-                            status === SellerOrderStatus.CANCELLED,
+                        ({ status }) => status === SellerOrderStatus.CANCELLED,
                     )
                 ) {
                     throw new BadRequestException(
@@ -504,7 +524,7 @@ export class OrdersService {
                         idempotencyKey: eventKey,
                     },
                 });
-                    return result;
+                return result;
             });
             await this.ordersQueue.add('process-order', { orderId });
             for (const sellerOrder of updated.sellerOrders) {
@@ -516,6 +536,10 @@ export class OrdersService {
             }
             return updated;
         } catch (error: unknown) {
+            void this.logger.error(OrdersService.name, 'Payment failed', {
+                orderId, userId, operation: 'payment.failure',
+                error: error instanceof Error ? error.message : String(error),
+            });
             if (
                 error instanceof Prisma.PrismaClientKnownRequestError &&
                 error.code === 'P2002'
@@ -1011,8 +1035,8 @@ export class OrdersService {
                           SellerOrderStatus.NEW,
                           SellerOrderStatus.PAYMENT_PENDING,
                           SellerOrderStatus.PROCESSING,
-                        SellerOrderStatus.SHIPPED,
-                    ];
+                          SellerOrderStatus.SHIPPED,
+                      ];
                 if (!cancellableStatuses.includes(sellerOrder.status)) {
                     throw new BadRequestException(
                         `Seller order cannot be cancelled in status ${sellerOrder.status}`,

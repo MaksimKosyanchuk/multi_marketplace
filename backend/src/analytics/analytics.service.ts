@@ -62,61 +62,70 @@ export class AnalyticsService {
             ...this.buildDateFilter(dto.from, dto.to),
             status: { in: this.getRevenueStatuses() },
         };
-        const [orderStats, commissionStats, grossStats, topItems, commissions, sellerOrders, cartItems] =
-            await Promise.all([
-                this.prisma.order.aggregate({
-                    where: orderFilter,
-                    _count: { id: true },
-                    _sum: { totalAmount: true },
-                }),
-                this.prisma.sellerOrder.aggregate({
-                    where: { order: orderFilter },
-                    _sum: { commissionAmount: true },
-                }),
-                this.prisma.order.aggregate({
-                    where: orderFilter,
-                    _sum: { totalAmount: true },
-                }),
-                this.prisma.orderItem.groupBy({
-                    by: ['productId', 'productName'],
-                    where: { sellerOrder: { order: orderFilter } },
-                    _sum: { quantity: true, totalAmount: true },
-                    orderBy: { _sum: { quantity: 'desc' } },
-                    take: 5,
-                }),
-                this.prisma.ledgerEntry.findMany({
-                    where: {
-                        type: LedgerEntryType.PLATFORM_COMMISSION,
-                        sellerOrder: { order: orderFilter },
+        const [
+            orderStats,
+            commissionStats,
+            grossStats,
+            topItems,
+            commissions,
+            sellerOrders,
+            cartItems,
+        ] = await Promise.all([
+            this.prisma.order.aggregate({
+                where: orderFilter,
+                _count: { id: true },
+                _sum: { totalAmount: true },
+            }),
+            this.prisma.sellerOrder.aggregate({
+                where: { order: orderFilter },
+                _sum: { commissionAmount: true },
+            }),
+            this.prisma.order.aggregate({
+                where: orderFilter,
+                _sum: { totalAmount: true },
+            }),
+            this.prisma.orderItem.groupBy({
+                by: ['productId', 'productName'],
+                where: { sellerOrder: { order: orderFilter } },
+                _sum: { quantity: true, totalAmount: true },
+                orderBy: { _sum: { quantity: 'desc' } },
+                take: 5,
+            }),
+            this.prisma.ledgerEntry.findMany({
+                where: {
+                    type: LedgerEntryType.PLATFORM_COMMISSION,
+                    sellerOrder: { order: orderFilter },
+                },
+                select: {
+                    amount: true,
+                    sellerOrder: {
+                        select: { order: { select: { createdAt: true } } },
                     },
-                    select: {
-                        amount: true,
-                        sellerOrder: {
-                            select: { order: { select: { createdAt: true } } },
-                        },
-                    },
-                    orderBy: { createdAt: 'asc' },
-                }),
-                this.prisma.sellerOrder.findMany({
-                    where: { order: orderFilter },
-                    select: {
-                        sellerId: true,
-                        sellerEarnings: true,
-                        refundedAmount: true,
-                        commissionAmount: true,
-                    },
-                }),
-                this.prisma.cartItem.count({
-                    where: (() => {
-                        const updatedAt: Prisma.DateTimeFilter<'Cart'> = {};
-                        if (dto.from) updatedAt.gte = new Date(`${dto.from}T00:00:00.000Z`);
-                        if (dto.to) updatedAt.lte = new Date(`${dto.to}T23:59:59.999Z`);
-                        return Object.keys(updatedAt).length
-                            ? { cart: { updatedAt } }
-                            : {};
-                    })(),
-                }),
-            ]);
+                },
+                orderBy: { createdAt: 'asc' },
+            }),
+            this.prisma.sellerOrder.findMany({
+                where: { order: orderFilter },
+                select: {
+                    sellerId: true,
+                    sellerEarnings: true,
+                    refundedAmount: true,
+                    commissionAmount: true,
+                },
+            }),
+            this.prisma.cartItem.count({
+                where: (() => {
+                    const updatedAt: Prisma.DateTimeFilter<'Cart'> = {};
+                    if (dto.from)
+                        updatedAt.gte = new Date(`${dto.from}T00:00:00.000Z`);
+                    if (dto.to)
+                        updatedAt.lte = new Date(`${dto.to}T23:59:59.999Z`);
+                    return Object.keys(updatedAt).length
+                        ? { cart: { updatedAt } }
+                        : {};
+                })(),
+            }),
+        ]);
 
         const platformRevenue = Number(
             commissionStats._sum.commissionAmount ?? 0,
