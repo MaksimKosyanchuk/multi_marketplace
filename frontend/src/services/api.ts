@@ -1,4 +1,4 @@
-import axios, { type InternalAxiosRequestConfig } from 'axios';
+import axios, { type InternalAxiosRequestConfig, AxiosHeaders } from 'axios';
 import type { AuthResponse } from '../types/index';
 import { createIdempotencyKey } from './requestMeta';
 
@@ -13,16 +13,22 @@ export const api = axios.create({
 api.interceptors.request.use(
     (config: InternalAxiosRequestConfig) => {
         if (!config.headers) {
-            config.headers = {};
+            config.headers = new AxiosHeaders();
+        } else if (!(config.headers instanceof AxiosHeaders)) {
+            config.headers = new AxiosHeaders(config.headers);
         }
-        config.headers['x-correlation-id'] ??= createIdempotencyKey();
+
+        if (!config.headers.has('x-correlation-id')) {
+            config.headers.set('x-correlation-id', createIdempotencyKey());
+        }
+
         const token = localStorage.getItem('accessToken');
-        if (token && config.headers) {
-            config.headers.Authorization = `Bearer ${token}`;
+        if (token) {
+            config.headers.set('Authorization', `Bearer ${token}`);
         }
 
         if (config.data instanceof FormData) {
-            delete config.headers['Content-Type'];
+            config.headers.delete('Content-Type');
         }
 
         return config;
@@ -67,7 +73,14 @@ api.interceptors.response.use(
                     failedQueue.push({ resolve, reject });
                 })
                     .then((token) => {
-                        originalRequest.headers.Authorization = `Bearer ${token}`;
+                        if (originalRequest.headers instanceof AxiosHeaders) {
+                            originalRequest.headers.set('Authorization', `Bearer ${token}`);
+                        } else {
+                            originalRequest.headers = new AxiosHeaders({
+                                ...originalRequest.headers,
+                                Authorization: `Bearer ${token}`,
+                            });
+                        }
                         return api(originalRequest);
                     })
                     .catch((err) => Promise.reject(err));
@@ -89,7 +102,14 @@ api.interceptors.response.use(
 
                 processQueue(null, data.accessToken);
 
-                originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
+                if (originalRequest.headers instanceof AxiosHeaders) {
+                    originalRequest.headers.set('Authorization', `Bearer ${data.accessToken}`);
+                } else {
+                    originalRequest.headers = new AxiosHeaders({
+                        ...originalRequest.headers,
+                        Authorization: `Bearer ${data.accessToken}`,
+                    });
+                }
                 return api(originalRequest);
             } catch (refreshError) {
                 processQueue(refreshError, null);

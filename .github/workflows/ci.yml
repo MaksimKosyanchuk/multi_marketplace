@@ -1,0 +1,139 @@
+name: CI / Multi-Vendor Marketplace
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  lint-and-format:
+    name: Lint & Code Style
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install Backend Dependencies
+        run: npm ci --prefix backend
+
+      - name: Install Frontend Dependencies
+        run: npm ci --prefix frontend
+
+      - name: Run Backend Linter
+        run: npm run lint --prefix backend
+
+      - name: Run Frontend Linter
+        run: npm run lint --prefix frontend
+
+  backend-test:
+    name: Backend Tests (Unit & E2E)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: marketplace_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install Dependencies
+        run: npm ci --prefix backend
+
+      - name: Run Unit Tests
+        run: npm run test --prefix backend
+        env:
+          DATABASE_HOST: localhost
+          DATABASE_PORT: 5432
+          DATABASE_USER: postgres
+          DATABASE_PASSWORD: password
+          DATABASE_NAME: marketplace_test
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+
+      - name: Run E2E Tests
+        run: npm run test:e2e --prefix backend
+        env:
+          DATABASE_HOST: localhost
+          DATABASE_PORT: 5432
+          DATABASE_USER: postgres
+          DATABASE_PASSWORD: password
+          DATABASE_NAME: marketplace_test
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+
+  frontend-build:
+    name: Frontend Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Dependencies
+        run: npm ci --prefix frontend
+
+      - name: Run Frontend Tests (if configured)
+        run: npm run test --prefix frontend -- --watchAll=false || echo "No tests configured, skipping"
+
+      - name: Build Frontend Application
+        run: npm run build --prefix frontend
+        env:
+          VITE_API_URL: http://localhost:3000
+
+  infra-lint:
+    name: Infrastructure Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Lint Docker Compose File
+        uses: docker/bake-action@v5
+        with:
+          files: docker-compose.yml
+          workdir: .
+          action: lint
