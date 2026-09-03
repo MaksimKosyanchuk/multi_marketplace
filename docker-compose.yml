@@ -66,8 +66,9 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       MEILISEARCH_URL: http://meilisearch:7700
-      JWT_ACCESS_SECRET: access_secret_key
-      JWT_REFRESH_SECRET: refresh_secret_key
+      JWT_ACCESS_SECRET: insiders_jwt
+      JWT_REFRESH_SECRET: insiders_refresh_jwt
+      THROTTLE_DISABLED: ${THROTTLE_DISABLED:-false}
     volumes:
       - ./backend:/app
       - backend_node_modules:/app/node_modules

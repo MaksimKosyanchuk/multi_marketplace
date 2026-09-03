@@ -1,11 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import {
-    AuctionStatus,
-    BidStatus,
-    Prisma,
-    ProductStatus,
-    ProductType,
-} from '@prisma/client';
+import { AuctionStatus, BidStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { DatabaseClient } from './database.types';
 

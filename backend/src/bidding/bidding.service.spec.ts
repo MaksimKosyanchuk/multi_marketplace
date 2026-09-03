@@ -19,6 +19,11 @@ import {
 describe('BiddingService critical auction flows', () => {
     const queue = { add: jest.fn() };
     const logger = { audit: jest.fn(), warn: jest.fn() };
+    const metrics = {
+        recordBidAccepted: jest.fn(),
+        recordBidRejected: jest.fn(),
+        recordOrderCreated: jest.fn(),
+    };
     const prisma = {
         bid: { findUnique: jest.fn() },
         payment: { findUnique: jest.fn() },
@@ -49,6 +54,7 @@ describe('BiddingService critical auction flows', () => {
             new OrderRepository(prisma as never),
             new OutboxRepository(prisma as never),
             new ProductRepository(prisma as never),
+            metrics as never,
         );
         prisma.bid.findUnique.mockResolvedValue(null);
         prisma.payment.findUnique.mockResolvedValue(null);
@@ -293,7 +299,11 @@ describe('BiddingService critical auction flows', () => {
         );
 
         await expect(
-            service.checkoutWinner('winner-1', 'auction-1', 'winner-checkout-1'),
+            service.checkoutWinner(
+                'winner-1',
+                'auction-1',
+                'winner-checkout-1',
+            ),
         ).rejects.toThrow('Auction checkout window has expired');
     });
 
@@ -335,7 +345,11 @@ describe('BiddingService critical auction flows', () => {
         );
 
         await expect(
-            service.checkoutWinner('winner-1', 'auction-1', 'winner-checkout-2'),
+            service.checkoutWinner(
+                'winner-1',
+                'auction-1',
+                'winner-checkout-2',
+            ),
         ).rejects.toThrow('Auction checkout window has expired');
         expect(tx.auction.updateMany).toHaveBeenCalledWith(
             expect.objectContaining({

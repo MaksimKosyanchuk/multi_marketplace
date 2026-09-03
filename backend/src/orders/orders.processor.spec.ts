@@ -23,6 +23,7 @@ describe('OrdersProcessor outbox delivery', () => {
             gateway as never,
             redis as never,
             logger as never,
+            { recordQueueJob: jest.fn() } as never,
         );
 
         await processor.process({
@@ -74,6 +75,7 @@ describe('OrdersProcessor outbox delivery', () => {
             gateway as never,
             redis as never,
             logger as never,
+            { recordQueueJob: jest.fn() } as never,
         );
 
         await processor.process({

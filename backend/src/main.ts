@@ -1,8 +1,9 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { AppModule } from './app.module';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
+import { AppModule } from './app.module';
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);
@@ -14,6 +15,14 @@ async function bootstrap() {
             'CLIENT_URL and PORT environment variables must be defined',
         );
     }
+
+    app.use(
+        helmet({
+            crossOriginResourcePolicy: { policy: 'cross-origin' },
+            contentSecurityPolicy: false,
+        }),
+    );
+    app.use(cookieParser());
 
     app.enableCors({
         origin: [clientUrl],
@@ -27,7 +36,6 @@ async function bootstrap() {
             'X-Correlation-ID',
         ],
     });
-    app.use(cookieParser());
 
     app.useGlobalPipes(
         new ValidationPipe({

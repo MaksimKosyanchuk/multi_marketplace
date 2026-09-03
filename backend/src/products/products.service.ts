@@ -8,12 +8,7 @@ import { RedisService } from '../redis/redis.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductSort, QueryProductDto } from './dto/query-product.dto';
-import {
-    AuctionStatus,
-    Prisma,
-    ProductStatus,
-    ProductType,
-} from '@prisma/client';
+import { Prisma, ProductStatus, ProductType } from '@prisma/client';
 import { deleteFile } from '../common/utils/file';
 import { LoggerService } from '../logger/logger.service';
 import { getCorrelationId } from '../common/correlation/correlation.context';
@@ -231,14 +226,7 @@ export class ProductsService {
     async submitForApproval(id: string, sellerId: string) {
         await this.findOwnedProduct(id, sellerId);
         const product = await this.unitOfWork.run(
-            async ({
-                cartRepository,
-                orderRepository,
-                outboxRepository,
-                productRepository,
-                auctionRepository,
-                bidRepository,
-            }) => {
+            async ({ outboxRepository, productRepository }) => {
                 const claimed = await productRepository.claimStatus(
                     id,
                     {
@@ -353,12 +341,9 @@ export class ProductsService {
 
         const product = await this.unitOfWork.run(
             async ({
-                cartRepository,
-                orderRepository,
                 outboxRepository,
                 productRepository,
                 auctionRepository,
-                bidRepository,
             }) => {
                 const claimed = await productRepository.claimStatus(
                     id,
@@ -468,14 +453,7 @@ export class ProductsService {
             const imageUrl = uploadedFilePath ?? dto.imageUrl ?? null;
 
             const product = await this.unitOfWork.run(
-                async ({
-                    cartRepository,
-                    orderRepository,
-                    outboxRepository,
-                    productRepository,
-                    auctionRepository,
-                    bidRepository,
-                }) => {
+                async ({ outboxRepository, productRepository }) => {
                     const created = await productRepository.create({
                         ...productData,
                         sellerId,
@@ -602,11 +580,9 @@ export class ProductsService {
         await this.unitOfWork.run(
             async ({
                 cartRepository,
-                orderRepository,
                 outboxRepository,
                 productRepository,
                 auctionRepository,
-                bidRepository,
             }) => {
                 const claimed = await productRepository.claimStatus(
                     id,
@@ -662,14 +638,7 @@ export class ProductsService {
         await this.findOwnedProduct(id, sellerId);
 
         const product = await this.unitOfWork.run(
-            async ({
-                cartRepository,
-                orderRepository,
-                outboxRepository,
-                productRepository,
-                auctionRepository,
-                bidRepository,
-            }) => {
+            async ({ outboxRepository, productRepository }) => {
                 const claimed = await productRepository.claimStatus(
                     id,
                     { sellerId, isArchived: true },

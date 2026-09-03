@@ -5,6 +5,7 @@ import { OrdersGateway } from './orders.geteway';
 import { RedisService } from '../redis/redis.service';
 import { runWithCorrelationId } from '../common/correlation/correlation.context';
 import { LoggerService } from '../logger/logger.service';
+import { MetricsService } from '../metrics/metrics.service';
 import { randomUUID } from 'node:crypto';
 
 export interface OrderJobData {
@@ -23,6 +24,7 @@ export class OrdersProcessor extends WorkerHost {
         private readonly ordersGateway: OrdersGateway,
         private readonly redis: RedisService,
         private readonly logger: LoggerService,
+        private readonly metrics: MetricsService,
     ) {
         super();
     }
@@ -36,46 +38,62 @@ export class OrdersProcessor extends WorkerHost {
     }
 
     private async processJob(job: Job<OrderJobData>): Promise<void> {
-        if (job.name === 'deliver-outbox-event') {
-            const outboxJob = job.data as unknown as OutboxJobData;
-            void this.logger.debug(
+        const started = Date.now();
+        try {
+            if (job.name === 'deliver-outbox-event') {
+                const outboxJob = job.data as unknown as OutboxJobData;
+                void this.logger.debug(
+                    OrdersProcessor.name,
+                    'Queue outbox event processing',
+                    {
+                        jobId: job.id,
+                        outboxEventId: outboxJob.outboxEventId,
+                        attempts: job.attemptsMade + 1,
+                    },
+                );
+                await this.processOutboxEvent(job, outboxJob.outboxEventId);
+                this.metrics.recordQueueJob(Date.now() - started);
+                return;
+            }
+            const { orderId } = job.data;
+            void this.logger.log(
                 OrdersProcessor.name,
-                'Queue outbox event processing',
+                'Queue order processing',
                 {
+                    orderId,
                     jobId: job.id,
-                    outboxEventId: outboxJob.outboxEventId,
                     attempts: job.attemptsMade + 1,
                 },
             );
-            await this.processOutboxEvent(job, outboxJob.outboxEventId);
-            return;
+
+            const order = await this.prisma.order.findUnique({
+                where: { id: orderId },
+            });
+            if (!order) {
+                throw new Error(`Order ${orderId} was not found`);
+            }
+
+            void this.logger.audit(
+                OrdersProcessor.name,
+                'Order status published',
+                {
+                    orderId,
+                    userId: order.userId,
+                    status: order.status,
+                    jobId: job.id,
+                },
+            );
+
+            this.ordersGateway.emitOrderStatusUpdate(
+                order.userId,
+                order.id,
+                order.status,
+            );
+            this.metrics.recordQueueJob(Date.now() - started);
+        } catch (error) {
+            this.metrics.recordQueueJob(Date.now() - started, true);
+            throw error;
         }
-        const { orderId } = job.data;
-        void this.logger.log(OrdersProcessor.name, 'Queue order processing', {
-            orderId,
-            jobId: job.id,
-            attempts: job.attemptsMade + 1,
-        });
-
-        const order = await this.prisma.order.findUnique({
-            where: { id: orderId },
-        });
-        if (!order) {
-            throw new Error(`Order ${orderId} was not found`);
-        }
-
-        void this.logger.audit(OrdersProcessor.name, 'Order status published', {
-            orderId,
-            userId: order.userId,
-            status: order.status,
-            jobId: job.id,
-        });
-
-        this.ordersGateway.emitOrderStatusUpdate(
-            order.userId,
-            order.id,
-            order.status,
-        );
     }
 
     private async processOutboxEvent(

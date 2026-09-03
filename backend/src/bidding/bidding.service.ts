@@ -8,7 +8,6 @@ import {
 import { InjectQueue } from '@nestjs/bullmq';
 import {
     AuctionStatus,
-    BidStatus,
     LedgerEntryType,
     OrderStatus,
     PaymentStatus,
@@ -29,6 +28,7 @@ import {
     ProductRepository,
     UnitOfWork,
 } from '../database';
+import { MetricsService } from '../metrics/metrics.service';
 
 @Injectable()
 export class BiddingService {
@@ -41,6 +41,7 @@ export class BiddingService {
         private readonly orderRepository: OrderRepository,
         private readonly outboxRepository: OutboxRepository,
         private readonly productRepository: ProductRepository,
+        private readonly metrics: MetricsService,
     ) {}
 
     async createAuction(sellerId: string, dto: CreateAuctionDto) {
@@ -53,14 +54,7 @@ export class BiddingService {
         }
 
         const auction = await this.unitOfWork.run(
-            async ({
-                cartRepository,
-                orderRepository,
-                outboxRepository,
-                productRepository,
-                auctionRepository,
-                bidRepository,
-            }) => {
+            async ({ productRepository, auctionRepository }) => {
                 const product = await productRepository.findById(dto.productId);
                 if (!product) throw new NotFoundException('Product not found');
                 if (product.sellerId !== sellerId) {
@@ -133,12 +127,9 @@ export class BiddingService {
     async startAuction(auctionId: string) {
         return this.unitOfWork.run(
             async ({
-                cartRepository,
-                orderRepository,
                 outboxRepository,
                 productRepository,
                 auctionRepository,
-                bidRepository,
             }) => {
                 const auction = await auctionRepository.findById(auctionId);
                 if (
@@ -229,10 +220,7 @@ export class BiddingService {
         try {
             const result = await this.unitOfWork.run(
                 async ({
-                    cartRepository,
-                    orderRepository,
                     outboxRepository,
-                    productRepository,
                     auctionRepository,
                     bidRepository,
                 }) => {
@@ -316,6 +304,7 @@ export class BiddingService {
                 bidId: result.bid.id,
                 amount: result.bid.amount.toString(),
             });
+            this.metrics.recordBidAccepted();
             return result.bid;
         } catch (error: unknown) {
             if (
@@ -328,20 +317,21 @@ export class BiddingService {
                     );
                 if (retry) return retry;
             }
+            if (
+                error instanceof BadRequestException ||
+                error instanceof ConflictException ||
+                error instanceof ForbiddenException ||
+                error instanceof NotFoundException
+            ) {
+                this.metrics.recordBidRejected();
+            }
             throw error;
         }
     }
 
     async endAuction(auctionId: string) {
         return this.unitOfWork.run(
-            async ({
-                cartRepository,
-                orderRepository,
-                outboxRepository,
-                productRepository,
-                auctionRepository,
-                bidRepository,
-            }) => {
+            async ({ outboxRepository, auctionRepository, bidRepository }) => {
                 const auction = await auctionRepository.findById(auctionId);
                 if (!auction || auction.status !== AuctionStatus.ACTIVE)
                     return auction;
@@ -384,14 +374,7 @@ export class BiddingService {
 
     async expireWinnerCheckout(auctionId: string) {
         return this.unitOfWork.run(
-            async ({
-                cartRepository,
-                orderRepository,
-                outboxRepository,
-                productRepository,
-                auctionRepository,
-                bidRepository,
-            }) => {
+            async ({ outboxRepository, auctionRepository }) => {
                 const auction = await auctionRepository.findById(auctionId);
                 if (
                     !auction ||
@@ -452,14 +435,12 @@ export class BiddingService {
         }
 
         try {
-            return await this.unitOfWork.run(
+            const order = await this.unitOfWork.run(
                 async ({
-                    cartRepository,
                     orderRepository,
                     outboxRepository,
                     productRepository,
                     auctionRepository,
-                    bidRepository,
                 }) => {
                     const auction =
                         await auctionRepository.findByIdWithProduct(auctionId);
@@ -611,6 +592,8 @@ export class BiddingService {
                     return order;
                 },
             );
+            this.metrics.recordOrderCreated();
+            return order;
         } catch (error: unknown) {
             if (
                 error instanceof Prisma.PrismaClientKnownRequestError &&

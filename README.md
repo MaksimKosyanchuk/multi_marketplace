@@ -97,15 +97,63 @@ correlation ID, JSON metadata and timestamps. Correlation IDs are created at
 the HTTP boundary, returned in response headers and propagated through outbox
 payloads and BullMQ jobs.
 
+### Metrics
+
+`GET /metrics` exposes Prometheus text metrics:
+
+- HTTP request/error counters and average request duration
+- checkout / orders created
+- bids accepted / rejected
+- refunds
+- queue jobs processed / failed and average queue job duration
+
 ### In-app notifications
 
 The backend foundation for in-app notifications is complete (persistence,
 queue workers, API to list / mark read, realtime emit hooks). Wiring a full
 client UI on top of that base is left for extra time.
 
-Payments use a mock provider (real PSP is out of scope).
+Payments use a mock provider (real PSP is out of scope). Helmet is enabled for
+baseline HTTP security headers.
 
 ## Running
+
+### Environment profiles
+
+Backend loads env files in this order:
+
+1. `.env.${NODE_ENV}` (`.env.development` or `.env.test`)
+2. `.env` (optional local overrides)
+
+Committed templates:
+
+- `backend/.env.development` — local / Compose development
+- `backend/.env.test` — unit and e2e
+- `backend/.env.example` — documented defaults
+
+`npm run start:dev` sets `NODE_ENV=development`. Jest / e2e set `NODE_ENV=test`
+(throttle is skipped in test automatically).
+
+### Rate limiting (does not break load tests)
+
+- Default API limit: **300 req/min**
+- Login / Google auth: **10/min**
+- Place bid: **30/min**
+- `/metrics` is not throttled
+
+For load testing against a running server:
+
+```bash
+THROTTLE_DISABLED=true npm run start:dev
+# or with Compose:
+THROTTLE_DISABLED=true docker compose up --build
+```
+
+Then:
+
+```bash
+cd backend && npm run test:load
+```
 
 ### Docker Compose (recommended)
 
@@ -255,7 +303,8 @@ initial stock.
 ## Known limits
 
 - Payment provider is mocked; no real payouts.
-- Metrics endpoint exposes basic Prometheus counters, not a full SRE dashboard.
+- Metrics endpoint exposes HTTP, order/bid/refund and queue processing counters
+  (not a full SRE dashboard).
 - Non-core modules still use Prisma directly in places; repository/`UnitOfWork`
   migration is complete for orders/cart, bidding and products.
 - In-app notifications are backend-ready; full frontend presentation is optional follow-up.

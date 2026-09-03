@@ -12,8 +12,6 @@ import {
     OrderStatus,
     PaymentStatus,
     Prisma,
-    ProductStatus,
-    ProductType,
     Role,
     SellerOrderStatus,
 } from '@prisma/client';
@@ -24,22 +22,8 @@ import { UpdateSellerOrderStatusDto } from './dto/update-seller-order-status.dto
 import { MockPaymentService } from '../payments/mock-payment.service';
 import { getCorrelationId } from '../common/correlation/correlation.context';
 import { OrdersGateway } from './orders.geteway';
-import {
-    CartRepository,
-    OrderRepository,
-    OutboxRepository,
-    ProductRepository,
-    UnitOfWork,
-} from '../database';
-
-const orderDetails = {
-    sellerOrders: {
-        include: {
-            seller: { select: { id: true, email: true, nickName: true } },
-            items: true,
-        },
-    },
-} satisfies Prisma.OrderInclude;
+import { OrderRepository, OutboxRepository, UnitOfWork } from '../database';
+import { MetricsService } from '../metrics/metrics.service';
 
 export function deriveOrderStatus(statuses: SellerOrderStatus[]): OrderStatus {
     if (!statuses.length) {
@@ -73,14 +57,12 @@ export class OrdersService {
         private readonly logger: LoggerService,
         private readonly redis: RedisService,
         private readonly mockPayment: MockPaymentService,
-        private readonly cartRepository: CartRepository,
         private readonly orderRepository: OrderRepository,
         private readonly outboxRepository: OutboxRepository,
-        private readonly productRepository: ProductRepository,
+        private readonly metrics: MetricsService,
         @Optional() private readonly ordersGateway?: OrdersGateway,
     ) {}
 
-    /** Creates all seller sub-orders, stock mutations, ledger entries, and outbox events atomically. */
     async checkout(userId: string, idempotencyKey: string) {
         if (!idempotencyKey?.trim()) {
             throw new BadRequestException('Idempotency-Key header is required');
@@ -99,8 +81,6 @@ export class OrdersService {
                     orderRepository,
                     outboxRepository,
                     productRepository,
-                    auctionRepository,
-                    bidRepository,
                 }) => {
                     const priorPayment =
                         await orderRepository.findByPaymentIdempotencyKey(
@@ -274,6 +254,7 @@ export class OrdersService {
                 orderId: order.id,
                 operation: 'order.create',
             });
+            this.metrics.recordCheckout();
             return order;
         } catch (error: unknown) {
             if (
@@ -320,21 +301,10 @@ export class OrdersService {
                 ({ status }) => status === PaymentStatus.PENDING,
             )
         ) {
-            await this.unitOfWork.run(
-                async ({
-                    cartRepository,
-                    orderRepository,
-                    outboxRepository,
-                    productRepository,
-                    auctionRepository,
-                    bidRepository,
-                }) => {
-                    await orderRepository.updateOrderPaymentPending(orderId);
-                    await orderRepository.updateSellerOrdersPaymentPending(
-                        orderId,
-                    );
-                },
-            );
+            await this.unitOfWork.run(async ({ orderRepository }) => {
+                await orderRepository.updateOrderPaymentPending(orderId);
+                await orderRepository.updateSellerOrdersPaymentPending(orderId);
+            });
             this.ordersGateway?.emitOrderStatusUpdate(
                 userId,
                 orderId,
@@ -357,14 +327,7 @@ export class OrdersService {
 
         try {
             const updated = await this.unitOfWork.run(
-                async ({
-                    cartRepository,
-                    orderRepository,
-                    outboxRepository,
-                    productRepository,
-                    auctionRepository,
-                    bidRepository,
-                }) => {
+                async ({ orderRepository, outboxRepository }) => {
                     const order =
                         await orderRepository.findForPaymentProcessing(orderId);
                     if (!order) throw new NotFoundException('Order not found');
@@ -542,12 +505,9 @@ export class OrdersService {
         try {
             const result = await this.unitOfWork.run(
                 async ({
-                    cartRepository,
                     orderRepository,
                     outboxRepository,
                     productRepository,
-                    auctionRepository,
-                    bidRepository,
                 }) => {
                     const order =
                         await orderRepository.findOrderForPaymentCancellation(
@@ -694,12 +654,9 @@ export class OrdersService {
             );
         const updated = await this.unitOfWork.run(
             async ({
-                cartRepository,
                 orderRepository,
                 outboxRepository,
                 productRepository,
-                auctionRepository,
-                bidRepository,
             }) => {
                 const currentOrder =
                     await orderRepository.findOrderForCancellation(orderId);
@@ -923,12 +880,9 @@ export class OrdersService {
         try {
             const result = await this.unitOfWork.run(
                 async ({
-                    cartRepository,
                     orderRepository,
                     outboxRepository,
                     productRepository,
-                    auctionRepository,
-                    bidRepository,
                 }) => {
                     const sellerOrder =
                         await orderRepository.findSellerOrderForCancellation(
@@ -1214,12 +1168,9 @@ export class OrdersService {
         try {
             const result = await this.unitOfWork.run(
                 async ({
-                    cartRepository,
                     orderRepository,
                     outboxRepository,
                     productRepository,
-                    auctionRepository,
-                    bidRepository,
                 }) => {
                     const item =
                         await orderRepository.findOrderItemForRefund(
@@ -1359,6 +1310,7 @@ export class OrdersService {
                         backoff: { type: 'exponential', delay: 1000 },
                     },
                 );
+            this.metrics.recordRefund();
             return result;
         } catch (error: unknown) {
             if (
@@ -1419,14 +1371,7 @@ export class OrdersService {
         dto: UpdateSellerOrderStatusDto,
     ) {
         const result = await this.unitOfWork.run(
-            async ({
-                cartRepository,
-                orderRepository,
-                outboxRepository,
-                productRepository,
-                auctionRepository,
-                bidRepository,
-            }) => {
+            async ({ orderRepository, outboxRepository }) => {
                 const sellerOrder =
                     await orderRepository.findSellerOrderForCancellation(
                         sellerOrderId,

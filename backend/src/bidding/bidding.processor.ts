@@ -11,6 +11,7 @@ import {
     runWithCorrelationId,
 } from '../common/correlation/correlation.context';
 import { LoggerService } from '../logger/logger.service';
+import { MetricsService } from '../metrics/metrics.service';
 import { randomUUID } from 'node:crypto';
 
 interface AuctionJobData {
@@ -28,6 +29,7 @@ export class BiddingProcessor extends WorkerHost {
         private readonly redis: RedisService,
         private readonly gateway: BiddingGateway,
         private readonly logger: LoggerService,
+        private readonly metrics: MetricsService,
     ) {
         super();
     }
@@ -40,6 +42,17 @@ export class BiddingProcessor extends WorkerHost {
     }
 
     private async processJob(job: Job<AuctionJobData>): Promise<void> {
+        const started = Date.now();
+        try {
+            await this.runAuctionJob(job);
+            this.metrics.recordQueueJob(Date.now() - started);
+        } catch (error) {
+            this.metrics.recordQueueJob(Date.now() - started, true);
+            throw error;
+        }
+    }
+
+    private async runAuctionJob(job: Job<AuctionJobData>): Promise<void> {
         void this.logger.debug(
             BiddingProcessor.name,
             'Auction queue job processing',

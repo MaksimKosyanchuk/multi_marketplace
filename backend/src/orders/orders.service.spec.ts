@@ -21,6 +21,7 @@ import {
     ProductRepository,
     UnitOfWork,
 } from '../database';
+import { MetricsService } from '../metrics/metrics.service';
 
 describe('OrdersService checkout', () => {
     let service: OrdersService;
@@ -80,6 +81,14 @@ describe('OrdersService checkout', () => {
                 OutboxRepository,
                 ProductRepository,
                 UnitOfWork,
+                {
+                    provide: MetricsService,
+                    useValue: {
+                        recordCheckout: jest.fn(),
+                        recordRefund: jest.fn(),
+                        recordOrderCreated: jest.fn(),
+                    },
+                },
             ],
         }).compile();
         service = module.get(OrdersService);
@@ -484,8 +493,14 @@ describe('OrdersService checkout', () => {
                 findUnique: jest.fn().mockResolvedValue({
                     id: 'order-1',
                     sellerOrders: [
-                        { id: 'seller-order-1', status: SellerOrderStatus.CANCELLED },
-                        { id: 'seller-order-2', status: SellerOrderStatus.PROCESSING },
+                        {
+                            id: 'seller-order-1',
+                            status: SellerOrderStatus.CANCELLED,
+                        },
+                        {
+                            id: 'seller-order-2',
+                            status: SellerOrderStatus.PROCESSING,
+                        },
                     ],
                     payments: [],
                 }),
