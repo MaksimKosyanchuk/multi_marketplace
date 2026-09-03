@@ -21,6 +21,7 @@ type SearchDocument = {
     isArchived: boolean;
     rating: number;
     createdAt: string;
+    auctionId?: string;
 };
 
 @Injectable()
@@ -185,7 +186,10 @@ export class SearchService implements OnModuleInit {
     async indexProduct(productId: string): Promise<void> {
         const product = await this.prisma.product.findUnique({
             where: { id: productId },
-            include: { reviews: { select: { rating: true } } },
+            include: {
+                reviews: { select: { rating: true } },
+                auction: { select: { id: true } },
+            },
         });
         if (!product) return;
         const rating = product.reviews.length
@@ -203,7 +207,10 @@ export class SearchService implements OnModuleInit {
 
     private async reindexAllProducts(): Promise<void> {
         const products = await this.prisma.product.findMany({
-            include: { reviews: { select: { rating: true } } },
+            include: {
+                reviews: { select: { rating: true } },
+                auction: { select: { id: true } },
+            },
         });
         if (!products.length) return;
 
@@ -255,6 +262,7 @@ export class SearchService implements OnModuleInit {
             status: ProductStatus;
             isArchived: boolean;
             createdAt: Date;
+            auction?: { id: string } | null;
         },
         rating: number,
     ): SearchDocument {
@@ -271,6 +279,7 @@ export class SearchService implements OnModuleInit {
             isArchived: product.isArchived,
             rating,
             createdAt: product.createdAt.toISOString(),
+            ...(product.auction ? { auctionId: product.auction.id } : {}),
         };
     }
 
