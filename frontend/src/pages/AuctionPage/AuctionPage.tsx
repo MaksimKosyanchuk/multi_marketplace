@@ -118,6 +118,12 @@ const AuctionPage: React.FC = () => {
     const endsAt = new Date(auction.endsAt).getTime();
     const isRunning =
         auction.status === 'ACTIVE' && now >= startsAt && now < endsAt;
+    const displayStatus =
+        now >= endsAt && auction.status === 'ACTIVE'
+            ? auction.bids.length > 0
+                ? 'SOLD'
+                : 'EXPIRED'
+            : auction.status;
     const remainingMs = Math.max(0, endsAt - now);
     const remainingHours = Math.floor(remainingMs / 3_600_000);
     const remainingMinutes = Math.floor((remainingMs % 3_600_000) / 60_000);
@@ -156,11 +162,17 @@ const AuctionPage: React.FC = () => {
                 <div className={styles.status}>
                     {now < startsAt
                         ? `Аукціон ще не розпочався (старт: ${formatDate(auction.startsAt)})`
-                        : `Аукціон завершено: ${auction.status}`}
-                    {auction.status === 'SOLD' && auction.winnerId && (
+                        : `Аукціон завершено: ${
+                              displayStatus === 'SOLD'
+                                  ? 'Проданий переможцю'
+                                  : displayStatus === 'EXPIRED'
+                                    ? 'Завершений без ставок'
+                                    : displayStatus
+                          }`}
+                    {displayStatus === 'SOLD' && auction.winnerId && (
                         <div>Переможець: {auction.winnerId}</div>
                     )}
-                    {auction.status === 'SOLD' &&
+                    {displayStatus === 'SOLD' &&
                         auction.checkoutExpiresAt &&
                         new Date(auction.checkoutExpiresAt).getTime() > now && (
                             <div>
@@ -184,7 +196,7 @@ const AuctionPage: React.FC = () => {
                     </Button>
                 </form>
             )}
-            {auction.status === 'SOLD' &&
+            {displayStatus === 'SOLD' &&
                 auction.winnerId === user?.id &&
                 auction.checkoutExpiresAt &&
                 new Date(auction.checkoutExpiresAt).getTime() > now && (
@@ -193,8 +205,16 @@ const AuctionPage: React.FC = () => {
                             try {
                                 await auctionService.checkoutWinner(auction.id);
                                 await loadAuction();
-                            } catch {
-                                setError('Не вдалося оформити замовлення');
+                            } catch (err: unknown) {
+                                const message =
+                                    err instanceof AxiosError &&
+                                    err.response?.data?.message;
+                                setError(
+                                    Array.isArray(message)
+                                        ? message[0]
+                                        : message ||
+                                              'Не вдалося оформити замовлення',
+                                );
                             }
                         }}
                     >

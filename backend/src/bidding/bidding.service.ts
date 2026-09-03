@@ -155,11 +155,19 @@ export class BiddingService {
         });
     }
 
-    findAuction(auctionId: string) {
-        return this.prisma.auction.findUnique({
+    async findAuction(auctionId: string) {
+        const current = await this.prisma.auction.findUnique({
             where: { id: auctionId },
             include: auctionDetails,
         });
+        if (
+            current &&
+            current.status === AuctionStatus.ACTIVE &&
+            current.endsAt <= new Date()
+        ) {
+            return this.endAuction(auctionId);
+        }
+        return current;
     }
 
     findCreatedAuctions(sellerId: string) {
@@ -444,7 +452,6 @@ export class BiddingService {
                     where: {
                         id: auction.productId,
                         stock: { gte: 1 },
-                        status: ProductStatus.ACTIVE,
                         type: ProductType.AUCTION,
                         isArchived: false,
                     },

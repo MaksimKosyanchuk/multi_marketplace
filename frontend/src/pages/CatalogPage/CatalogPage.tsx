@@ -9,6 +9,7 @@ import { productService } from '../../services/productService';
 import { cartService } from '../../services/cartService';
 import { useAuth } from '../../context/AuthContext/useAuth';
 import { ProductCard } from '../../components/ProductCard/ProductCard';
+import { AuctionCard } from '../../components/AuctionCard/AuctionCard';
 import { Modal } from '../../components/Modal/Modal';
 import { Button } from '../../components/Ui/Button/Button';
 import { Role } from '../../types';
@@ -373,18 +374,20 @@ export const CatalogPage: React.FC = () => {
                 <>
                     <div className={styles.grid}>
                         {products.map((product) => (
-                            <ProductCard
-                                key={product.id}
-                                product={product}
-                                isInCart={cartItemIds.includes(
-                                    product.id,
-                                )}
-                                onAddToCart={
-                                    user?.role === Role.SELLER
-                                        ? undefined
-                                        : handleAddToCart
-                                }
-                            />
+                            product.type === 'AUCTION' ? (
+                                <AuctionCard key={product.id} product={product} />
+                            ) : (
+                                <ProductCard
+                                    key={product.id}
+                                    product={product}
+                                    isInCart={cartItemIds.includes(product.id)}
+                                    onAddToCart={
+                                        user?.role === Role.SELLER
+                                            ? undefined
+                                            : handleAddToCart
+                                    }
+                                />
+                            )
                         ))}
                     </div>
 

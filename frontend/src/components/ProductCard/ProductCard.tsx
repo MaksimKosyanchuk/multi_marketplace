@@ -31,6 +31,14 @@ const productStatusLabels: Record<NonNullable<Product['status']>, string> = {
     ARCHIVED: 'В архіві',
     SOLD: 'Проданий',
 };
+const auctionStatusLabels: Record<NonNullable<Product['auctionStatus']>, string> = {
+    DRAFT: 'Чернетка',
+    ACTIVE: 'Опублікований',
+    ENDED: 'Завершений',
+    SOLD: 'Проданий переможцю',
+    EXPIRED: 'Завершений без ставок',
+    CANCELLED: 'Скасований',
+};
 
 export const ProductCard: React.FC<ProductCardProps> = ({
     product,
@@ -130,9 +138,30 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     const renderActionButton = () => {
         if (isAdmin) {
             if (isArchived) {
+                return product.type === 'AUCTION' && product.auctionId ? (
+                    <Button
+                        variant="primary"
+                        size="medium"
+                        onClick={() => navigate(`/auction/${product.auctionId}`)}
+                    >
+                        Перейти до аукціону
+                    </Button>
+                ) : null;
+            }
+
+            if (user?.role === Role.SELLER && product.type === 'AUCTION') {
+                const auctionStatus = product.auctionStatus ?? 'DRAFT';
+                const isFinished =
+                    auctionStatus === 'SOLD' ||
+                    auctionStatus === 'EXPIRED' ||
+                    auctionStatus === 'ENDED' ||
+                    auctionStatus === 'CANCELLED';
                 return (
                     <div className={styles.footer}>
-                        {product.type === 'AUCTION' && product.auctionId && (
+                        <span className={styles.statusBadge}>
+                            {auctionStatusLabels[auctionStatus]}
+                        </span>
+                        {product.auctionId && (
                             <Button
                                 variant="primary"
                                 size="medium"
@@ -143,18 +172,45 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                                 Перейти до аукціону
                             </Button>
                         )}
-                        <Button
-                            variant="secondary"
-                            size="medium"
-                            onClick={() => onRestore?.(product)}
-                            className={styles.restoreBtn}
-                        >
-                            Відновити
-                        </Button>
+                        {!isFinished && auctionStatus !== 'DRAFT' && (
+                            <Button
+                                variant="secondary"
+                                size="medium"
+                                onClick={() => onDelete?.(product)}
+                                className={styles.deleteBtn}
+                            >
+                                Скасувати
+                            </Button>
+                        )}
+                        {auctionStatus === 'DRAFT' && (
+                            <>
+                                <Button
+                                    variant="secondary"
+                                    size="medium"
+                                    onClick={() => onEdit?.(product)}
+                                >
+                                    Редагувати
+                                </Button>
+                                <Button
+                                    variant="primary"
+                                    size="medium"
+                                    onClick={() => onPublish?.(product)}
+                                >
+                                    Опублікувати
+                                </Button>
+                                <Button
+                                    variant="secondary"
+                                    size="medium"
+                                    onClick={() => onDelete?.(product)}
+                                    className={styles.deleteBtn}
+                                >
+                                    Видалити
+                                </Button>
+                            </>
+                        )}
                     </div>
                 );
             }
-
             const canEdit =
                 product.status !== 'REJECTED' &&
                 product.status !== 'ARCHIVED' &&

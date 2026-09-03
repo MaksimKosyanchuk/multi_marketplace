@@ -9,7 +9,7 @@ import { RedisService } from '../redis/redis.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductSort, QueryProductDto } from './dto/query-product.dto';
-import { Prisma, ProductStatus } from '@prisma/client';
+import { AuctionStatus, Prisma, ProductStatus } from '@prisma/client';
 import { deleteFile } from '../common/utils/file';
 import { LoggerService } from '../logger/logger.service';
 import { getCorrelationId } from '../common/correlation/correlation.context';
@@ -98,7 +98,10 @@ export class ProductsService {
                 orderBy,
                 skip: (page - 1) * limit,
                 take: limit,
-                include: { category: true },
+                include: {
+                    category: true,
+                    auction: { select: { id: true, status: true } },
+                },
             }),
             this.prisma.product.count({ where }),
         ]);
@@ -149,7 +152,7 @@ export class ProductsService {
                 orderBy,
                 skip: (page - 1) * limit,
                 take: limit,
-                include: { category: true },
+                include: { category: true, auction: { select: { id: true } } },
             }),
             this.prisma.product.count({ where }),
         ]);
@@ -466,7 +469,7 @@ export class ProductsService {
     }
 
     async remove(id: string, sellerId: string) {
-        await this.findOwnedProduct(id, sellerId);
+        const existingProduct = await this.findOwnedProduct(id, sellerId);
 
         await this.prisma.$transaction(async (tx) => {
             const claimed = await tx.product.updateMany({
@@ -479,6 +482,17 @@ export class ProductsService {
             });
             if (!claimed.count) {
                 throw new BadRequestException('Product is already archived');
+            }
+            if (existingProduct.type === 'AUCTION') {
+                await tx.auction.updateMany({
+                    where: {
+                        productId: id,
+                        status: {
+                            in: [AuctionStatus.DRAFT, AuctionStatus.ACTIVE],
+                        },
+                    },
+                    data: { status: AuctionStatus.CANCELLED },
+                });
             }
             const archived = await tx.product.findUniqueOrThrow({
                 where: { id },

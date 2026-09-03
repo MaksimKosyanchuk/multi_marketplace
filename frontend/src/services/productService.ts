@@ -30,7 +30,20 @@ export const productService = {
         const { data } = await api.get<ProductsResponse>('/products/seller/me', {
             params,
         });
-        return data;
+        return {
+            ...data,
+            items: data.items.map((product) => ({
+                ...product,
+                auctionId:
+                    (product as Product & { auction?: { id: string } }).auction
+                        ?.id ?? product.auctionId,
+                auctionStatus: (
+                    product as Product & {
+                        auction?: { status: Product['auctionStatus'] };
+                    }
+                ).auction?.status ?? product.auctionStatus,
+            })),
+        };
     },
 
     getById: async (id: string): Promise<Product> => {

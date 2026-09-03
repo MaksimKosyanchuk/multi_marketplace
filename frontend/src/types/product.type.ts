@@ -32,6 +32,7 @@ export interface Product {
         | 'SOLD';
     rating?: number;
     auctionId?: string;
+    auctionStatus?: 'DRAFT' | 'ACTIVE' | 'ENDED' | 'SOLD' | 'EXPIRED' | 'CANCELLED';
 }
 
 export interface QueryProductParams {

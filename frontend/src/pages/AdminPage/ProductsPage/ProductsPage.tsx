@@ -8,6 +8,7 @@ import type { Product } from '../../../types/product.type';
 import { Role } from '../../../types';
 import { useAuth } from '../../../context/AuthContext/useAuth';
 import { auctionService } from '../../../services/auctionService';
+import { AuctionCard } from '../../../components/AuctionCard/AuctionCard';
 
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const MAX_FILE_SIZE_MB = 5;
@@ -415,15 +416,25 @@ export default function ProductsPage() {
             ) : (
                 <div className={styles.grid}>
                     {products.map((product) => (
-                        <ProductCard
-                            key={product.id}
-                            product={product}
-                            isAdmin={true}
-                            onEdit={handleOpenEditModal}
-                            onDelete={handleDeleteProductInline}
-                            onRestore={handleRestoreProductInline}
-                            onPublish={handlePublishProductInline}
-                        />
+                        product.type === 'AUCTION' ? (
+                            <AuctionCard
+                                key={product.id}
+                                product={product}
+                                onEdit={handleOpenEditModal}
+                                onDelete={handleDeleteProductInline}
+                                onPublish={handlePublishProductInline}
+                            />
+                        ) : (
+                            <ProductCard
+                                key={product.id}
+                                product={product}
+                                isAdmin={true}
+                                onEdit={handleOpenEditModal}
+                                onDelete={handleDeleteProductInline}
+                                onRestore={handleRestoreProductInline}
+                                onPublish={handlePublishProductInline}
+                            />
+                        )
                     ))}
                 </div>
             )}
