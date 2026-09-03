@@ -21,8 +21,9 @@ import ProductsPage from '../AdminPage/ProductsPage/ProductsPage';
 import styles from './ProfilePage.module.css';
 import { useAuth } from '../../context/AuthContext/useAuth';
 import { Role, type SellerOrder, type Auction } from '../../types';
+import { AuctionCard } from '../../components/AuctionCard/AuctionCard';
 
-type ActiveTab = 'info' | 'orders' | 'sales' | 'products' | 'auctionHistory';
+type ActiveTab = 'info' | 'orders' | 'sales' | 'products' | 'auctions' | 'auctionHistory';
 
 export const ProfilePage: React.FC = () => {
     const { user, socket } = useAuth();
@@ -35,22 +36,20 @@ export const ProfilePage: React.FC = () => {
     const [orders, setOrders] = useState<Order[]>([]);
     const [sales, setSales] = useState<SellerOrder[]>([]);
     const [auctionHistory, setAuctionHistory] = useState<Auction[]>([]);
+    const [auctionForm, setAuctionForm] = useState({
+        name: '',
+        description: '',
+        categoryId: '',
+        startingPrice: '',
+        minBidIncrement: '',
+        endsAt: '',
+    });
+    const [isCreatingAuction, setIsCreatingAuction] = useState(false);
+    const [isCreateAuctionOpen, setIsCreateAuctionOpen] = useState(false);
     const [categories, setCategories] = useState<Category[]>([]);
     const [isLoadingOrders, setIsLoadingOrders] = useState<boolean>(false);
     const [isLoadingSales, setIsLoadingSales] = useState<boolean>(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
-    const [isCreateProductOpen, setIsCreateProductOpen] = useState(false);
-    const [isCreatingProduct, setIsCreatingProduct] = useState(false);
-    const [productForm, setProductForm] = useState({
-        name: '',
-        description: '',
-        price: '',
-        stock: '',
-        categoryId: '',
-        type: '',
-        minBidIncrement: '',
-        auctionEndsAt: '',
-    });
 
     const fetchOrders = useCallback(async () => {
         setIsLoadingOrders(true);
@@ -94,11 +93,16 @@ export const ProfilePage: React.FC = () => {
 
     const fetchAuctionHistory = useCallback(async () => {
         try {
-            setAuctionHistory(await auctionService.getParticipating());
+            if (isSeller) {
+                const auctions = await auctionService.getCreated();
+                setAuctionHistory(auctions);
+            } else {
+                setAuctionHistory(await auctionService.getParticipating());
+            }
         } catch {
             setErrorMessage('Не вдалося завантажити історію аукціонів.');
         }
-    }, []);
+    }, [isSeller]);
 
     const fetchCategories = useCallback(async () => {
         if (!isSeller) {
@@ -123,7 +127,7 @@ export const ProfilePage: React.FC = () => {
         if (tab === 'sales' && isSeller) {
             void fetchSales();
         }
-        if (tab === 'auctionHistory' && isCustomer) {
+        if ((tab === 'auctionHistory' && isCustomer) || (tab === 'auctions' && isSeller)) {
             void fetchAuctionHistory();
         }
     };
@@ -237,113 +241,10 @@ export const ProfilePage: React.FC = () => {
         </div>
     );
 
-    const resetProductForm = () => {
-        setProductForm({
-            name: '',
-            description: '',
-            price: '',
-            stock: '',
-            categoryId: '',
-            type: '',
-            minBidIncrement: '',
-            auctionEndsAt: '',
-        });
-    };
-
-    const handleCreateProduct = async () => {
-        if (!productForm.name.trim()) {
-            setErrorMessage('Назва товару є обов’язковою.');
-            return;
-        }
-
-        if (!productForm.categoryId) {
-            setErrorMessage('Оберіть категорію для товару.');
-            return;
-        }
-        if (!productForm.type) {
-            setErrorMessage('Оберіть тип товару.');
-            return;
-        }
-
-        if (!productForm.price || Number(productForm.price) <= 0) {
-            setErrorMessage('Ціна повинна бути більшою за 0.');
-            return;
-        }
-        if (
-            productForm.type === 'AUCTION' &&
-            (!productForm.minBidIncrement ||
-                Number(productForm.minBidIncrement) <= 0 ||
-                !productForm.auctionEndsAt ||
-                new Date(productForm.auctionEndsAt) <= new Date())
-        ) {
-            setErrorMessage(
-                'Для аукціону вкажіть мінімальний крок ставки та майбутній дедлайн.',
-            );
-            return;
-        }
-
-        if (
-            productForm.type !== 'AUCTION' &&
-            (!productForm.stock || Number(productForm.stock) <= 0)
-        ) {
-            setErrorMessage('Кількість повинна бути більшою за 0.');
-            return;
-        }
-
-        setIsCreatingProduct(true);
-
-        try {
-            const formData = new FormData();
-            formData.append('name', productForm.name.trim());
-            formData.append('description', productForm.description.trim());
-            formData.append('price', String(productForm.price));
-            formData.append(
-                'stock',
-                productForm.type === 'AUCTION' ? '1' : String(productForm.stock),
-            );
-            formData.append('categoryId', productForm.categoryId);
-            formData.append('type', productForm.type);
-
-            const created = await productService.createProduct(formData);
-            if (productForm.type === 'AUCTION') {
-                await auctionService.create({
-                    productId: created.id,
-                    startingPrice: Number(productForm.price),
-                    minBidIncrement: Number(productForm.minBidIncrement),
-                    startsAt: new Date().toISOString(),
-                    endsAt: new Date(productForm.auctionEndsAt).toISOString(),
-                });
-            }
-            setIsCreateProductOpen(false);
-            resetProductForm();
-            await fetchSales();
-        } catch (err) {
-            console.error('Помилка створення товару:', err);
-            if (err instanceof AxiosError && err.response?.data?.message) {
-                setErrorMessage(
-                    Array.isArray(err.response.data.message)
-                        ? err.response.data.message[0]
-                        : err.response.data.message,
-                );
-            } else {
-                setErrorMessage('Не вдалося створити товар.');
-            }
-        } finally {
-            setIsCreatingProduct(false);
-        }
-    };
-
     const renderSellerSales = () => (
         <div className={styles.section}>
             <div className={styles.sectionHeader}>
                 <h2>Мої продажі</h2>
-                <Button
-                    variant="primary"
-                    size="small"
-                    onClick={() => setIsCreateProductOpen(true)}
-                >
-                    + Створити товар
-                </Button>
             </div>
 
             {isLoadingSales ? (
@@ -421,10 +322,100 @@ export const ProfilePage: React.FC = () => {
         </div>
     );
 
+    const createAuction = async (event: React.FormEvent) => {
+        event.preventDefault();
+        if (
+            !auctionForm.name.trim() ||
+            !auctionForm.categoryId ||
+            !auctionForm.startingPrice ||
+            !auctionForm.minBidIncrement ||
+            !auctionForm.endsAt
+        ) {
+            setErrorMessage('Заповніть усі поля аукціону.');
+            return;
+        }
+        setIsCreatingAuction(true);
+        try {
+            const productData = new FormData();
+            productData.append('name', auctionForm.name.trim());
+            productData.append('description', auctionForm.description.trim());
+            productData.append('categoryId', auctionForm.categoryId);
+            productData.append('type', 'AUCTION');
+            productData.append('price', auctionForm.startingPrice);
+            productData.append('stock', '1');
+            const product = await productService.createProduct(productData);
+            await auctionService.create({
+                productId: product.id,
+                startingPrice: Number(auctionForm.startingPrice),
+                minBidIncrement: Number(auctionForm.minBidIncrement),
+                startsAt: new Date().toISOString(),
+                endsAt: new Date(auctionForm.endsAt).toISOString(),
+            });
+            setAuctionForm({
+                name: '',
+                description: '',
+                categoryId: '',
+                startingPrice: '',
+                minBidIncrement: '',
+                endsAt: '',
+            });
+            setIsCreateAuctionOpen(false);
+            await fetchAuctionHistory();
+        } catch (err) {
+            setErrorMessage(
+                err instanceof AxiosError && err.response?.data?.message
+                    ? String(err.response.data.message)
+                    : 'Не вдалося створити аукціон.',
+            );
+        } finally {
+            setIsCreatingAuction(false);
+        }
+    };
+
+    const renderSellerAuctions = () => (
+        <div className={styles.section}>
+            <div className={styles.sectionHeader}>
+                <h2>Мої аукціони</h2>
+                <Button type="button" onClick={() => setIsCreateAuctionOpen(true)}>
+                    Створити аукціон
+                </Button>
+            </div>
+            {auctionHistory.length === 0 ? (
+                <p>Аукціонів немає.</p>
+            ) : (
+                <div className={styles.salesList}>
+                    {auctionHistory.map((auction) => (
+                        <AuctionCard
+                            key={auction.id}
+                            product={{
+                                ...(auction.product ?? {
+                                    id: auction.productId,
+                                    name: 'Аукціон',
+                                    description: '',
+                                    sellerId: user?.id ?? '',
+                                    price: Number(auction.currentPrice),
+                                    stock: 1,
+                                    categoryId: '',
+                                    createdAt: '',
+                                    updatedAt: '',
+                                    isArchived: false,
+                                }),
+                                type: 'AUCTION',
+                                auctionId: auction.id,
+                                auctionStatus: auction.status,
+                            }}
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+
     const tabs = isSeller
         ? ([
               { key: 'orders', label: 'Історія покупок' },
               { key: 'sales', label: 'Мої продажі' },
+              { key: 'auctions', label: 'Аукціони' },
               { key: 'products', label: 'Товари' },
               { key: 'info', label: 'Мої дані' },
           ] as Array<{ key: ActiveTab; label: string }>)
@@ -500,175 +491,91 @@ export const ProfilePage: React.FC = () => {
             {activeTab === 'orders' && (isCustomer || isSeller) && renderCustomerOrders()}
             {activeTab === 'sales' && isSeller && renderSellerSales()}
             {activeTab === 'auctionHistory' && isCustomer && renderAuctionHistory()}
-            {activeTab === 'products' && isSeller && <ProductsPage />}
+            {activeTab === 'auctions' && isSeller && renderSellerAuctions()}
+            {activeTab === 'products' && isSeller && <ProductsPage sellerMode />}
 
             <Modal
-                isOpen={isCreateProductOpen}
-                onClose={() => {
-                    setIsCreateProductOpen(false);
-                    resetProductForm();
-                }}
-                title="Створити товар"
+                isOpen={isCreateAuctionOpen}
+                onClose={() => setIsCreateAuctionOpen(false)}
+                title="Створити аукціон"
                 actions={
                     <>
                         <Button
+                            type="button"
                             variant="secondary"
-                            size="small"
-                            onClick={() => {
-                                setIsCreateProductOpen(false);
-                                resetProductForm();
-                            }}
+                            onClick={() => setIsCreateAuctionOpen(false)}
                         >
                             Скасувати
                         </Button>
                         <Button
-                            variant="primary"
-                            size="small"
-                            onClick={() => {
-                                void handleCreateProduct();
-                            }}
-                            disabled={isCreatingProduct}
+                            type="submit"
+                            form="create-auction-form"
+                            disabled={isCreatingAuction}
                         >
-                            {isCreatingProduct ? 'Створення...' : 'Створити'}
+                            {isCreatingAuction ? 'Створення...' : 'Створити'}
                         </Button>
                     </>
                 }
             >
-                <div className={styles.productForm}>
-                    <label className={styles.field}>
-                        <span>Тип товару</span>
-                        <select
-                            value={productForm.type}
-                            onChange={(e) =>
-                                setProductForm((prev) => ({
-                                    ...prev,
-                                    type: e.target.value as 'FIXED_PRICE' | 'AUCTION',
-                                }))
-                            }
-                        >
-                            <option value="">Оберіть тип товару</option>
-                            <option value="FIXED_PRICE">Звичайний товар</option>
-                            <option value="AUCTION">Аукціон</option>
-                        </select>
-                    </label>
-                    {productForm.type && (
-                        <>
-                    <label className={styles.field}>
-                        <span>Назва</span>
-                        <input
-                            value={productForm.name}
-                            onChange={(e) =>
-                                setProductForm((prev) => ({
-                                    ...prev,
-                                    name: e.target.value,
-                                }))
-                            }
-                        />
-                    </label>
-                    {productForm.type === 'AUCTION' && (
-                        <div className={styles.rowTwo}>
-                            <label className={styles.field}>
-                                <span>Мінімальний крок ставки</span>
-                                <input
-                                    type="number"
-                                    min="0.01"
-                                    step="0.01"
-                                    value={productForm.minBidIncrement}
-                                    onChange={(e) =>
-                                        setProductForm((prev) => ({
-                                            ...prev,
-                                            minBidIncrement: e.target.value,
-                                        }))
-                                    }
-                                />
-                            </label>
-                            <label className={styles.field}>
-                                <span>Дедлайн аукціону</span>
-                                <input
-                                    type="datetime-local"
-                                    value={productForm.auctionEndsAt}
-                                    onChange={(e) =>
-                                        setProductForm((prev) => ({
-                                            ...prev,
-                                            auctionEndsAt: e.target.value,
-                                        }))
-                                    }
-                                />
-                            </label>
-                        </div>
-                    )}
-                    <label className={styles.field}>
-                        <span>Опис</span>
-                        <textarea
-                            rows={3}
-                            value={productForm.description}
-                            onChange={(e) =>
-                                setProductForm((prev) => ({
-                                    ...prev,
-                                    description: e.target.value,
-                                }))
-                            }
-                        />
-                    </label>
-
-                    <div className={styles.rowTwo}>
-                        <label className={styles.field}>
-                            <span>
-                                {productForm.type === 'AUCTION'
-                                    ? 'Стартова ціна'
-                                    : 'Ціна'}
-                            </span>
-                            <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={productForm.price}
-                                onChange={(e) =>
-                                    setProductForm((prev) => ({
-                                        ...prev,
-                                        price: e.target.value,
-                                    }))
-                                }
-                            />
-                        </label>
-
-                        {productForm.type !== 'AUCTION' && <label className={styles.field}>
-                            <span>Кількість</span>
-                            <input
-                                type="number"
-                                min="1"
-                                value={productForm.stock}
-                                onChange={(e) =>
-                                    setProductForm((prev) => ({
-                                        ...prev,
-                                        stock: e.target.value,
-                                    }))
-                                }
-                            />
-                        </label>}
-                    </div>
-                    <label className={styles.field}>
-                        <span>Категорія</span>
-                        <select
-                            value={productForm.categoryId}
-                            onChange={(e) =>
-                                setProductForm((prev) => ({
-                                    ...prev,
-                                    categoryId: e.target.value,
-                                }))
-                            }
-                        >
-                            <option value="">Оберіть категорію</option>
-                            {categories.map((category) => (
-                                <option key={category.id} value={category.id}>
-                                    {category.name}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
-                        </>
-                    )}
-                </div>
+                <form id="create-auction-form" onSubmit={createAuction} className={styles.form}>
+                    <input
+                        required
+                        placeholder="Назва аукціону"
+                        value={auctionForm.name}
+                        onChange={(event) =>
+                            setAuctionForm((current) => ({ ...current, name: event.target.value }))
+                        }
+                    />
+                    <textarea
+                        placeholder="Опис"
+                        value={auctionForm.description}
+                        onChange={(event) =>
+                            setAuctionForm((current) => ({ ...current, description: event.target.value }))
+                        }
+                    />
+                    <select
+                        required
+                        value={auctionForm.categoryId}
+                        onChange={(event) =>
+                            setAuctionForm((current) => ({ ...current, categoryId: event.target.value }))
+                        }
+                    >
+                        <option value="">Оберіть категорію</option>
+                        {categories.map((category) => (
+                            <option key={category.id} value={category.id}>{category.name}</option>
+                        ))}
+                    </select>
+                    <input
+                        required
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        placeholder="Стартова ціна"
+                        value={auctionForm.startingPrice}
+                        onChange={(event) =>
+                            setAuctionForm((current) => ({ ...current, startingPrice: event.target.value }))
+                        }
+                    />
+                    <input
+                        required
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        placeholder="Крок ставки"
+                        value={auctionForm.minBidIncrement}
+                        onChange={(event) =>
+                            setAuctionForm((current) => ({ ...current, minBidIncrement: event.target.value }))
+                        }
+                    />
+                    <input
+                        required
+                        type="datetime-local"
+                        value={auctionForm.endsAt}
+                        onChange={(event) =>
+                            setAuctionForm((current) => ({ ...current, endsAt: event.target.value }))
+                        }
+                    />
+                </form>
             </Modal>
 
             <Modal

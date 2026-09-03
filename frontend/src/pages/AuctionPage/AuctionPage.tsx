@@ -197,6 +197,7 @@ const AuctionPage: React.FC = () => {
                 </form>
             )}
             {displayStatus === 'SOLD' &&
+                !auction.checkoutOrderId &&
                 auction.winnerId === user?.id &&
                 auction.checkoutExpiresAt &&
                 new Date(auction.checkoutExpiresAt).getTime() > now && (
@@ -220,6 +221,11 @@ const AuctionPage: React.FC = () => {
                     >
                         Оформити замовлення переможця
                     </Button>
+                )}
+            {displayStatus === 'SOLD' &&
+                auction.winnerId === user?.id &&
+                auction.checkoutOrderId && (
+                    <p className={styles.status}>Оплачено</p>
                 )}
             {error && <p className={styles.error}>{error}</p>}
             <h2>Історія ставок</h2>

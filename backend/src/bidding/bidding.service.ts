@@ -432,6 +432,16 @@ export class BiddingService {
                     include: { product: true },
                 });
                 if (!auction) throw new NotFoundException('Auction not found');
+                if (auction.checkoutOrderId) {
+                    const paidOrder = await tx.order.findUnique({
+                        where: { id: auction.checkoutOrderId },
+                        include: { sellerOrders: { include: { items: true } } },
+                    });
+                    if (paidOrder?.userId === winnerId) return paidOrder;
+                    throw new ForbiddenException(
+                        'Auction checkout belongs to another user',
+                    );
+                }
                 if (
                     auction.status !== AuctionStatus.SOLD ||
                     auction.winnerId !== winnerId
@@ -451,12 +461,11 @@ export class BiddingService {
                 const stock = await tx.product.updateMany({
                     where: {
                         id: auction.productId,
-                        stock: { gte: 1 },
                         type: ProductType.AUCTION,
                         isArchived: false,
                     },
                     data: {
-                        stock: { decrement: 1 },
+                        stock: 0,
                         status: ProductStatus.SOLD,
                         version: { increment: 1 },
                     },
@@ -473,13 +482,13 @@ export class BiddingService {
                 const order = await tx.order.create({
                     data: {
                         userId: winnerId,
-                        status: OrderStatus.PAYMENT_PENDING,
+                        status: OrderStatus.PROCESSING,
                         subtotal: auction.currentPrice,
                         totalAmount: auction.currentPrice,
                         payments: {
                             create: {
                                 provider: 'mock',
-                                status: PaymentStatus.PENDING,
+                                status: PaymentStatus.PAID,
                                 amount: auction.currentPrice,
                                 idempotencyKey,
                             },
@@ -487,7 +496,7 @@ export class BiddingService {
                         sellerOrders: {
                             create: {
                                 sellerId: auction.product.sellerId,
-                                status: SellerOrderStatus.PAYMENT_PENDING,
+                                status: SellerOrderStatus.PROCESSING,
                                 subtotal: auction.currentPrice,
                                 commissionRate,
                                 commissionAmount,
@@ -519,6 +528,10 @@ export class BiddingService {
                         },
                     },
                     include: { sellerOrders: { include: { items: true } } },
+                });
+                await tx.auction.update({
+                    where: { id: auctionId },
+                    data: { checkoutOrderId: order.id },
                 });
                 await tx.outboxEvent.createMany({
                     data: [

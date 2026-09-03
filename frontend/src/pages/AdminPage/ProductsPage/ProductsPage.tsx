@@ -26,7 +26,7 @@ interface ProductResponseItems {
     products?: Product[];
 }
 
-export default function ProductsPage() {
+export default function ProductsPage({ sellerMode = false }: { sellerMode?: boolean }) {
     const { user } = useAuth();
     const [products, setProducts] = useState<Product[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
@@ -72,8 +72,9 @@ export default function ProductsPage() {
                 : resObj.items || resObj.products || []
             ).filter(
                 (product) =>
-                    user?.role !== Role.SELLER ||
-                    product.sellerId === user.id,
+                    (user?.role !== Role.SELLER ||
+                        product.sellerId === user.id) &&
+                    (!sellerMode || product.type === 'FIXED_PRICE'),
             );
 
             setProducts(productsList);
@@ -109,7 +110,9 @@ export default function ProductsPage() {
                         : resObj.items || resObj.products || []
                     ).filter(
                         (product) =>
-                            user?.role !== Role.SELLER || product.sellerId === user.id,
+                            (user?.role !== Role.SELLER ||
+                                product.sellerId === user.id) &&
+                            (!sellerMode || product.type === 'FIXED_PRICE'),
                     );
 
                     setProducts(productsList);
@@ -141,7 +144,7 @@ export default function ProductsPage() {
         setPrice('');
         setStock('');
         setCategoryId('');
-        setType('');
+        setType(sellerMode ? 'FIXED_PRICE' : '');
         setMinBidIncrement('');
         setAuctionEndsAt('');
         setImageFile(null);
@@ -475,7 +478,7 @@ export default function ProductsPage() {
                             </div>
                         ) : (
                             <form onSubmit={handleSubmit} className={styles.form} noValidate>
-                                {modalMode === 'create' ? (
+                                {modalMode === 'create' && !sellerMode ? (
                                     <label>
                                         Тип товару:
                                         <select value={type} onChange={(e) => setType(e.target.value as typeof type)} required>

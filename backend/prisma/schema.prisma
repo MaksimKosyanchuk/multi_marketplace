@@ -234,6 +234,7 @@ model Auction {
   version           Int           @default(0)
   winnerId          String?
   checkoutExpiresAt DateTime?
+  checkoutOrderId   String?       @unique
   product           Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
   winner            User?         @relation("AuctionWinner", fields: [winnerId], references: [id], onDelete: SetNull)
   bids              Bid[]

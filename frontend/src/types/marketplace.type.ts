@@ -146,6 +146,7 @@ export interface Auction {
     version: number;
     winnerId?: string | null;
     checkoutExpiresAt?: string | null;
+    checkoutOrderId?: string | null;
     bids: Bid[];
 }
 export interface Bid {
