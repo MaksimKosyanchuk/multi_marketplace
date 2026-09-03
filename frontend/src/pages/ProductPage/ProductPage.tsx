@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useParams } from 'react-router-dom';
 import { productService } from '../../services/productService';
 import { reviewService } from '../../services/reviewService';
 import { cartService } from '../../services/cartService';
 import { onStockUpdate } from '../../services/socketClient';
+import { realtimeStore } from '../../services/realtimeStore';
 import { useAuth } from '../../context/AuthContext/useAuth';
 import { Button } from '../../components/Ui/Button/Button';
 import type { Product } from '../../types/product.type';
@@ -17,6 +18,10 @@ export default function ProductPage() {
     const [added, setAdded] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const { socket } = useAuth();
+    const realtimeStock = useSyncExternalStore(
+        realtimeStore.subscribe,
+        () => (id ? realtimeStore.getSnapshot().stock[id] : undefined),
+    );
 
     useEffect(() => {
         if (!id) return;
@@ -33,6 +38,11 @@ export default function ProductPage() {
             }
         });
     }, [id, socket]);
+
+    useEffect(() => {
+        if (realtimeStock === undefined) return;
+        setProduct((current) => current ? { ...current, stock: realtimeStock } : current);
+    }, [realtimeStock]);
 
     if (error) return <div className={styles.container}>{error}</div>;
     if (!product) return <div className={styles.container}>Завантаження...</div>;

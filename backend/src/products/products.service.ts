@@ -60,7 +60,12 @@ export class ProductsService {
 
     async findAll(query: QueryProductDto): Promise<PaginatedProductsResult> {
         const cacheKey = this.CACHE_PREFIX + JSON.stringify(query);
-        const cached = await this.redis.get(cacheKey);
+        let cached: string | null = null;
+        try {
+            cached = await this.redis.get(cacheKey);
+        } catch {
+            // Cache is optional; the database remains authoritative.
+        }
 
         if (cached) {
             return JSON.parse(cached) as PaginatedProductsResult;
@@ -134,7 +139,11 @@ export class ProductsService {
             meta: { total, page, limit, pageCount: Math.ceil(total / limit) },
         };
 
-        await this.redis.set(cacheKey, JSON.stringify(result), this.CACHE_TTL);
+        try {
+            await this.redis.set(cacheKey, JSON.stringify(result), this.CACHE_TTL);
+        } catch {
+            // Cache write failures must not fail a product read.
+        }
 
         return result;
     }
@@ -382,7 +391,12 @@ export class ProductsService {
 
     async findOne(id: string): Promise<ProductWithCategory> {
         const cacheKey = `${this.DETAIL_CACHE_PREFIX}${id}`;
-        const cached = await this.redis.get(cacheKey);
+        let cached: string | null = null;
+        try {
+            cached = await this.redis.get(cacheKey);
+        } catch {
+            // Cache is optional; the database remains authoritative.
+        }
         if (cached) return JSON.parse(cached) as ProductWithCategory;
 
         const product = await this.prisma.product.findUnique({
@@ -407,7 +421,11 @@ export class ProductsService {
                   ) / product.reviews.length
                 : 0,
         };
-        await this.redis.set(cacheKey, JSON.stringify(result), this.CACHE_TTL);
+        try {
+            await this.redis.set(cacheKey, JSON.stringify(result), this.CACHE_TTL);
+        } catch {
+            // Cache write failures must not fail a product read.
+        }
         return result;
     }
 

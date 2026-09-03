@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AxiosError } from 'axios';
 import { auctionService } from '../../services/auctionService';
@@ -7,6 +7,7 @@ import {
     subscribeToAuction,
     unsubscribeFromAuction,
 } from '../../services/socketClient';
+import { realtimeStore } from '../../services/realtimeStore';
 import { useAuth } from '../../context/AuthContext/useAuth';
 import type { Auction } from '../../types/marketplace.type';
 import { Button } from '../../components/Ui/Button/Button';
@@ -24,6 +25,10 @@ const AuctionPage: React.FC = () => {
     const [bidding, setBidding] = useState(false);
     const [error, setError] = useState('');
     const [now, setNow] = useState(() => Date.now());
+    const realtimeBid = useSyncExternalStore(
+        realtimeStore.subscribe,
+        () => (auctionId ? realtimeStore.getSnapshot().bids[auctionId] : undefined),
+    );
 
     const loadAuction = useCallback(async () => {
         if (!auctionId) return;
@@ -68,6 +73,15 @@ const AuctionPage: React.FC = () => {
             unsubscribeFromAuction(auctionId);
         };
     }, [socket, auctionId, loadAuction]);
+
+    useEffect(() => {
+        if (!realtimeBid) return;
+        setAuction((current) =>
+            current && current.id === realtimeBid.auctionId
+                ? { ...current, currentPrice: Number(realtimeBid.currentPrice) }
+                : current,
+        );
+    }, [realtimeBid]);
 
     const minimumBid = useMemo(
         () =>

@@ -123,22 +123,23 @@ export class BiddingGateway
         this.notifications.registerServer(server);
     }
 
-    emitBidUpdate(auctionId: string, currentPrice: string, bidderId: string) {
+    emitBidUpdate(auctionId: string, currentPrice: string, bidderId: string, eventId?: string) {
         this.server.to(`auction:${auctionId}`).emit('auction_bid_updated', {
             auctionId,
             currentPrice,
             bidderId,
+            eventId,
         });
     }
 
-    emitAuctionEvent(type: string, payload: Record<string, unknown>) {
+    emitAuctionEvent(type: string, payload: Record<string, unknown>, eventId?: string) {
         const auctionId =
             typeof payload.auctionId === 'string'
                 ? payload.auctionId
                 : undefined;
         (auctionId ? this.server.to(`auction:${auctionId}`) : this.server).emit(
             'auction_event',
-            { type, payload },
+            { type, payload, eventId },
         );
     }
 }

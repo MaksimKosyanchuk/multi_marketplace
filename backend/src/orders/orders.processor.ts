@@ -138,6 +138,7 @@ export class OrdersProcessor extends WorkerHost {
                     this.ordersGateway.emitStockUpdate(
                         payload.productId,
                         payload.quantity,
+                        event.id,
                     );
                 }
             }
@@ -152,12 +153,14 @@ export class OrdersProcessor extends WorkerHost {
                         event.order.userId,
                         event.order.id,
                         event.order.status,
+                        event.id,
                     );
                     if (event.sellerOrder) {
                         this.ordersGateway.emitOrderStatusUpdate(
                             event.sellerOrder.sellerId,
                             event.order.id,
                             event.order.status,
+                            event.id,
                         );
                     }
                 }

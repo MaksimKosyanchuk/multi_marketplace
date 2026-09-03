@@ -57,18 +57,30 @@ describe('Critical marketplace flows (integration)', () => {
         await prisma.ledgerEntry.deleteMany({
             where: { sellerOrder: { orderId: { in: createdOrderIds } } },
         });
-        await prisma.payment.deleteMany({ where: { orderId: { in: createdOrderIds } } });
-        await prisma.sellerOrder.deleteMany({ where: { orderId: { in: createdOrderIds } } });
-        await prisma.order.deleteMany({ where: { id: { in: createdOrderIds } } });
+        await prisma.payment.deleteMany({
+            where: { orderId: { in: createdOrderIds } },
+        });
+        await prisma.sellerOrder.deleteMany({
+            where: { orderId: { in: createdOrderIds } },
+        });
+        await prisma.order.deleteMany({
+            where: { id: { in: createdOrderIds } },
+        });
         await prisma.cartItem.deleteMany({
             where: { cart: { userId: { in: createdUserIds } } },
         });
-        await prisma.cart.deleteMany({ where: { userId: { in: createdUserIds } } });
+        await prisma.cart.deleteMany({
+            where: { userId: { in: createdUserIds } },
+        });
         await prisma.bid.deleteMany({
             where: { bidderId: { in: createdUserIds } },
         });
-        await prisma.auction.deleteMany({ where: { id: { in: createdAuctionIds } } });
-        await prisma.product.deleteMany({ where: { id: { in: createdProductIds } } });
+        await prisma.auction.deleteMany({
+            where: { id: { in: createdAuctionIds } },
+        });
+        await prisma.product.deleteMany({
+            where: { id: { in: createdProductIds } },
+        });
         await prisma.category.deleteMany({ where: { name: `E2E ${suffix}` } });
         await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
         await app.close();
@@ -101,7 +113,8 @@ describe('Critical marketplace flows (integration)', () => {
     }
 
     it('creates one SellerOrder per seller and decrements every product atomically', async () => {
-        const { user: customer, token } = await createCustomerThroughHttp('customer');
+        const { user: customer, token } =
+            await createCustomerThroughHttp('customer');
         const sellerA = await createUser(Role.SELLER, 'seller-a');
         const sellerB = await createUser(Role.SELLER, 'seller-b');
         const category = await prisma.category.create({
@@ -164,9 +177,9 @@ describe('Critical marketplace flows (integration)', () => {
         });
 
         expect(persisted.sellerOrders).toHaveLength(2);
-        expect(new Set(persisted.sellerOrders.map((item) => item.sellerId))).toEqual(
-            new Set([sellerA.id, sellerB.id]),
-        );
+        expect(
+            new Set(persisted.sellerOrders.map((item) => item.sellerId)),
+        ).toEqual(new Set([sellerA.id, sellerB.id]));
         expect(products.find((item) => item.id === productA.id)?.stock).toBe(3);
         expect(products.find((item) => item.id === productB.id)?.stock).toBe(4);
     });
@@ -176,7 +189,10 @@ describe('Critical marketplace flows (integration)', () => {
         const bidderA = await createUser(Role.CUSTOMER, 'bidder-a');
         const bidderB = await createUser(Role.CUSTOMER, 'bidder-b');
         const category = await prisma.category.create({
-            data: { name: `E2E auction ${suffix}`, slug: `e2e-auction-${suffix}` },
+            data: {
+                name: `E2E auction ${suffix}`,
+                slug: `e2e-auction-${suffix}`,
+            },
         });
         const product = await prisma.product.create({
             data: {
@@ -206,15 +222,31 @@ describe('Critical marketplace flows (integration)', () => {
         createdAuctionIds.push(auction.id);
 
         const results = await Promise.allSettled([
-            bidding.placeBid(bidderA.id, auction.id, 110, `e2e-bid-a-${suffix}`),
-            bidding.placeBid(bidderB.id, auction.id, 110, `e2e-bid-b-${suffix}`),
+            bidding.placeBid(
+                bidderA.id,
+                auction.id,
+                110,
+                `e2e-bid-a-${suffix}`,
+            ),
+            bidding.placeBid(
+                bidderB.id,
+                auction.id,
+                110,
+                `e2e-bid-b-${suffix}`,
+            ),
         ]);
-        const accepted = results.filter((result) => result.status === 'fulfilled');
-        const rejected = results.filter((result) => result.status === 'rejected');
+        const accepted = results.filter(
+            (result) => result.status === 'fulfilled',
+        );
+        const rejected = results.filter(
+            (result) => result.status === 'rejected',
+        );
         const current = await prisma.auction.findUniqueOrThrow({
             where: { id: auction.id },
         });
-        const bids = await prisma.bid.findMany({ where: { auctionId: auction.id } });
+        const bids = await prisma.bid.findMany({
+            where: { auctionId: auction.id },
+        });
 
         expect(accepted).toHaveLength(1);
         expect(rejected).toHaveLength(1);

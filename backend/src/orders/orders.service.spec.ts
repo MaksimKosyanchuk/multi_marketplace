@@ -158,11 +158,19 @@ describe('OrdersService checkout', () => {
                         create: expect.arrayContaining([
                             expect.objectContaining({
                                 sellerId: 'seller-1',
+                                subtotal: new Prisma.Decimal('200'),
+                                commissionRate: new Prisma.Decimal('0.10'),
+                                commissionAmount: new Prisma.Decimal('20'),
+                                sellerEarnings: new Prisma.Decimal('180'),
                                 items: expect.any(Object),
                                 ledgerEntries: expect.any(Object),
                             }),
                             expect.objectContaining({
                                 sellerId: 'seller-2',
+                                subtotal: new Prisma.Decimal('200'),
+                                commissionRate: new Prisma.Decimal('0.10'),
+                                commissionAmount: new Prisma.Decimal('20'),
+                                sellerEarnings: new Prisma.Decimal('180'),
                                 items: expect.any(Object),
                                 ledgerEntries: expect.any(Object),
                             }),

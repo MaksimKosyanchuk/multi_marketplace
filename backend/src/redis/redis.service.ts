@@ -1,9 +1,10 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
+    private readonly logger = new Logger(RedisService.name);
     private client: Redis;
 
     constructor(private readonly config: ConfigService) {}
@@ -73,9 +74,42 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
 
     async delByPattern(pattern: string): Promise<void> {
-        const keys = await this.keys(pattern);
-        if (keys.length) {
-            await this.client.del(...keys);
+        try {
+            const keys = await this.keys(pattern);
+            if (keys.length) {
+                await this.client.del(...keys);
+            }
+        } catch (error: unknown) {
+            this.logger.warn(
+                `Redis cache invalidation unavailable: ${
+                    error instanceof Error ? error.message : String(error)
+                }`,
+            );
+        }
+    }
+
+    async getCache(key: string): Promise<string | null> {
+        try {
+            return await this.get(key);
+        } catch (error: unknown) {
+            this.logger.warn(
+                `Redis cache read unavailable: ${
+                    error instanceof Error ? error.message : String(error)
+                }`,
+            );
+            return null;
+        }
+    }
+
+    async setCache(key: string, value: string, ttlSeconds: number): Promise<void> {
+        try {
+            await this.set(key, value, ttlSeconds);
+        } catch (error: unknown) {
+            this.logger.warn(
+                `Redis cache write unavailable: ${
+                    error instanceof Error ? error.message : String(error)
+                }`,
+            );
         }
     }
 }

@@ -189,7 +189,8 @@ export const CartPage: React.FC = () => {
         ?? 0;
     const sellerGroups = cart?.items.reduce<Record<string, { name: string; total: number }>>(
         (groups, item) => {
-            const sellerId = item.product.sellerId;
+            const sellerId = item.product.sellerId ?? item.product.seller?.id;
+            if (!sellerId) return groups;
             const group = groups[sellerId] ?? {
                 name: item.product.seller?.nickName ?? item.product.seller?.email ?? sellerId,
                 total: 0,

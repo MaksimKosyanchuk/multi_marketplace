@@ -88,14 +88,15 @@ export class OrdersGateway
         });
     }
 
-    emitOrderStatusUpdate(userId: string, orderId: string, status: string) {
+    emitOrderStatusUpdate(userId: string, orderId: string, status: string, eventId?: string) {
         this.server.to(`user:${userId}`).emit('order_status_updated', {
             orderId,
             status,
+            eventId,
         });
     }
 
-    emitStockUpdate(productId: string, quantity: number) {
-        this.server.emit('product_stock_updated', { productId, quantity });
+    emitStockUpdate(productId: string, quantity: number, eventId?: string) {
+        this.server.emit('product_stock_updated', { productId, quantity, eventId });
     }
 }
