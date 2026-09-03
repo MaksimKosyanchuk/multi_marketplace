@@ -78,6 +78,10 @@ export class AnalyticsController {
 
     @Get('seller')
     @Roles('SELLER')
+    @ApiOperation({ summary: 'Получить аналитику текущего продавца' })
+    @ApiResponse({ status: 200, description: 'Аналитика продавца' })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 403, description: 'Требуется роль SELLER' })
     async sellerAnalytics(
         @Req() req: Request & { user: { id: string } },
         @Query() query: DateFilterDto,
@@ -87,6 +91,10 @@ export class AnalyticsController {
 
     @Get('seller/comparison')
     @Roles('SELLER')
+    @ApiOperation({ summary: 'Сравнить показатели текущего продавца' })
+    @ApiResponse({ status: 200, description: 'Сравнительная аналитика' })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 403, description: 'Требуется роль SELLER' })
     async sellerComparison(
         @Req() req: Request & { user: { id: string } },
         @Query() query: DateFilterDto,
@@ -96,6 +104,10 @@ export class AnalyticsController {
 
     @Get('seller/timeline')
     @Roles('SELLER')
+    @ApiOperation({ summary: 'Получить временную шкалу продаж продавца' })
+    @ApiResponse({ status: 200, description: 'Временная шкала' })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 403, description: 'Требуется роль SELLER' })
     async sellerTimeline(
         @Req() req: Request & { user: { id: string } },
         @Query() query: DateFilterDto,
@@ -105,6 +117,10 @@ export class AnalyticsController {
 
     @Get('rankings')
     @Roles('ADMIN')
+    @ApiOperation({ summary: 'Получить рейтинг продавцов' })
+    @ApiResponse({ status: 200, description: 'Рейтинг продавцов' })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 403, description: 'Требуется роль ADMIN' })
     async sellerRankings(@Query() query: DateFilterDto) {
         return this.analyticsService.getSellerRankings(query);
     }
@@ -112,6 +128,10 @@ export class AnalyticsController {
     @Get('export/json')
     @Roles('ADMIN')
     @ApiProduces('application/json')
+    @ApiOperation({ summary: 'Экспортировать аналитику в JSON' })
+    @ApiResponse({ status: 200, description: 'JSON-файл аналитики', schema: { type: 'object' } })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 403, description: 'Требуется роль ADMIN' })
     async exportJson(@Res() res: Response, @Query() query: DateFilterDto) {
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
         res.setHeader(

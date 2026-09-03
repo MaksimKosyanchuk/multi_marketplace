@@ -8,7 +8,7 @@ import {
     Req,
     UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -29,6 +29,11 @@ export class DisputesController {
     @UseGuards(RolesGuard)
     @Roles(Role.CUSTOMER)
     @ApiOperation({ summary: 'Открыть спор по завершённому seller order' })
+    @ApiBody({ type: CreateDisputeDto })
+    @ApiResponse({ status: 201, description: 'Спор открыт' })
+    @ApiResponse({ status: 400, description: 'Невалидные данные' })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 403, description: 'Требуется роль CUSTOMER' })
     open(
         @Req() req: Request & { user: { id: string } },
         @Body() dto: CreateDisputeDto,
@@ -37,6 +42,9 @@ export class DisputesController {
     }
 
     @Get('my')
+    @ApiOperation({ summary: 'Получить свои споры' })
+    @ApiResponse({ status: 200, description: 'Список споров пользователя' })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
     list(@Req() req: Request & { user: { id: string; role: Role } }) {
         return this.disputes.listForUser(req.user.id, req.user.role);
     }
@@ -45,6 +53,9 @@ export class DisputesController {
     @Roles(Role.CUSTOMER)
     @Get('customer')
     @ApiOperation({ summary: 'Список споров покупателя' })
+    @ApiResponse({ status: 200, description: 'Список споров покупателя' })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 403, description: 'Требуется роль CUSTOMER' })
     listCustomer(@Req() req: Request & { user: { id: string } }) {
         return this.disputes.listForCustomer(req.user.id);
     }
@@ -53,6 +64,9 @@ export class DisputesController {
     @Roles(Role.SELLER)
     @Get('seller')
     @ApiOperation({ summary: 'Список споров продавца' })
+    @ApiResponse({ status: 200, description: 'Список споров продавца' })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 403, description: 'Требуется роль SELLER' })
     listSeller(@Req() req: Request & { user: { id: string } }) {
         return this.disputes.listForSeller(req.user.id);
     }
@@ -61,6 +75,9 @@ export class DisputesController {
     @Roles(Role.ADMIN)
     @Get('admin')
     @ApiOperation({ summary: 'Все споры для администратора' })
+    @ApiResponse({ status: 200, description: 'Все споры' })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 403, description: 'Требуется роль ADMIN' })
     listAdmin() {
         return this.disputes.listForAdmin();
     }
@@ -69,6 +86,13 @@ export class DisputesController {
     @Roles(Role.ADMIN)
     @Patch(':id/resolve')
     @ApiOperation({ summary: 'Разрешить спор (ADMIN)' })
+    @ApiParam({ name: 'id', description: 'ID спора' })
+    @ApiBody({ type: ResolveDisputeDto })
+    @ApiResponse({ status: 200, description: 'Спор разрешён' })
+    @ApiResponse({ status: 400, description: 'Невалидные данные' })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 403, description: 'Требуется роль ADMIN' })
+    @ApiResponse({ status: 404, description: 'Спор не найден' })
     resolve(
         @Req() req: Request & { user: { id: string } },
         @Param('id') id: string,

@@ -33,34 +33,54 @@ export class BiddingGateway implements OnGatewayInit, OnGatewayConnection, OnGat
     async handleConnection(client: Socket): Promise<void> {
         try {
             const token = client.handshake.auth?.token as string | undefined;
+
             if (!token) {
                 client.disconnect();
                 return;
             }
 
-            handleDisconnect(client: Socket): void {
-                void this.logger.audit(BiddingGateway.name, 'WebSocket disconnected', {
-                    socketId: client.id, userId: client.data.userId,
-                });
-            }
             const payload = await this.jwt.verifyAsync<JwtPayload>(token);
+
             if (!payload.sub) {
                 client.disconnect();
                 return;
             }
+
             client.data.userId = payload.sub;
             client.data.role = payload.role;
+
             await client.join(`user:${payload.sub}`);
-            if (payload.role === 'SELLER')
+
+            if (payload.role === 'SELLER') {
                 await client.join(`seller:${payload.sub}`);
+            }
         } catch (error: unknown) {
-            void this.logger.warn(BiddingGateway.name, 'WebSocket connection rejected', {
-                socketId: client.id,
-                error: error instanceof Error ? error.message : 'invalid token',
-            });
+            void this.logger.warn(
+                BiddingGateway.name,
+                'WebSocket connection rejected',
+                {
+                    socketId: client.id,
+                    error:
+                        error instanceof Error
+                            ? error.message
+                            : 'invalid token',
+                },
+            );
+
             client.disconnect();
         }
     }
+
+    handleDisconnect(client: Socket): void {
+        void this.logger.audit(
+            BiddingGateway.name,
+            'WebSocket disconnected',
+            {
+                socketId: client.id,
+                userId: client.data.userId,
+            },
+        );
+    }   
 
     @SubscribeMessage('auction_subscribe')
     async subscribe(

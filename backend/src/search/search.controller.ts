@@ -1,5 +1,5 @@
 import { Controller, Get, Query } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { QueryProductDto } from '../products/dto/query-product.dto';
 import { SearchService } from './search.service';
 
@@ -12,6 +12,9 @@ export class SearchController {
     @ApiOperation({
         summary: 'Search products with Meilisearch/PostgreSQL fallback',
     })
+    @ApiQuery({ name: 'search', required: false, description: 'Search text' })
+    @ApiResponse({ status: 200, description: 'Search results' })
+    @ApiResponse({ status: 400, description: 'Invalid search parameters' })
     searchProducts(@Query() query: QueryProductDto) {
         return this.search.search(query);
     }

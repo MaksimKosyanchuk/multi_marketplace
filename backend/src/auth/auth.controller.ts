@@ -14,6 +14,7 @@ import {
     ApiResponse,
     ApiBearerAuth,
     ApiCookieAuth,
+    ApiBody,
 } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 
@@ -41,6 +42,7 @@ export class AuthController {
     constructor(private readonly authService: AuthService) {}
 
     @Post('register')
+    @ApiBody({ type: RegisterDto })
     @ApiOperation({ summary: 'Регистрация нового пользователя' })
     @ApiResponse({
         status: 201,
@@ -67,6 +69,7 @@ export class AuthController {
 
     @Post('login')
     @Throttle({ default: { limit: 10, ttl: 60_000 } })
+    @ApiBody({ type: LoginDto })
     @ApiOperation({ summary: 'Авторизация пользователя' })
     @ApiResponse({
         status: 200,
@@ -87,6 +90,10 @@ export class AuthController {
     @Post('google')
     @Throttle({ default: { limit: 10, ttl: 60_000 } })
     @ApiOperation({ summary: 'Вход через Google OAuth2 access token' })
+    @ApiBody({ type: GoogleLoginDto })
+    @ApiResponse({ status: 200, description: 'Успешный вход через Google', type: AuthTokenResponseDto })
+    @ApiResponse({ status: 400, description: 'Невалидный access token' })
+    @ApiResponse({ status: 401, description: 'Ошибка авторизации Google' })
     async googleLogin(
         @Body() dto: GoogleLoginDto,
         @Res({ passthrough: true }) res: Response,
@@ -100,6 +107,10 @@ export class AuthController {
     @Post('google/register/complete')
     @Throttle({ default: { limit: 10, ttl: 60_000 } })
     @ApiOperation({ summary: 'Завершить Google-регистрацию' })
+    @ApiBody({ type: GoogleRegisterCompleteDto })
+    @ApiResponse({ status: 201, description: 'Регистрация завершена', type: AuthTokenResponseDto })
+    @ApiResponse({ status: 400, description: 'Невалидные данные' })
+    @ApiResponse({ status: 409, description: 'Пользователь уже существует' })
     async completeGoogleRegistration(
         @Body() dto: GoogleRegisterCompleteDto,
         @Res({ passthrough: true }) res: Response,
@@ -143,6 +154,7 @@ export class AuthController {
         status: 200,
         description: 'Успешный выход, cookie очищена',
     })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
     async logout(
         @Req() req: RequestWithCookies,
         @Res({ passthrough: true }) res: Response,

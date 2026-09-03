@@ -65,6 +65,10 @@ export class ProductsController {
     @Roles(Role.SELLER)
     @Get('seller/me')
     @ApiBearerAuth('JWT-auth')
+    @ApiOperation({ summary: 'Получить товары текущего продавца' })
+    @ApiResponse({ status: 200, description: 'Список товаров продавца', type: PaginatedProductsResponseDto })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 403, description: 'Требуется роль SELLER' })
     findSellerProducts(
         @Query() query: QueryProductDto,
         @CurrentUser() seller: AuthUser,
@@ -80,6 +84,11 @@ export class ProductsController {
     @Patch(':id/submit-for-approval')
     @ApiBearerAuth('JWT-auth')
     @ApiOperation({ summary: 'Отправить товар на проверку администратору' })
+    @ApiParam({ name: 'id', description: 'ID товара' })
+    @ApiResponse({ status: 200, description: 'Товар отправлен на проверку', type: ProductResponseDto })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 403, description: 'Требуется роль SELLER' })
+    @ApiResponse({ status: 404, description: 'Товар не найден' })
     submitForApproval(
         @Param('id') id: string,
         @CurrentUser() seller: AuthUser,
@@ -95,6 +104,9 @@ export class ProductsController {
     @Get('admin/pending-approval')
     @ApiBearerAuth('JWT-auth')
     @ApiOperation({ summary: 'Получить товары, ожидающие модерации' })
+    @ApiResponse({ status: 200, description: 'Список товаров на модерации', type: PaginatedProductsResponseDto })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 403, description: 'Требуется роль ADMIN' })
     findPendingApproval(
         @Query() query: QueryProductDto,
     ): Promise<PaginatedProductsResponseDto> {
@@ -108,6 +120,13 @@ export class ProductsController {
     @Patch(':id/approve')
     @ApiBearerAuth('JWT-auth')
     @ApiOperation({ summary: 'Одобрить товар на публикацию' })
+    @ApiParam({ name: 'id', description: 'ID товара' })
+    @ApiBody({ type: ModerateProductDto })
+    @ApiResponse({ status: 200, description: 'Товар одобрен', type: ProductResponseDto })
+    @ApiResponse({ status: 400, description: 'Невалидные данные' })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 403, description: 'Требуется роль ADMIN' })
+    @ApiResponse({ status: 404, description: 'Товар не найден' })
     approve(
         @Param('id') id: string,
         @CurrentUser() admin: AuthUser,
@@ -125,6 +144,13 @@ export class ProductsController {
     @Patch(':id/reject')
     @ApiBearerAuth('JWT-auth')
     @ApiOperation({ summary: 'Отклонить товар' })
+    @ApiParam({ name: 'id', description: 'ID товара' })
+    @ApiBody({ type: ModerateProductDto })
+    @ApiResponse({ status: 200, description: 'Товар отклонён', type: ProductResponseDto })
+    @ApiResponse({ status: 400, description: 'Невалидные данные' })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 403, description: 'Требуется роль ADMIN' })
+    @ApiResponse({ status: 404, description: 'Товар не найден' })
     reject(
         @Param('id') id: string,
         @CurrentUser() admin: AuthUser,

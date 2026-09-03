@@ -16,6 +16,8 @@ import {
     ApiResponse,
     ApiBearerAuth,
     ApiParam,
+    ApiBody,
+    ApiHeader,
 } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { OrdersService } from './orders.service';
@@ -49,6 +51,7 @@ export class OrdersController {
     @ApiOperation({
         summary: 'Оформить заказ из текущей корзины пользователя',
     })
+    @ApiHeader({ name: 'idempotency-key', required: false })
     @ApiResponse({
         status: 201,
         description: 'Заказ успешно создан, корзина очищена',
@@ -116,6 +119,11 @@ export class OrdersController {
 
     @Post(':id/payment/cancel')
     @ApiOperation({ summary: 'Отменить pending mock-платеж и заказ' })
+    @ApiParam({ name: 'id', description: 'ID заказа' })
+    @ApiHeader({ name: 'idempotency-key', required: false })
+    @ApiResponse({ status: 200, description: 'Платёж отменён', type: OrderResponseDto })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 404, description: 'Заказ не найден' })
     cancelPayment(
         @Req() req: Request & { user: { id: string } },
         @Param('id') id: string,
@@ -182,6 +190,8 @@ export class OrdersController {
 
     @Get('resync')
     @ApiOperation({ summary: 'REST resync заказов после reconnect WebSocket' })
+    @ApiResponse({ status: 200, description: 'Актуальные заказы пользователя', type: [OrderResponseDto] })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
     resyncOrders(
         @Req() req: Request & { user: { id: string } },
     ): ReturnType<OrdersService['findMyOrders']> {
@@ -192,6 +202,9 @@ export class OrdersController {
     @Roles(Role.SELLER)
     @Get('seller/me')
     @ApiOperation({ summary: 'Получить sub-заказы текущего продавца' })
+    @ApiResponse({ status: 200, description: 'Sub-заказы продавца' })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 403, description: 'Требуется роль SELLER' })
     findMySellerOrders(
         @Req() req: Request & { user: { id: string } },
     ): ReturnType<OrdersService['findMySellerOrders']> {
@@ -202,6 +215,11 @@ export class OrdersController {
     @Roles(Role.SELLER)
     @Get('seller/:sellerOrderId')
     @ApiOperation({ summary: 'Получить свой sub-заказ продавца' })
+    @ApiParam({ name: 'sellerOrderId', description: 'ID sub-заказа' })
+    @ApiResponse({ status: 200, description: 'Sub-заказ продавца' })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 403, description: 'Требуется роль SELLER' })
+    @ApiResponse({ status: 404, description: 'Sub-заказ не найден' })
     findSellerOrder(
         @Req() req: Request & { user: { id: string } },
         @Param('sellerOrderId') sellerOrderId: string,
@@ -213,6 +231,13 @@ export class OrdersController {
     @Roles(Role.SELLER)
     @Patch('seller/:sellerOrderId/status')
     @ApiOperation({ summary: 'Изменить статус своего sub-заказа' })
+    @ApiParam({ name: 'sellerOrderId', description: 'ID sub-заказа' })
+    @ApiBody({ type: UpdateSellerOrderStatusDto })
+    @ApiResponse({ status: 200, description: 'Статус обновлён' })
+    @ApiResponse({ status: 400, description: 'Недопустимый статус' })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 403, description: 'Требуется роль SELLER' })
+    @ApiResponse({ status: 404, description: 'Sub-заказ не найден' })
     updateSellerOrderStatus(
         @Req() req: Request & { user: { id: string } },
         @Param('sellerOrderId') sellerOrderId: string,
@@ -229,6 +254,14 @@ export class OrdersController {
     @Roles(Role.SELLER)
     @Post('seller/:sellerOrderId/cancel')
     @ApiOperation({ summary: 'Отменить свой sub-заказ с возвратом средств' })
+    @ApiParam({ name: 'sellerOrderId', description: 'ID sub-заказа' })
+    @ApiHeader({ name: 'idempotency-key', required: false })
+    @ApiBody({ type: CancelSellerOrderDto })
+    @ApiResponse({ status: 200, description: 'Sub-заказ отменён' })
+    @ApiResponse({ status: 400, description: 'Отмена невозможна' })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 403, description: 'Требуется роль SELLER' })
+    @ApiResponse({ status: 404, description: 'Sub-заказ не найден' })
     cancelSellerOrder(
         @Req() req: Request & { user: { id: string } },
         @Param('sellerOrderId') sellerOrderId: string,
@@ -249,6 +282,14 @@ export class OrdersController {
     @ApiOperation({
         summary: 'Отменить sub-заказ покупателем с возвратом средств',
     })
+    @ApiParam({ name: 'sellerOrderId', description: 'ID sub-заказа' })
+    @ApiHeader({ name: 'idempotency-key', required: false })
+    @ApiBody({ type: CancelSellerOrderDto })
+    @ApiResponse({ status: 200, description: 'Sub-заказ отменён' })
+    @ApiResponse({ status: 400, description: 'Отмена невозможна' })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 403, description: 'Требуется роль CUSTOMER' })
+    @ApiResponse({ status: 404, description: 'Sub-заказ не найден' })
     cancelCustomerSuborder(
         @Req() req: Request & { user: { id: string } },
         @Param('sellerOrderId') sellerOrderId: string,
@@ -265,6 +306,13 @@ export class OrdersController {
 
     @Post('items/:orderItemId/refund')
     @ApiOperation({ summary: 'Вернуть часть количества конкретного товара' })
+    @ApiParam({ name: 'orderItemId', description: 'ID позиции заказа' })
+    @ApiHeader({ name: 'idempotency-key', required: false })
+    @ApiBody({ type: RefundOrderItemDto })
+    @ApiResponse({ status: 200, description: 'Возврат оформлен' })
+    @ApiResponse({ status: 400, description: 'Недопустимое количество или статус' })
+    @ApiResponse({ status: 401, description: 'Неавторизован' })
+    @ApiResponse({ status: 404, description: 'Позиция заказа не найдена' })
     refundOrderItem(
         @Req() req: Request & { user: { id: string } },
         @Param('orderItemId') orderItemId: string,
