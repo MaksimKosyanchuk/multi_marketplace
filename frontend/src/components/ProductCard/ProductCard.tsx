@@ -157,15 +157,28 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                 );
             }
             if (isArchived) {
-                return product.type === 'AUCTION' && product.auctionId ? (
-                    <Button
-                        variant="primary"
-                        size="medium"
-                        onClick={() => navigate(`/auction/${product.auctionId}`)}
-                    >
-                        Перейти до аукціону
-                    </Button>
-                ) : null;
+                return (
+                    <div className={styles.footer}>
+                        {product.type === 'AUCTION' && product.auctionId && (
+                            <Button
+                                variant="primary"
+                                size="medium"
+                                onClick={() => navigate(`/auction/${product.auctionId}`)}
+                            >
+                                Перейти до аукціону
+                            </Button>
+                        )}
+                        {product.type !== 'AUCTION' && onRestore && (
+                            <Button
+                                variant="primary"
+                                size="medium"
+                                onClick={() => onRestore(product)}
+                            >
+                                Відновити
+                            </Button>
+                        )}
+                    </div>
+                );
             }
 
             if (user?.role === Role.SELLER && product.type === 'AUCTION') {

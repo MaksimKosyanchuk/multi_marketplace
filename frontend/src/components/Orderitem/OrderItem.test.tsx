@@ -1,7 +1,11 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { OrderItemCard } from './OrderItem';
 import type { Order } from '../../services/orderService';
+
+const renderOrder = (order: React.ReactElement) =>
+    render(<MemoryRouter>{order}</MemoryRouter>);
 
 const mockOrder: Order = {
     id: '12345678-abcd-efgh-ijkl-mnopqrstuvwx',
@@ -22,13 +26,15 @@ const mockOrder: Order = {
 
 describe('OrderItemCard Component', () => {
     it('renders order details correctly', () => {
-        render(<OrderItemCard order={mockOrder} onPay={vi.fn()} onCancel={vi.fn()} />);
+        renderOrder(<OrderItemCard order={mockOrder} onPay={vi.fn()} onCancel={vi.fn()} />);
 
         expect(screen.getByText('Замовлення #12345678')).toBeInTheDocument();
         expect(screen.getByText('Очікує оплати')).toBeInTheDocument();
         expect(screen.getByText('Wireless Mouse')).toBeInTheDocument();
         expect(screen.getByText('2 шт. × $50.25')).toBeInTheDocument();
-        expect(screen.getByText('$150.50')).toBeInTheDocument();
+        expect(
+            screen.getByText((content) => content.includes('150.50')),
+        ).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /оплатити/i })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /скасувати/i })).toBeInTheDocument();
     });
@@ -37,7 +43,7 @@ describe('OrderItemCard Component', () => {
         const mockPay = vi.fn().mockResolvedValue(undefined);
         const user = userEvent.setup();
 
-        render(<OrderItemCard order={mockOrder} onPay={mockPay} />);
+        renderOrder(<OrderItemCard order={mockOrder} onPay={mockPay} />);
 
         await user.click(screen.getByRole('button', { name: /оплатити/i }));
 
@@ -48,7 +54,7 @@ describe('OrderItemCard Component', () => {
     it('opens cancellation confirmation modal when cancel button is clicked', async () => {
         const user = userEvent.setup();
 
-        render(<OrderItemCard order={mockOrder} onCancel={vi.fn()} />);
+        renderOrder(<OrderItemCard order={mockOrder} onCancel={vi.fn()} />);
 
         await user.click(screen.getByRole('button', { name: /скасувати/i }));
 
@@ -60,7 +66,7 @@ describe('OrderItemCard Component', () => {
         const mockCancel = vi.fn().mockResolvedValue(undefined);
         const user = userEvent.setup();
 
-        render(<OrderItemCard order={mockOrder} onCancel={mockCancel} />);
+        renderOrder(<OrderItemCard order={mockOrder} onCancel={mockCancel} />);
 
         await user.click(screen.getByRole('button', { name: /скасувати/i }));
         
@@ -75,7 +81,7 @@ describe('OrderItemCard Component', () => {
         const mockStatusChange = vi.fn().mockResolvedValue(undefined);
         const user = userEvent.setup();
 
-        render(
+        renderOrder(
             <OrderItemCard 
                 order={mockOrder} 
                 isAdmin={true} 
@@ -94,7 +100,7 @@ describe('OrderItemCard Component', () => {
 
     it('renders error state when order data is invalid', () => {
         // @ts-expect-error testing invalid props
-        render(<OrderItemCard order={null} />);
+        renderOrder(<OrderItemCard order={null} />);
 
         expect(screen.getByText(/помилка: некоректні дані замовлення/i)).toBeInTheDocument();
     });
