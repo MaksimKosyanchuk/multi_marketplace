@@ -1,0 +1,184 @@
+import { BadRequestException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import {
+    AuctionStatus,
+    BidStatus,
+    ProductStatus,
+    ProductType,
+} from '@prisma/client';
+import { BiddingService } from './bidding.service';
+
+describe('BiddingService critical auction flows', () => {
+    const queue = { add: jest.fn() };
+    const logger = { audit: jest.fn(), warn: jest.fn() };
+    const prisma = {
+        bid: { findUnique: jest.fn() },
+        $transaction: jest.fn(),
+    };
+    let service: BiddingService;
+
+    const activeAuction = {
+        id: 'auction-1',
+        productId: 'product-1',
+        status: AuctionStatus.ACTIVE,
+        version: 3,
+        currentPrice: new Prisma.Decimal('100'),
+        minBidIncrement: new Prisma.Decimal('10'),
+        startsAt: new Date(Date.now() - 60_000),
+        endsAt: new Date(Date.now() + 60_000),
+    };
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        service = new BiddingService(
+            prisma as never,
+            queue as never,
+            logger as never,
+        );
+        prisma.bid.findUnique.mockResolvedValue(null);
+    });
+
+    it('rejects a bid at or after the auction deadline', async () => {
+        const tx = {
+            auction: {
+                findUnique: jest.fn().mockResolvedValue({
+                    ...activeAuction,
+                    endsAt: new Date(Date.now() - 1),
+                }),
+            },
+        };
+        prisma.$transaction.mockImplementation((callback: Function) => callback(tx));
+
+        await expect(
+            service.placeBid('bidder-1', 'auction-1', 110, 'bid-key-1'),
+        ).rejects.toThrow(BadRequestException);
+        expect(tx.auction.findUnique).toHaveBeenCalledWith({
+            where: { id: 'auction-1' },
+        });
+    });
+
+    it('accepts a bid only when the optimistic version and price still match', async () => {
+        const tx = {
+            auction: {
+                findUnique: jest.fn().mockResolvedValue(activeAuction),
+                updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+            },
+            bid: {
+                updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+                create: jest.fn().mockResolvedValue({
+                    id: 'bid-1',
+                    bidderId: 'bidder-1',
+                    auctionId: 'auction-1',
+                    amount: new Prisma.Decimal('110'),
+                }),
+            },
+            outboxEvent: { create: jest.fn() },
+        };
+        prisma.$transaction.mockImplementation((callback: Function) => callback(tx));
+
+        await service.placeBid('bidder-1', 'auction-1', 110, 'bid-key-1');
+
+        expect(tx.auction.updateMany).toHaveBeenCalledWith({
+            where: {
+                id: 'auction-1',
+                status: AuctionStatus.ACTIVE,
+                version: 3,
+                currentPrice: activeAuction.currentPrice,
+            },
+            data: {
+                currentPrice: new Prisma.Decimal('110'),
+                version: { increment: 1 },
+            },
+        });
+        expect(tx.bid.updateMany).toHaveBeenCalledWith({
+            where: { auctionId: 'auction-1', status: BidStatus.ACTIVE },
+            data: { status: BidStatus.OUTBID },
+        });
+    });
+
+    it('rejects a concurrent bid when another transaction claims the auction version', async () => {
+        const tx = {
+            auction: {
+                findUnique: jest.fn().mockResolvedValue(activeAuction),
+                updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+            },
+        };
+        prisma.$transaction.mockImplementation((callback: Function) => callback(tx));
+
+        await expect(
+            service.placeBid('bidder-2', 'auction-1', 120, 'bid-key-2'),
+        ).rejects.toThrow(ConflictException);
+    });
+
+    it('selects the highest active bid after atomically claiming an expired auction', async () => {
+        const winner = {
+            id: 'bid-2',
+            bidderId: 'bidder-2',
+            amount: new Prisma.Decimal('130'),
+            status: BidStatus.ACTIVE,
+        };
+        const tx = {
+            auction: {
+                findUnique: jest
+                    .fn()
+                    .mockResolvedValueOnce({
+                        ...activeAuction,
+                        endsAt: new Date(Date.now() - 1),
+                    })
+                    .mockResolvedValueOnce({ ...activeAuction, status: AuctionStatus.SOLD }),
+                updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+                update: jest.fn(),
+            },
+            bid: { findFirst: jest.fn().mockResolvedValue(winner), update: jest.fn() },
+            outboxEvent: { create: jest.fn() },
+        };
+        prisma.$transaction.mockImplementation((callback: Function) => callback(tx));
+
+        await service.endAuction('auction-1');
+
+        expect(tx.auction.updateMany).toHaveBeenCalledWith(
+            expect.objectContaining({
+                where: expect.objectContaining({
+                    id: 'auction-1',
+                    status: AuctionStatus.ACTIVE,
+                    endsAt: expect.objectContaining({ lte: expect.any(Date) }),
+                }),
+            }),
+        );
+        expect(tx.bid.update).toHaveBeenCalledWith({
+            where: { id: 'bid-2' },
+            data: { status: BidStatus.WON },
+        });
+    });
+
+    it('does not query stock when creating an auction', async () => {
+        const product = {
+            id: 'product-1',
+            sellerId: 'seller-1',
+            type: ProductType.AUCTION,
+            status: ProductStatus.DRAFT,
+            isArchived: false,
+        };
+        const tx = {
+            product: { findUnique: jest.fn().mockResolvedValue(product) },
+            auction: {
+                findUnique: jest.fn().mockResolvedValue(null),
+                create: jest.fn().mockResolvedValue({ id: 'auction-1', status: AuctionStatus.DRAFT }),
+            },
+        };
+        prisma.$transaction.mockImplementation((callback: Function) => callback(tx));
+
+        await service.createAuction('seller-1', {
+            productId: 'product-1',
+            startingPrice: 100,
+            minBidIncrement: 10,
+            startsAt: new Date(Date.now() + 1_000).toISOString(),
+            endsAt: new Date(Date.now() + 60_000).toISOString(),
+        });
+
+        expect(tx.product.findUnique).toHaveBeenCalledWith({
+            where: { id: 'product-1' },
+        });
+        expect(tx.product).not.toHaveProperty('updateMany');
+    });
+});

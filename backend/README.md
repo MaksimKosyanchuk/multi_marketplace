@@ -463,3 +463,38 @@ Mini Marketplace API — backend для e-commerce marketplace, який дем�
 * unit та E2E testing;
 * Docker;
 * GitHub Actions CI.
+# Load testing
+
+Run the reproducible limited-stock checkout scenario against a running backend.
+Create four CUSTOMER account/cart tokens and use an ACTIVE FIXED_PRICE product
+with exactly two units in stock:
+
+```bash
+LOAD_TOKENS=<customer-jwt-1>,<customer-jwt-2>,<customer-jwt-3>,<customer-jwt-4> \
+LOAD_PRODUCT_ID=<active-product-id> \
+LOAD_INITIAL_STOCK=2 \
+LOAD_QUANTITY=1 \
+LOAD_CONCURRENCY=4 \
+npm run test:load
+```
+
+The harness first adds one unit to every user's cart outside the measured
+interval, then sends four checkouts concurrently. It asserts exactly two
+successful checkouts, two stock rejections, and no unexpected errors. It also
+reports RPS and p95 latency:
+
+```text
+Scenario: limited-stock checkout
+Requests: 4
+Concurrency: 4
+Initial stock: 2
+Quantity per checkout: 1
+Successful checkouts: <measured value>
+Expected stock rejections: <measured value>
+RPS: <measured value>
+p95 latency: <measured value> ms
+Errors: <unexpected error count>
+```
+
+Results depend on the machine and running infrastructure, so they must be
+captured in the target environment rather than treated as portable constants.

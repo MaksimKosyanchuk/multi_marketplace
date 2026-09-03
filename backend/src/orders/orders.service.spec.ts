@@ -12,6 +12,7 @@ import {
 import { LoggerService } from '../logger/logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { MockPaymentService } from '../payments/mock-payment.service';
 import { deriveOrderStatus, OrdersService } from './orders.service';
 
 describe('OrdersService checkout', () => {
@@ -63,11 +64,47 @@ describe('OrdersService checkout', () => {
                 { provide: getQueueToken('orders'), useValue: queue },
                 { provide: RedisService, useValue: redis },
                 { provide: LoggerService, useValue: logger },
+                { provide: MockPaymentService, useValue: { authorize: jest.fn() } },
             ],
         }).compile();
         service = module.get(OrdersService);
         jest.clearAllMocks();
         prisma.payment.findUnique.mockResolvedValue(null);
+    });
+
+    describe('deriveOrderStatus', () => {
+        it('returns NEW when a parent order has no seller orders', () => {
+            expect(deriveOrderStatus([])).toBe(OrderStatus.NEW);
+        });
+
+        it('returns CANCELLED only when every seller order is cancelled', () => {
+            expect(
+                deriveOrderStatus([
+                    SellerOrderStatus.CANCELLED,
+                    SellerOrderStatus.CANCELLED,
+                ]),
+            ).toBe(OrderStatus.CANCELLED);
+        });
+
+        it('ignores cancelled seller orders when deriving the active parent status', () => {
+            expect(
+                deriveOrderStatus([
+                    SellerOrderStatus.CANCELLED,
+                    SellerOrderStatus.SHIPPED,
+                    SellerOrderStatus.PROCESSING,
+                ]),
+            ).toBe(OrderStatus.SHIPPED);
+        });
+
+        it.each([
+            [SellerOrderStatus.NEW, OrderStatus.NEW],
+            [SellerOrderStatus.PAYMENT_PENDING, OrderStatus.PAYMENT_PENDING],
+            [SellerOrderStatus.PROCESSING, OrderStatus.PROCESSING],
+            [SellerOrderStatus.SHIPPED, OrderStatus.SHIPPED],
+            [SellerOrderStatus.COMPLETED, OrderStatus.COMPLETED],
+        ])('maps the highest active status: %s', (status, expected) => {
+            expect(deriveOrderStatus([status])).toBe(expected);
+        });
     });
 
     it('requires an idempotency key', async () => {
@@ -98,7 +135,7 @@ describe('OrdersService checkout', () => {
             },
             product: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
             order: { create: jest.fn().mockResolvedValue(createdOrder) },
-            outboxEvent: { createMany: jest.fn() },
+            outboxEvent: { create: jest.fn(), createMany: jest.fn() },
         };
         transaction.mockImplementation(
             (callback: (client: typeof tx) => unknown) => callback(tx),

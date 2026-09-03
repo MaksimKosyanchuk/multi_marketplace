@@ -7,9 +7,10 @@ describe('AnalyticsService', () => {
     let service: AnalyticsService;
     const prisma = {
         order: { aggregate: jest.fn(), findMany: jest.fn() },
-        sellerOrder: { aggregate: jest.fn() },
+        sellerOrder: { aggregate: jest.fn(), findMany: jest.fn() },
         orderItem: { groupBy: jest.fn() },
         ledgerEntry: { aggregate: jest.fn(), findMany: jest.fn() },
+        cartItem: { count: jest.fn() },
     };
 
     beforeEach(async () => {
@@ -24,7 +25,10 @@ describe('AnalyticsService', () => {
     });
 
     it('returns empty analytics when there are no revenue entries', async () => {
-        prisma.order.aggregate.mockResolvedValue({ _count: { id: 0 } });
+        prisma.order.aggregate.mockResolvedValue({
+            _count: { id: 0 },
+            _sum: { totalAmount: null },
+        });
         prisma.sellerOrder.aggregate.mockResolvedValue({
             _sum: { commissionAmount: null },
         });
@@ -33,10 +37,21 @@ describe('AnalyticsService', () => {
         });
         prisma.orderItem.groupBy.mockResolvedValue([]);
         prisma.ledgerEntry.findMany.mockResolvedValue([]);
+        prisma.sellerOrder.findMany.mockResolvedValue([]);
+        prisma.cartItem.count.mockResolvedValue(0);
 
         await expect(service.getDashboardData({})).resolves.toEqual({
-            summary: { totalRevenue: 0, totalOrders: 0, averageOrderValue: 0 },
+            summary: {
+                totalRevenue: 0,
+                platformCommission: 0,
+                grossRevenue: 0,
+                totalOrders: 0,
+                averageOrderValue: 0,
+                cartToOrderConversion: 0,
+            },
             topProducts: [],
+            sellerRevenue: [],
+            topSellers: [],
             salesTimeline: [],
         });
         expect(prisma.sellerOrder.aggregate).toHaveBeenCalled();
@@ -79,6 +94,8 @@ describe('AnalyticsService', () => {
                 },
             },
         ]);
+        prisma.sellerOrder.findMany.mockResolvedValue([]);
+        prisma.cartItem.count.mockResolvedValue(0);
 
         const result = await service.getDashboardData({
             from: '2026-07-01',
@@ -86,8 +103,11 @@ describe('AnalyticsService', () => {
         });
         expect(result.summary).toEqual({
             totalRevenue: 30,
+            platformCommission: 30,
+            grossRevenue: 300,
             totalOrders: 2,
             averageOrderValue: 150,
+            cartToOrderConversion: 0,
         });
         expect(result.topProducts).toEqual([
             {
@@ -103,6 +123,21 @@ describe('AnalyticsService', () => {
     });
 
     it('exports orders, retaining rows without a customer relation', async () => {
+        prisma.order.aggregate
+            .mockResolvedValueOnce({
+                _count: { id: 0 },
+                _sum: { totalAmount: null },
+            })
+            .mockResolvedValueOnce({
+                _sum: { totalAmount: null },
+            });
+        prisma.sellerOrder.aggregate.mockResolvedValue({
+            _sum: { commissionAmount: null },
+        });
+        prisma.ledgerEntry.findMany.mockResolvedValue([]);
+        prisma.sellerOrder.findMany.mockResolvedValue([]);
+        prisma.orderItem.groupBy.mockResolvedValue([]);
+        prisma.cartItem.count.mockResolvedValue(0);
         prisma.order.findMany.mockResolvedValue([
             {
                 id: 'order-1',
@@ -112,6 +147,8 @@ describe('AnalyticsService', () => {
                 user: null,
             },
         ]);
+        prisma.sellerOrder.findMany.mockResolvedValue([]);
+        prisma.cartItem.count.mockResolvedValue(0);
         await expect(service.generateOrdersCsv({})).resolves.toContain(
             '"N/A","NEW",45.00',
         );

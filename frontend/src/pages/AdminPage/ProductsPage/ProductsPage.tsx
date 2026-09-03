@@ -306,8 +306,6 @@ export default function ProductsPage({ sellerMode = false }: { sellerMode?: bool
             } else if (modalMode === 'edit') {
                 if (imagePreview === null) {
                     formData.append('imageUrl', '');
-                } else if (selectedProduct?.imageUrl) {
-                    formData.append('imageUrl', selectedProduct.imageUrl);
                 }
             }
 

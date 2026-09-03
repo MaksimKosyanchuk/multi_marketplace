@@ -17,9 +17,9 @@ import { SellersModule } from './sellers/sellers.module';
 import { PaymentsModule } from './payments/payments.module';
 import { BiddingModule } from './bidding/bidding.module';
 import { SearchModule } from './search/search.module';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { MetricsModule } from './metrics/metrics.module';
-import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { DisputesModule } from './disputes/disputes.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ReviewsModule } from './reviews/reviews.module';
@@ -70,7 +70,6 @@ import { AllExceptionsFilter } from './common/filters/http-exception.filter';
     controllers: [AppController],
     providers: [
         AppService,
-        { provide: APP_GUARD, useClass: ThrottlerGuard },
         { provide: APP_INTERCEPTOR, useClass: HttpLoggingInterceptor },
         { provide: APP_FILTER, useClass: AllExceptionsFilter },
     ],

@@ -497,7 +497,7 @@ export class ProductsService {
             newImageUrl = uploadedFilePath;
             isImageChanged = true;
         } else if (dto.imageUrl !== undefined) {
-            newImageUrl = dto.imageUrl ?? null;
+            newImageUrl = dto.imageUrl === '' ? null : (dto.imageUrl ?? null);
             isImageChanged = dto.imageUrl !== existingProduct.imageUrl;
         }
 
@@ -509,6 +509,7 @@ export class ProductsService {
                         data: {
                             ...productData,
                             imageUrl: newImageUrl,
+                            version: { increment: 1 },
                         },
                     });
                     await tx.outboxEvent.create({
