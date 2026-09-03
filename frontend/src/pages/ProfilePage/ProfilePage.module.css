@@ -193,6 +193,31 @@
     border-top: 1px solid #f1f5f9;
 }
 
+.productLink {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: #2563eb;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.productLink:hover {
+    text-decoration: underline;
+}
+
+.disputeContext {
+    display: grid;
+    gap: 4px;
+    margin: 12px 0;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #f8fafc;
+    color: #475569;
+    font-size: 0.9rem;
+}
+
 .sectionHeader {
     display: flex;
     align-items: center;

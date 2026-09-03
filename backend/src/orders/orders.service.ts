@@ -317,7 +317,7 @@ export class OrdersService {
 
         const pendingOrder = await this.prisma.order.findUnique({
             where: { id: orderId },
-            include: { payments: true },
+            include: { payments: true, sellerOrders: { select: { sellerId: true } } },
         });
         if (!pendingOrder) throw new NotFoundException('Order not found');
         if (pendingOrder.userId !== userId) {
@@ -343,6 +343,13 @@ export class OrdersService {
                 orderId,
                 OrderStatus.PAYMENT_PENDING,
             );
+            for (const sellerOrder of pendingOrder.sellerOrders) {
+                this.ordersGateway?.emitOrderStatusUpdate(
+                    sellerOrder.sellerId,
+                    orderId,
+                    OrderStatus.PAYMENT_PENDING,
+                );
+            }
             await new Promise((resolve) => setTimeout(resolve, 5000));
         }
 
@@ -500,6 +507,13 @@ export class OrdersService {
                     return result;
             });
             await this.ordersQueue.add('process-order', { orderId });
+            for (const sellerOrder of updated.sellerOrders) {
+                this.ordersGateway?.emitOrderStatusUpdate(
+                    sellerOrder.sellerId,
+                    updated.id,
+                    updated.status,
+                );
+            }
             return updated;
         } catch (error: unknown) {
             if (
@@ -544,6 +558,11 @@ export class OrdersService {
                 if (order.userId !== userId) {
                     throw new ForbiddenException(
                         'You do not have access to this order',
+                    );
+                }
+                if (order.status === OrderStatus.CANCELLED) {
+                    throw new BadRequestException(
+                        'Order cancellation was already processed',
                     );
                 }
                 const payment = order.payments.find(
@@ -724,6 +743,20 @@ export class OrdersService {
                     `Order cannot be cancelled in status ${currentOrder.status}`,
                 );
             }
+            const rootClaim = await tx.order.updateMany({
+                where: {
+                    id: orderId,
+                    status: {
+                        notIn: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
+                    },
+                },
+                data: { status: OrderStatus.CANCELLED },
+            });
+            if (!rootClaim.count) {
+                throw new BadRequestException(
+                    'Order cancellation was already processed',
+                );
+            }
 
             const payment = currentOrder.payments.find(
                 ({ status }) =>
@@ -735,19 +768,16 @@ export class OrdersService {
             );
             const now = new Date();
             for (const sellerOrder of currentOrder.sellerOrders) {
-                if (sellerOrder.status === SellerOrderStatus.CANCELLED)
-                    continue;
-                if (sellerOrder.status !== SellerOrderStatus.PROCESSING) {
-                    throw new BadRequestException(
-                        `Seller order cannot be cancelled in status ${sellerOrder.status}`,
-                    );
-                }
-
                 const claimed = await tx.sellerOrder.updateMany({
                     where: {
                         id: sellerOrder.id,
                         status: {
-                            in: [SellerOrderStatus.PROCESSING],
+                            in: [
+                                SellerOrderStatus.NEW,
+                                SellerOrderStatus.PAYMENT_PENDING,
+                                SellerOrderStatus.PROCESSING,
+                                SellerOrderStatus.SHIPPED,
+                            ],
                         },
                     },
                     data: {
@@ -756,11 +786,7 @@ export class OrdersService {
                         cancellationReason: 'Cancelled by customer',
                     },
                 });
-                if (!claimed.count) {
-                    throw new BadRequestException(
-                        'Order cancellation was already processed',
-                    );
-                }
+                if (!claimed.count) continue;
 
                 let refundTotal = new Prisma.Decimal(0);
                 let commissionReduction = new Prisma.Decimal(0);
@@ -1114,11 +1140,18 @@ export class OrdersService {
                 const nextOrderStatus = deriveOrderStatus(
                     siblingStatuses.map(({ status }) => status),
                 );
-                const order = await tx.order.update({
-                    where: { id: sellerOrder.orderId },
+                await tx.order.updateMany({
+                    where: {
+                        id: sellerOrder.orderId,
+                        status: { not: OrderStatus.CANCELLED },
+                    },
                     data: { status: nextOrderStatus },
+                });
+                const order = await tx.order.findUnique({
+                    where: { id: sellerOrder.orderId },
                     include: orderDetails,
                 });
+                if (!order) throw new NotFoundException('Order not found');
                 if (payment) {
                     const refunded = await tx.refund.aggregate({
                         where: { paymentId: payment.id, status: 'PROCESSED' },

@@ -5,7 +5,7 @@ import React, {
     useEffect,
 } from 'react';
 import { AxiosError } from 'axios';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { orderService, type Order } from '../../services/orderService';
 import { orderApi } from '../../services/orderApi';
 import { sellerAdminService } from '../../services/sellerAdminService';
@@ -35,6 +35,7 @@ type ActiveTab = 'info' | 'orders' | 'sales' | 'disputes' | 'products' | 'auctio
 
 export const ProfilePage: React.FC = () => {
     const { user, socket } = useAuth();
+    const navigate = useNavigate();
     const userRole = user?.role ?? Role.CUSTOMER;
     const isCustomer = userRole === Role.CUSTOMER;
     const isSeller = userRole === Role.SELLER;
@@ -448,6 +449,14 @@ export const ProfilePage: React.FC = () => {
                                 }[dispute.status] ?? dispute.status}
                             </span>
                         </div>
+                        <div className={styles.disputeContext}>
+                            <span><strong>Замовлення:</strong> #{dispute.sellerOrder?.orderId ?? dispute.sellerOrderId}</span>
+                            <span><strong>Продавець:</strong> {dispute.sellerOrder?.seller?.nickName ?? 'Невідомий'}</span>
+                            <span><strong>Покупець:</strong> {dispute.sellerOrder?.order?.user?.nickName ?? dispute.openedBy?.nickName ?? 'Невідомий'}</span>
+                            {dispute.sellerOrder?.items?.length ? (
+                                <span><strong>Товари:</strong> {dispute.sellerOrder.items.map((item) => `${item.productName} × ${item.quantity}`).join(', ')}</span>
+                            ) : null}
+                        </div>
                         <p>{dispute.description}</p>
                         {dispute.resolution && <p><strong>Рішення:</strong> {dispute.resolution}</p>}
                     </article>
@@ -567,12 +576,16 @@ export const ProfilePage: React.FC = () => {
                                         key={item.id}
                                         className={styles.saleItemRow}
                                     >
-                                        <span>
+                                        <button
+                                            type="button"
+                                            className={styles.productLink}
+                                            onClick={() => navigate(`/product/${item.productId}`)}
+                                        >
                                             {item.product?.type === 'AUCTION'
                                                 ? 'Аукціон'
                                                 : 'Товар'}:{' '}
                                             {item.productName}
-                                        </span>
+                                        </button>
                                         <span>× {item.quantity}</span>
                                         <span>
                                             ${Number(item.totalAmount).toFixed(2)}

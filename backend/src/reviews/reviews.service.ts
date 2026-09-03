@@ -117,4 +117,11 @@ export class ReviewsService {
             reviews,
         };
     }
+
+    async findByAuthor(authorId: string) {
+        return this.prisma.review.findMany({
+            where: { authorId },
+            select: { productId: true, orderItemId: true },
+        });
+    }
 }

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { Order, OrderStatus } from '../../services/orderService';
 import type { SellerOrder } from '../../types';
 import { Button } from '../Ui/Button/Button';
@@ -204,9 +205,9 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
                         const quantity = Number(item.quantity);
                         return (
                             <div key={item.id} className={styles.itemRow}>
-                                <span className={styles.itemName}>
+                                <Link className={styles.itemName} to={`/product/${item.productId}`}>
                                     {item.productName || 'Товар'}
-                                </span>
+                                </Link>
                                 <span className={styles.itemDetails}>
                                     {!isNaN(quantity) ? quantity : 0} шт. × $
                                     {!isNaN(price) ? price.toFixed(2) : '0.00'}
@@ -231,7 +232,9 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
                                 <div className={styles.sellerOrderItems}>
                                     {sellerOrder.items.map((item) => (
                                         <div className={styles.itemRow} key={item.id}>
-                                            <span className={styles.itemName}>{item.productName}</span>
+                                            <Link className={styles.itemName} to={`/product/${item.productId}`}>
+                                                {item.productName}
+                                            </Link>
                                             <span className={styles.itemDetails}>
                                                 {item.quantity} шт. × ${Number(item.unitPrice).toFixed(2)}
                                             </span>

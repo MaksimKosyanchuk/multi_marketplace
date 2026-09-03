@@ -188,6 +188,19 @@ export interface Dispute {
     resolution?: string | null;
     createdAt: string;
     updatedAt: string;
+    sellerOrder?: {
+        id: string;
+        orderId: string;
+        subtotal: number | string;
+        currency: string;
+        seller?: { id: string; nickName?: string | null };
+        items?: Array<{ productName: string; quantity: number }>;
+        order?: {
+            id: string;
+            user?: { id: string; nickName?: string | null };
+        };
+    };
+    openedBy?: { id: string; nickName?: string | null };
 }
 export interface Notification {
     id: string;

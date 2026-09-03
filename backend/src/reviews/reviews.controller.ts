@@ -30,4 +30,12 @@ export class ReviewsController {
     findByProduct(@Param('productId') productId: string) {
         return this.reviews.findByProduct(productId);
     }
+
+    @Get('my')
+    @ApiBearerAuth('JWT-auth')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(Role.CUSTOMER)
+    findMine(@CurrentUser() user: AuthUser) {
+        return this.reviews.findByAuthor(user.id);
+    }
 }

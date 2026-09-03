@@ -89,7 +89,11 @@ export class DisputesService {
             include: {
                 sellerOrder: {
                     include: {
-                        order: true,
+                        order: {
+                            include: {
+                                user: { select: { id: true, nickName: true } },
+                            },
+                        },
                         seller: { select: { id: true, nickName: true } },
                         items: true,
                     },

@@ -43,6 +43,14 @@ export default function DisputesPage() {
                                     }[dispute.status] ?? dispute.status}
                                 </span>
                             </div>
+                            <div className={styles.context}>
+                                <span><b>Замовлення:</b> #{dispute.sellerOrder?.orderId ?? dispute.sellerOrderId}</span>
+                                <span><b>Продавець:</b> {dispute.sellerOrder?.seller?.nickName ?? 'Невідомий'}</span>
+                                <span><b>Покупець:</b> {dispute.sellerOrder?.order?.user?.nickName ?? dispute.openedBy?.nickName ?? 'Невідомий'}</span>
+                                {dispute.sellerOrder?.items?.length ? (
+                                    <span><b>Товари:</b> {dispute.sellerOrder.items.map((item) => `${item.productName} × ${item.quantity}`).join(', ')}</span>
+                                ) : null}
+                            </div>
                             <p>{dispute.description}</p>
                             {dispute.resolution && <p><b>Рішення:</b> {dispute.resolution}</p>}
                             {(dispute.status === 'OPEN' || dispute.status === 'UNDER_REVIEW') && (
