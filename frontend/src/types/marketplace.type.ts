@@ -73,7 +73,7 @@ export interface CartItem {
     cartId: string;
     productId: string;
     quantity: number;
-    product: Product;
+    product?: Product;
     createdAt: string;
     updatedAt: string;
 }
@@ -92,6 +92,7 @@ export interface OrderItem {
     quantity: number;
     unitPrice: number;
     totalAmount: number;
+    product?: Product;
     createdAt: string;
 }
 export interface SellerOrder {

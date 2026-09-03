@@ -35,7 +35,7 @@ const orderDetails = {
 
 const sellerOrderDetails = {
     order: true,
-    items: true,
+    items: { include: { product: true } },
     seller: { select: { id: true, email: true, nickName: true } },
 } satisfies Prisma.SellerOrderInclude;
 
@@ -1287,7 +1287,7 @@ export class OrdersService {
 
     findMySellerOrders(sellerId: string) {
         return this.prisma.sellerOrder.findMany({
-            where: { sellerId },
+            where: { sellerId, status: SellerOrderStatus.COMPLETED },
             include: sellerOrderDetails,
             orderBy: { createdAt: 'desc' },
         });

@@ -22,7 +22,7 @@ import styles from './ProfilePage.module.css';
 import { useAuth } from '../../context/AuthContext/useAuth';
 import { Role, type SellerOrder, type Auction } from '../../types';
 
-type ActiveTab = 'info' | 'orders' | 'sales' | 'products' | 'createdAuctions' | 'auctionHistory';
+type ActiveTab = 'info' | 'orders' | 'sales' | 'products' | 'auctionHistory';
 
 export const ProfilePage: React.FC = () => {
     const { user, socket } = useAuth();
@@ -94,15 +94,11 @@ export const ProfilePage: React.FC = () => {
 
     const fetchAuctionHistory = useCallback(async () => {
         try {
-            setAuctionHistory(
-                isSeller
-                    ? await auctionService.getCreated()
-                    : await auctionService.getParticipating(),
-            );
+            setAuctionHistory(await auctionService.getParticipating());
         } catch {
             setErrorMessage('Не вдалося завантажити історію аукціонів.');
         }
-    }, [isSeller]);
+    }, []);
 
     const fetchCategories = useCallback(async () => {
         if (!isSeller) {
@@ -127,7 +123,7 @@ export const ProfilePage: React.FC = () => {
         if (tab === 'sales' && isSeller) {
             void fetchSales();
         }
-        if (tab === 'createdAuctions' || tab === 'auctionHistory') {
+        if (tab === 'auctionHistory' && isCustomer) {
             void fetchAuctionHistory();
         }
     };
@@ -378,7 +374,12 @@ export const ProfilePage: React.FC = () => {
                                         key={item.id}
                                         className={styles.saleItemRow}
                                     >
-                                        <span>{item.productName}</span>
+                                        <span>
+                                            {item.product?.type === 'AUCTION'
+                                                ? 'Аукціон'
+                                                : 'Товар'}:{' '}
+                                            {item.productName}
+                                        </span>
                                         <span>× {item.quantity}</span>
                                         <span>
                                             ${item.totalAmount.toFixed(2)}
@@ -395,16 +396,25 @@ export const ProfilePage: React.FC = () => {
 
     const renderAuctionHistory = () => (
         <div className={styles.section}>
-            <h2>{isSeller ? 'Мої створені аукціони' : 'Історія аукціонів'}</h2>
+            <h2>Історія аукціонів</h2>
             {auctionHistory.length === 0 ? (
                 <p>Аукціонів немає.</p>
             ) : (
                 <div className={styles.ordersList}>
                     {auctionHistory.map((auction) => (
-                        <Link key={auction.id} to={`/auction/${auction.id}`}>
-                            {auction.product.name} — {auction.status} — $
-                            {auction.currentPrice.toFixed(2)}
-                        </Link>
+                        <div key={auction.id} className={styles.saleItemRow}>
+                            <span>
+                                {auction.product?.name ?? 'Аукціон'} —{' '}
+                                {auction.status} — $
+                                {Number(auction.currentPrice).toFixed(2)}
+                            </span>
+                            <Link
+                                to={`/auction/${auction.id}`}
+                                className={styles.adminLink}
+                            >
+                                Перейти
+                            </Link>
+                        </div>
                     ))}
                 </div>
             )}
@@ -415,7 +425,6 @@ export const ProfilePage: React.FC = () => {
         ? ([
               { key: 'orders', label: 'Історія покупок' },
               { key: 'sales', label: 'Мої продажі' },
-              { key: 'createdAuctions', label: 'Мої аукціони' },
               { key: 'products', label: 'Товари' },
               { key: 'info', label: 'Мої дані' },
           ] as Array<{ key: ActiveTab; label: string }>)
@@ -490,7 +499,6 @@ export const ProfilePage: React.FC = () => {
 
             {activeTab === 'orders' && (isCustomer || isSeller) && renderCustomerOrders()}
             {activeTab === 'sales' && isSeller && renderSellerSales()}
-            {activeTab === 'createdAuctions' && isSeller && renderAuctionHistory()}
             {activeTab === 'auctionHistory' && isCustomer && renderAuctionHistory()}
             {activeTab === 'products' && isSeller && <ProductsPage />}
 

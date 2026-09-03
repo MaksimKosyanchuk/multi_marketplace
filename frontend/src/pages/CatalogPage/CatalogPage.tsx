@@ -56,7 +56,7 @@ export const CatalogPage: React.FC = () => {
     const [maxPrice, setMaxPrice] = useState<number>();
 
     const fetchCart = useCallback(async () => {
-        if (!isAuthenticated) {
+        if (!isAuthenticated || user?.role === Role.SELLER) {
             setCartItemIds([]);
             return;
         }
@@ -72,7 +72,7 @@ export const CatalogPage: React.FC = () => {
         } catch (err: unknown) {
             console.error('Помилка завантаження кошика:', err);
         }
-    }, [isAuthenticated]);
+    }, [isAuthenticated, user?.role]);
 
     const fetchProducts = useCallback(async () => {
         setIsLoading(true);

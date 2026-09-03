@@ -13,22 +13,34 @@ export interface CreateAuctionInput {
     startsAt: string;
     endsAt: string;
 }
+
+const normalizeAuction = (auction: Auction): Auction => ({
+    ...auction,
+    startingPrice: Number(auction.startingPrice),
+    currentPrice: Number(auction.currentPrice),
+    minBidIncrement: Number(auction.minBidIncrement),
+    bids: (auction.bids ?? []).map((bid) => ({
+        ...bid,
+        amount: Number(bid.amount),
+    })),
+});
+
 export const auctionService = {
     async get(auctionId: string): Promise<Auction> {
         const { data } = await api.get<Auction>(`/auctions/${auctionId}`);
-        return data;
+        return normalizeAuction(data);
     },
     async getCreated(): Promise<Auction[]> {
         const { data } = await api.get<Auction[]>('/auctions/mine/created');
-        return data;
+        return data.map(normalizeAuction);
     },
     async getParticipating(): Promise<Auction[]> {
         const { data } = await api.get<Auction[]>('/auctions/mine/participating');
-        return data;
+        return data.map(normalizeAuction);
     },
     async create(input: CreateAuctionInput): Promise<Auction> {
         const { data } = await api.post<Auction>('/auctions', input);
-        return data;
+        return normalizeAuction(data);
     },
     async bid(
         auctionId: string,

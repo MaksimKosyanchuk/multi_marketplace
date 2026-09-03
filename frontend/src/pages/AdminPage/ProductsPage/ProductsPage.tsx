@@ -464,17 +464,23 @@ export default function ProductsPage() {
                             </div>
                         ) : (
                             <form onSubmit={handleSubmit} className={styles.form} noValidate>
-                                <label>
-                                    Тип товару:
-                                    <select value={type} onChange={(e) => setType(e.target.value as typeof type)} required>
-                                        <option value="">Оберіть тип</option>
-                                        <option value="FIXED_PRICE">Звичайний товар</option>
-                                        <option value="AUCTION">Аукціон</option>
-                                    </select>
-                                    {formErrors.type && (
-                                        <span className={styles.fieldError}>{formErrors.type}</span>
-                                    )}
-                                </label>
+                                {modalMode === 'create' ? (
+                                    <label>
+                                        Тип товару:
+                                        <select value={type} onChange={(e) => setType(e.target.value as typeof type)} required>
+                                            <option value="">Оберіть тип</option>
+                                            <option value="FIXED_PRICE">Звичайний товар</option>
+                                            <option value="AUCTION">Аукціон</option>
+                                        </select>
+                                        {formErrors.type && (
+                                            <span className={styles.fieldError}>{formErrors.type}</span>
+                                        )}
+                                    </label>
+                                ) : (
+                                    <div className={styles.label}>
+                                        Тип товару: <strong>{type === 'AUCTION' ? 'Аукціон' : 'Фіксована ціна'}</strong>
+                                    </div>
+                                )}
                                 {modalMode === 'create' && type === 'AUCTION' && (
                                     <div className={styles.row}>
                                         <label className={styles.label}>

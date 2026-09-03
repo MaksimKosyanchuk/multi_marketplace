@@ -23,6 +23,7 @@ const AuctionPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [bidding, setBidding] = useState(false);
     const [error, setError] = useState('');
+    const [now, setNow] = useState(() => Date.now());
 
     const loadAuction = useCallback(async () => {
         if (!auctionId) return;
@@ -40,6 +41,11 @@ const AuctionPage: React.FC = () => {
     useEffect(() => {
         void loadAuction();
     }, [loadAuction]);
+
+    useEffect(() => {
+        const timer = window.setInterval(() => setNow(Date.now()), 1000);
+        return () => window.clearInterval(timer);
+    }, []);
 
     useEffect(() => {
         if (!socket || !auctionId) return;
@@ -108,15 +114,22 @@ const AuctionPage: React.FC = () => {
     if (loading) return <div className={styles.status}>Завантаження...</div>;
     if (!auction) return <div className={styles.statusError}>{error}</div>;
 
-    const closed = auction.status !== 'ACTIVE' || new Date(auction.endsAt) <= new Date();
+    const startsAt = new Date(auction.startsAt).getTime();
+    const endsAt = new Date(auction.endsAt).getTime();
+    const isRunning =
+        auction.status === 'ACTIVE' && now >= startsAt && now < endsAt;
+    const remainingMs = Math.max(0, endsAt - now);
+    const remainingHours = Math.floor(remainingMs / 3_600_000);
+    const remainingMinutes = Math.floor((remainingMs % 3_600_000) / 60_000);
+    const remainingSeconds = Math.floor((remainingMs % 60_000) / 1000);
 
     return (
         <main className={styles.container}>
             <button className={styles.back} onClick={() => navigate(-1)}>
                 ← До каталогу
             </button>
-            <h1>{auction.product.name}</h1>
-            <p>{auction.product.description}</p>
+            <h1>{auction.product?.name ?? 'Аукціон'}</h1>
+            {auction.product?.description && <p>{auction.product.description}</p>}
             <div className={styles.panel}>
                 <div>
                     <span>Поточна ставка</span>
@@ -128,11 +141,34 @@ const AuctionPage: React.FC = () => {
                 </div>
                 <div>
                     <span>Дедлайн</span>
-                    <strong>{formatDate(auction.endsAt)}</strong>
+                    <strong>
+                        {isRunning
+                            ? `${remainingHours} год ${remainingMinutes
+                                  .toString()
+                                  .padStart(2, '0')}:${remainingSeconds
+                                  .toString()
+                                  .padStart(2, '0')}`
+                            : formatDate(auction.endsAt)}
+                    </strong>
                 </div>
             </div>
-            {closed ? (
-                <p className={styles.status}>Аукціон завершено: {auction.status}</p>
+            {!isRunning ? (
+                <div className={styles.status}>
+                    {now < startsAt
+                        ? `Аукціон ще не розпочався (старт: ${formatDate(auction.startsAt)})`
+                        : `Аукціон завершено: ${auction.status}`}
+                    {auction.status === 'SOLD' && auction.winnerId && (
+                        <div>Переможець: {auction.winnerId}</div>
+                    )}
+                    {auction.status === 'SOLD' &&
+                        auction.checkoutExpiresAt &&
+                        new Date(auction.checkoutExpiresAt).getTime() > now && (
+                            <div>
+                                Вікно оплати до{' '}
+                                {formatDate(auction.checkoutExpiresAt)}
+                            </div>
+                        )}
+                </div>
             ) : (
                 <form onSubmit={placeBid} className={styles.form}>
                     <input
@@ -151,7 +187,7 @@ const AuctionPage: React.FC = () => {
             {auction.status === 'SOLD' &&
                 auction.winnerId === user?.id &&
                 auction.checkoutExpiresAt &&
-                new Date(auction.checkoutExpiresAt) > new Date() && (
+                new Date(auction.checkoutExpiresAt).getTime() > now && (
                     <Button
                         onClick={async () => {
                             try {

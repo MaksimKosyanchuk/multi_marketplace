@@ -63,6 +63,10 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
     const isOutOfStock = product.stock <= 0;
     const isArchived = product.isArchived || product.status === 'ARCHIVED';
+    const isLockedAuction =
+        product.type === 'AUCTION' &&
+        product.status !== undefined &&
+        product.status !== 'DRAFT';
 
     const fullImageUrl = product.imageUrl
         ? getImageUrl(product.imageUrl)
@@ -127,22 +131,48 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         if (isAdmin) {
             if (isArchived) {
                 return (
-                    <Button
-                        variant="secondary"
-                        size="medium"
-                        onClick={() => onRestore?.(product)}
-                        className={styles.restoreBtn}
-                    >
-                        Відновити
-                    </Button>
+                    <div className={styles.footer}>
+                        {product.type === 'AUCTION' && product.auctionId && (
+                            <Button
+                                variant="primary"
+                                size="medium"
+                                onClick={() =>
+                                    navigate(`/auction/${product.auctionId}`)
+                                }
+                            >
+                                Перейти до аукціону
+                            </Button>
+                        )}
+                        <Button
+                            variant="secondary"
+                            size="medium"
+                            onClick={() => onRestore?.(product)}
+                            className={styles.restoreBtn}
+                        >
+                            Відновити
+                        </Button>
+                    </div>
                 );
             }
 
             const canEdit =
-                product.status !== 'REJECTED' && product.status !== 'ARCHIVED';
+                product.status !== 'REJECTED' &&
+                product.status !== 'ARCHIVED' &&
+                !isLockedAuction;
             if (product.status === 'DRAFT') {
                 return (
                     <div className={styles.footer}>
+                        {product.type === 'AUCTION' && product.auctionId && (
+                            <Button
+                                variant="primary"
+                                size="medium"
+                                onClick={() =>
+                                    navigate(`/auction/${product.auctionId}`)
+                                }
+                            >
+                                Перейти до аукціону
+                            </Button>
+                        )}
                         {canEdit && (
                             <Button
                                 variant="secondary"
@@ -172,20 +202,19 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                 );
             }
 
-            if (user?.role === Role.SELLER) {
-                return (
-                    <Button
-                        variant="secondary"
-                        size="medium"
-                        onClick={() => navigate('/profile')}
-                    >
-                        Керувати товарами
-                    </Button>
-                );
-            }
-
             return (
                 <div className={styles.footer}>
+                    {product.type === 'AUCTION' && product.auctionId && (
+                        <Button
+                            variant="primary"
+                            size="medium"
+                            onClick={() =>
+                                navigate(`/auction/${product.auctionId}`)
+                            }
+                        >
+                            Перейти до аукціону
+                        </Button>
+                    )}
                     {canEdit && (
                         <Button
                             variant="secondary"
@@ -207,6 +236,31 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             );
         }
 
+        if (product.type === 'AUCTION' && product.auctionId) {
+            return (
+                <Button
+                    variant="primary"
+                    size="medium"
+                    onClick={() => navigate(`/auction/${product.auctionId}`)}
+                    className={styles.addBtn}
+                >
+                    Перейти до аукціону
+                </Button>
+            );
+        }
+
+        if (user?.role === Role.SELLER || user?.role === Role.ADMIN) {
+            return (
+                <Button
+                    variant="secondary"
+                    size="medium"
+                    disabled
+                >
+                    Лише перегляд
+                </Button>
+            );
+        }
+
         if (isOutOfStock) {
             return (
                 <Button
@@ -216,19 +270,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                     className={styles.outOfStockBtn}
                 >
                     Немає в наявності
-                </Button>
-            );
-        }
-
-        if (product.type === 'AUCTION' && product.auctionId) {
-            return (
-                <Button
-                    variant="primary"
-                    size="medium"
-                    onClick={() => navigate(`/auction/${product.auctionId}`)}
-                    className={styles.addBtn}
-                >
-                    Участвовать
                 </Button>
             );
         }
@@ -296,6 +337,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                                     {product.category.name}
                                 </span>
                             )}
+                            <span className={styles.category}>
+                                {product.type === 'AUCTION'
+                                    ? 'Аукціон'
+                                    : 'Фіксована ціна'}
+                            </span>
                             <h3 className={styles.title}>
                                 <Link to={`/product/${product.id}`}>
                                     {product.name || 'Без назви'}

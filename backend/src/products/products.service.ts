@@ -392,6 +392,15 @@ export class ProductsService {
     ) {
         const existingProduct = await this.findOwnedProduct(id, sellerId);
 
+        if (
+            existingProduct.type === 'AUCTION' &&
+            existingProduct.status !== ProductStatus.DRAFT
+        ) {
+            throw new BadRequestException(
+                'Published or submitted auctions cannot be edited',
+            );
+        }
+
         if (dto.categoryId) {
             await this.ensureCategoryExists(dto.categoryId);
         }
