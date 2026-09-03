@@ -30,23 +30,26 @@ export const realtimeStore = {
         listeners.add(listener);
         return () => listeners.delete(listener);
     },
-    applyStock: (update: StockUpdate) => {
-        if (!rememberEvent(update.eventId)) return;
+    applyStock: (update: StockUpdate): boolean => {
+        if (!rememberEvent(update.eventId)) return false;
         state = { ...state, stock: { ...state.stock, [update.productId]: update.quantity } };
         listeners.forEach((listener) => listener());
+        return true;
     },
-    applyBid: (update: BidUpdate) => {
-        if (!rememberEvent(update.eventId)) return;
+    applyBid: (update: BidUpdate): boolean => {
+        if (!rememberEvent(update.eventId)) return false;
         state = { ...state, bids: { ...state.bids, [update.auctionId]: update } };
         listeners.forEach((listener) => listener());
+        return true;
     },
-    applyOrderStatus: (update: { orderId: string; status: string; eventId?: string }) => {
-        if (!rememberEvent(update.eventId)) return;
+    applyOrderStatus: (update: { orderId: string; status: string; eventId?: string }): boolean => {
+        if (!rememberEvent(update.eventId)) return false;
         state = {
             ...state,
             orderStatuses: { ...state.orderStatuses, [update.orderId]: update.status },
         };
         listeners.forEach((listener) => listener());
+        return true;
     },
     reset: () => {
         state = { stock: {}, bids: {}, orderStatuses: {} };

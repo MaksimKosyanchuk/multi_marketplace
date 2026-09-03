@@ -79,8 +79,7 @@ export function onStockUpdate(
     handler: (payload: StockUpdate) => void,
 ): () => void {
     const wrapped = (payload: StockUpdate) => {
-        realtimeStore.applyStock(payload);
-        handler(payload);
+        if (realtimeStore.applyStock(payload)) handler(payload);
     };
     socket?.on('product_stock_updated', wrapped);
     return () => socket?.off('product_stock_updated', wrapped);
@@ -90,8 +89,7 @@ export function onOrderStatusUpdate(
     handler: (payload: { orderId: string; status: string; eventId?: string }) => void,
 ): () => void {
     const wrapped = (payload: { orderId: string; status: string; eventId?: string }) => {
-        realtimeStore.applyOrderStatus(payload);
-        handler(payload);
+        if (realtimeStore.applyOrderStatus(payload)) handler(payload);
     };
     socket?.on('order_status_updated', wrapped);
     return () => socket?.off('order_status_updated', wrapped);
@@ -99,8 +97,7 @@ export function onOrderStatusUpdate(
 
 export function onBidUpdate(handler: (payload: BidUpdate) => void): () => void {
     const wrapped = (payload: BidUpdate) => {
-        realtimeStore.applyBid(payload);
-        handler(payload);
+        if (realtimeStore.applyBid(payload)) handler(payload);
     };
     socket?.on('auction_bid_updated', wrapped);
     return () => socket?.off('auction_bid_updated', wrapped);

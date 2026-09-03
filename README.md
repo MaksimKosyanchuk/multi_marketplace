@@ -35,9 +35,7 @@ asynchronous event delivery.
 
 ### Open requirements
 
-- Storybook coverage for all required key components is not complete.
 - Docker Compose configuration for the full required stack is not complete.
-- Frontend component test coverage is incomplete.
 - Full E2E coverage, deployment verification and complete benchmark history
   remain open.
 
