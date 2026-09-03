@@ -25,6 +25,7 @@ const AuctionPage: React.FC = () => {
     const [bidding, setBidding] = useState(false);
     const [error, setError] = useState('');
     const [now, setNow] = useState(() => Date.now());
+    
     const realtimeBid = useSyncExternalStore(
         realtimeStore.subscribe,
         () => (auctionId ? realtimeStore.getSnapshot().bids[auctionId] : undefined),
@@ -44,7 +45,9 @@ const AuctionPage: React.FC = () => {
     }, [auctionId]);
 
     useEffect(() => {
-        void loadAuction();
+        queueMicrotask(() => {
+            void loadAuction();
+        });
     }, [loadAuction]);
 
     useEffect(() => {
@@ -74,21 +77,17 @@ const AuctionPage: React.FC = () => {
         };
     }, [socket, auctionId, loadAuction]);
 
-    useEffect(() => {
-        if (!realtimeBid) return;
-        setAuction((current) =>
-            current && current.id === realtimeBid.auctionId
-                ? { ...current, currentPrice: Number(realtimeBid.currentPrice) }
-                : current,
-        );
-    }, [realtimeBid]);
+    // Вычисляем актуальную цену на лету, избегая setState в useEffect
+    const currentPrice = realtimeBid 
+        ? Number(realtimeBid.currentPrice) 
+        : (auction?.currentPrice ?? 0);
 
     const minimumBid = useMemo(
         () =>
             auction
-                ? auction.currentPrice + auction.minBidIncrement
+                ? currentPrice + auction.minBidIncrement
                 : undefined,
-        [auction],
+        [auction, currentPrice],
     );
 
     const placeBid = async (event: React.FormEvent) => {
@@ -103,7 +102,7 @@ const AuctionPage: React.FC = () => {
             setError(`Мінімальна ставка: ${minimumBid.toFixed(2)}`);
             return;
         }
-        const previousPrice = auction.currentPrice;
+        const previousPrice = currentPrice;
         setBidding(true);
         setError('');
         setAuction((current) => current ? { ...current, currentPrice: bidAmount } : current);
@@ -153,7 +152,7 @@ const AuctionPage: React.FC = () => {
             <div className={styles.panel}>
                 <div>
                     <span>Поточна ставка</span>
-                    <strong>${auction.currentPrice.toFixed(2)}</strong>
+                    <strong>${currentPrice.toFixed(2)}</strong>
                 </div>
                 <div>
                     <span>Мінімальна наступна ставка</span>
@@ -164,10 +163,10 @@ const AuctionPage: React.FC = () => {
                     <strong>
                         {isRunning
                             ? `${remainingHours} год ${remainingMinutes
-                                  .toString()
-                                  .padStart(2, '0')}:${remainingSeconds
-                                  .toString()
-                                  .padStart(2, '0')}`
+                                .toString()
+                                .padStart(2, '0')}:${remainingSeconds
+                                .toString()
+                                .padStart(2, '0')}`
                             : formatDate(auction.endsAt)}
                     </strong>
                 </div>
@@ -177,23 +176,23 @@ const AuctionPage: React.FC = () => {
                     {now < startsAt
                         ? `Аукціон ще не розпочався (старт: ${formatDate(auction.startsAt)})`
                         : `Аукціон завершено: ${
-                              displayStatus === 'SOLD'
-                                  ? 'Проданий переможцю'
-                                  : displayStatus === 'EXPIRED'
+                            displayStatus === 'SOLD'
+                                ? 'Проданий переможцю'
+                                : displayStatus === 'EXPIRED'
                                     ? 'Завершений без ставок'
                                     : displayStatus
-                          }`}
+                        }`}
                     {displayStatus === 'SOLD' && auction.winnerId && (
                         <div>Переможець: {auction.winnerId}</div>
                     )}
                     {displayStatus === 'SOLD' &&
                         auction.checkoutExpiresAt &&
                         new Date(auction.checkoutExpiresAt).getTime() > now && (
-                            <div>
-                                Вікно оплати до{' '}
-                                {formatDate(auction.checkoutExpiresAt)}
-                            </div>
-                        )}
+                        <div>
+                            Вікно оплати до{' '}
+                            {formatDate(auction.checkoutExpiresAt)}
+                        </div>
+                    )}
                 </div>
             ) : canBid ? (
                 <form onSubmit={placeBid} className={styles.form}>
@@ -219,32 +218,32 @@ const AuctionPage: React.FC = () => {
                 auction.winnerId === user?.id &&
                 auction.checkoutExpiresAt &&
                 new Date(auction.checkoutExpiresAt).getTime() > now && (
-                    <Button
-                        onClick={async () => {
-                            try {
-                                await auctionService.checkoutWinner(auction.id);
-                                await loadAuction();
-                            } catch (err: unknown) {
-                                const message =
-                                    err instanceof AxiosError &&
-                                    err.response?.data?.message;
-                                setError(
-                                    Array.isArray(message)
-                                        ? message[0]
-                                        : message ||
-                                              'Не вдалося оформити замовлення',
-                                );
-                            }
-                        }}
-                    >
-                        Оформити замовлення переможця
-                    </Button>
-                )}
+                <Button
+                    onClick={async () => {
+                        try {
+                            await auctionService.checkoutWinner(auction.id);
+                            await loadAuction();
+                        } catch (err: unknown) {
+                            const message =
+                                err instanceof AxiosError &&
+                                err.response?.data?.message;
+                            setError(
+                                Array.isArray(message)
+                                    ? message[0]
+                                    : message ||
+                                            'Не вдалося оформити замовлення',
+                            );
+                        }
+                    }}
+                >
+                    Оформити замовлення переможця
+                </Button>
+            )}
             {displayStatus === 'SOLD' &&
                 auction.winnerId === user?.id &&
                 auction.checkoutOrderId && (
-                    <p className={styles.status}>Оплачено</p>
-                )}
+                <p className={styles.status}>Оплачено</p>
+            )}
             {error && <p className={styles.error}>{error}</p>}
             <h2>Історія ставок</h2>
             <ul className={styles.bids}>

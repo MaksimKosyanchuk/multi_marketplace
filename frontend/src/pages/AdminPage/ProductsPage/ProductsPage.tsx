@@ -85,7 +85,7 @@ export default function ProductsPage({ sellerMode = false }: { sellerMode?: bool
         } finally {
             setIsLoading(false);
         }
-    }, [user]);
+    }, [user, sellerMode]);
 
     useEffect(() => {
         let isMounted = true;
@@ -97,8 +97,8 @@ export default function ProductsPage({ sellerMode = false }: { sellerMode?: bool
                 const [productsRes, categoriesData] = await Promise.all([
                     user?.role === Role.SELLER
                         ? productService.getSellerProducts({
-                              includeArchived: true,
-                          })
+                            includeArchived: true,
+                        })
                         : productService.getAll({ includeArchived: true }),
                     categoriesService.getAllCategories(),
                 ]);
@@ -130,12 +130,12 @@ export default function ProductsPage({ sellerMode = false }: { sellerMode?: bool
             }
         };
 
-        loadData();
+        void loadData();
 
         return () => {
             isMounted = false;
         };
-    }, [fetchData, user]);
+    }, [fetchData, user, sellerMode]);
 
     const handleOpenCreateModal = () => {
         setSelectedProduct(null);
@@ -402,7 +402,7 @@ export default function ProductsPage({ sellerMode = false }: { sellerMode?: bool
                     <button className={styles.createBtn} onClick={handleOpenCreateModal}>
                         + Створити товар
                     </button>
-                    <button className={styles.refreshBtn} onClick={fetchData}>
+                    <button className={styles.refreshBtn} onClick={() => void fetchData()}>
                         Оновити
                     </button>
                 </div>
@@ -467,7 +467,7 @@ export default function ProductsPage({ sellerMode = false }: { sellerMode?: bool
                                     <button
                                         type="button"
                                         className={styles.deleteBtn}
-                                        onClick={handleConfirmDelete}
+                                        onClick={() => void handleConfirmDelete()}
                                         disabled={isSaving}
                                     >
                                         {isSaving ? 'Видалення...' : 'Так, архівувати'}
@@ -475,7 +475,7 @@ export default function ProductsPage({ sellerMode = false }: { sellerMode?: bool
                                 </div>
                             </div>
                         ) : (
-                            <form onSubmit={handleSubmit} className={styles.form} noValidate>
+                            <form onSubmit={(e) => void handleSubmit(e)} className={styles.form} noValidate>
                                 {modalMode === 'create' && !sellerMode ? (
                                     <label>
                                         Тип товару:

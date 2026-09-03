@@ -54,12 +54,12 @@ export default function LoginPage() {
             setError(
                 axios.isAxiosError(err)
                     ? String(
-                          err.response?.data?.message ??
-                              'Не вдалося увійти через Google',
-                      )
+                        err.response?.data?.message ??
+                            'Не вдалося увійти через Google',
+                    )
                     : err instanceof Error
-                      ? err.message
-                      : 'Не вдалося увійти через Google',
+                        ? err.message
+                        : 'Не вдалося увійти через Google',
             );
         } finally {
             setIsSubmitting(false);

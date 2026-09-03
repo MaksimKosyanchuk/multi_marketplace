@@ -18,6 +18,7 @@ export default function ProductPage() {
     const [added, setAdded] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const { socket } = useAuth();
+    
     const realtimeStock = useSyncExternalStore(
         realtimeStore.subscribe,
         () => (id ? realtimeStore.getSnapshot().stock[id] : undefined),
@@ -39,13 +40,10 @@ export default function ProductPage() {
         });
     }, [id, socket]);
 
-    useEffect(() => {
-        if (realtimeStock === undefined) return;
-        setProduct((current) => current ? { ...current, stock: realtimeStock } : current);
-    }, [realtimeStock]);
-
     if (error) return <div className={styles.container}>{error}</div>;
     if (!product) return <div className={styles.container}>Завантаження...</div>;
+
+    const displayStock = realtimeStock ?? product.stock;
 
     const addToCart = async () => {
         await cartService.addToCart(product.id);
@@ -61,8 +59,8 @@ export default function ProductPage() {
                     <h1>{product.name}</h1>
                     <p>{product.description || 'Опис товару відсутній.'}</p>
                     <strong>${Number(product.price).toFixed(2)}</strong>
-                    <span className={styles.stock}>В наявності: {product.stock}</span>
-                    <Button onClick={() => void addToCart()} disabled={product.stock < 1 || added}>
+                    <span className={styles.stock}>В наявності: {displayStock}</span>
+                    <Button onClick={() => void addToCart()} disabled={displayStock < 1 || added}>
                         {added ? 'Додано до кошика' : 'Додати в кошик'}
                     </Button>
                 </div>

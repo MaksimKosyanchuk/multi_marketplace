@@ -43,7 +43,9 @@ const CustomerOrdersContent: React.FC<CustomerOrdersTabProps> = ({ onError }) =>
     }, [isCustomer, onError]);
 
     useEffect(() => {
-        void fetchOrders();
+        queueMicrotask(() => {
+            void fetchOrders();
+        });
     }, [fetchOrders]);
 
     useEffect(() => {

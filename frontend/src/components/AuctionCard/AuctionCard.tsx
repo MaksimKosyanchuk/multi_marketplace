@@ -131,15 +131,15 @@ export const AuctionCard: React.FC<AuctionCardProps> = ({
                         </>
                     )}
                     {isSellerManagement && status === 'PENDING_APPROVAL' && !isAdmin && (
-                            <Button
-                                variant="secondary"
-                                size="medium"
-                                onClick={() => onDelete?.(product)}
-                                className={styles.deleteBtn}
-                            >
-                                Скасувати
-                            </Button>
-                        )}
+                        <Button
+                            variant="secondary"
+                            size="medium"
+                            onClick={() => onDelete?.(product)}
+                            className={styles.deleteBtn}
+                        >
+                            Скасувати
+                        </Button>
+                    )}
                     {isSellerManagement && status === 'ACTIVE' && (
                         <Button
                             variant="secondary"

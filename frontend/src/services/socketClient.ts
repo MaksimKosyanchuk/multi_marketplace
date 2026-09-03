@@ -28,7 +28,7 @@ export function connectMarketplaceSocket(
     onReconnect?: () => void | Promise<void>,
 ): Socket {
     if (socket) {
-        (socket as any).auth = { token };
+        socket.auth = { token };
         if (!socket.connected) socket.connect();
         return socket;
     }

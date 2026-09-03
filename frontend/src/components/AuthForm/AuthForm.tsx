@@ -140,8 +140,8 @@ export const AuthForm: React.FC<AuthFormProps> = ({
                     {isSubmitting
                         ? 'Завантаження...'
                         : isLogin
-                          ? 'Увійти'
-                          : 'Зареєструватися'}
+                            ? 'Увійти'
+                            : 'Зареєструватися'}
                 </button>
             </form>
 

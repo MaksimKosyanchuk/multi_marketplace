@@ -34,8 +34,33 @@ export const ApprovalsPage: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        void load();
-    }, [load]);
+        let isMounted = true;
+
+        const fetchData = async () => {
+            try {
+                const [pendingProducts, pendingApplications] = await Promise.all([
+                    productService.getPendingApproval(),
+                    sellerService.listPendingApplications(),
+                ]);
+                if (isMounted) {
+                    setProducts(pendingProducts);
+                    setApplications(pendingApplications as SellerApplication[]);
+                    setError(null);
+                }
+            } catch (err) {
+                if (isMounted) {
+                    console.error('Помилка завантаження одобрень:', err);
+                    setError('Не вдалося завантажити список заявок.');
+                }
+            }
+        };
+
+        void fetchData();
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
 
     const moderateProduct = async (product: Product, approve: boolean) => {
         try {

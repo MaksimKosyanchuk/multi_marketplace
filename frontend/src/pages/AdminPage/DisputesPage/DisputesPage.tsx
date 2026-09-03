@@ -13,7 +13,8 @@ export default function DisputesPage() {
         setLoading(true);
         setError(null);
         try {
-            setDisputes(await disputeService.listAll());
+            const data = await disputeService.listAll();
+            setDisputes(data);
         } catch {
             setError('Не вдалося завантажити спори');
         } finally {
@@ -21,7 +22,34 @@ export default function DisputesPage() {
         }
     };
 
-    useEffect(() => { void load(); }, []);
+    useEffect(() => {
+        let isMounted = true;
+
+        const fetchData = async () => {
+            setLoading(true);
+            setError(null);
+            try {
+                const data = await disputeService.listAll();
+                if (isMounted) {
+                    setDisputes(data);
+                }
+            } catch {
+                if (isMounted) {
+                    setError('Не вдалося завантажити спори');
+                }
+            } finally {
+                if (isMounted) {
+                    setLoading(false);
+                }
+            }
+        };
+
+        void fetchData();
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
 
     const resolve = async (id: string, status: DisputeStatus) => {
         await disputeService.resolve(id, status);

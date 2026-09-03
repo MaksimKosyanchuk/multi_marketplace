@@ -53,9 +53,9 @@ export default function GoogleRegisterPage() {
             setError(
                 axios.isAxiosError(err)
                     ? String(
-                          err.response?.data?.message ??
-                              'Не вдалося завершити реєстрацію',
-                      )
+                        err.response?.data?.message ??
+                        'Не вдалося завершити реєстрацію',
+                    )
                     : 'Не вдалося завершити реєстрацію',
             );
         } finally {

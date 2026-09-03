@@ -13,7 +13,7 @@ export const api = axios.create({
 api.interceptors.request.use(
     (config: InternalAxiosRequestConfig) => {
         if (!config.headers) {
-            config.headers = {} as any;
+            config.headers = {};
         }
         config.headers['x-correlation-id'] ??= createIdempotencyKey();
         const token = localStorage.getItem('accessToken');
