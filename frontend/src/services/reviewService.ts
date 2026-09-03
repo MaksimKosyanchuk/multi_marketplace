@@ -8,6 +8,10 @@ export const reviewService = {
         );
         return data;
     },
+    async listMine(): Promise<Array<{ productId: string; orderItemId: string }>> {
+        const { data } = await api.get<Array<{ productId: string; orderItemId: string }>>('/reviews/my');
+        return data;
+    },
     async create(
         orderItemId: string,
         rating: number,

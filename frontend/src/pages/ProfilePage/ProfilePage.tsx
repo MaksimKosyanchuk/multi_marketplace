@@ -44,6 +44,7 @@ export const ProfilePage: React.FC = () => {
     const [orders, setOrders] = useState<Order[]>([]);
     const [sales, setSales] = useState<SellerOrder[]>([]);
     const [disputes, setDisputes] = useState<Dispute[]>([]);
+    const [reviewedProductIds, setReviewedProductIds] = useState<Set<string>>(new Set());
     const [sellerAnalytics, setSellerAnalytics] = useState<SellerAnalytics | null>(null);
     const [sellerTimeline, setSellerTimeline] = useState<SalesTimelineItem[]>([]);
     const [activeAuctionBids, setActiveAuctionBids] = useState(0);
@@ -74,6 +75,10 @@ export const ProfilePage: React.FC = () => {
             startTransition(() => {
                 setOrders(data);
             });
+            if (isCustomer) {
+                const reviews = await reviewService.listMine();
+                setReviewedProductIds(new Set(reviews.map((review) => review.productId)));
+            }
         } catch (err) {
             console.error('Помилка завантаження замовлень:', err);
 
@@ -83,7 +88,7 @@ export const ProfilePage: React.FC = () => {
         } finally {
             setIsLoadingOrders(false);
         }
-    }, []);
+    }, [isCustomer]);
 
     const fetchSales = useCallback(async () => {
         setIsLoadingSales(true);
@@ -359,6 +364,13 @@ export const ProfilePage: React.FC = () => {
         const rating = Number(window.prompt('Оцінка від 1 до 5'));
         if (!Number.isInteger(rating) || rating < 1 || rating > 5) return;
         await reviewService.create(orderItemId, rating, window.prompt('Ваш коментар') ?? undefined);
+        const productId = orders
+            .flatMap((order) => order.sellerOrders ?? [])
+            .flatMap((sellerOrder) => sellerOrder.items)
+            .find((item) => item.id === orderItemId)?.productId;
+        if (productId) {
+            setReviewedProductIds((current) => new Set(current).add(productId));
+        }
         await fetchOrders();
     };
 
@@ -410,6 +422,7 @@ export const ProfilePage: React.FC = () => {
                             onSellerCancel={handleCancelSellerOrder}
                             onReview={handleReview}
                             onOpenDispute={handleOpenDispute}
+                            reviewedProductIds={reviewedProductIds}
                         />
                     ))}
                 </div>

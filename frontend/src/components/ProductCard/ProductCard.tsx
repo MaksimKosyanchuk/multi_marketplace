@@ -379,6 +379,15 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         <>
             <div
                 className={`${styles.card} ${isArchived ? styles.archivedCard : ''}`}
+                role="link"
+                tabIndex={0}
+                onClick={() => navigate(`/product/${product.id}`)}
+                onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        navigate(`/product/${product.id}`);
+                    }
+                }}
             >
                 {isArchived && (
                     <div className={styles.archivedBadge}>В архіві</div>
@@ -450,7 +459,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                         </p>
                     )}
 
-                    <div className={styles.footer}>{renderActionButton()}</div>
+                    <div className={styles.footer} onClick={(event) => event.stopPropagation()}>
+                        {renderActionButton()}
+                    </div>
                 </div>
             </div>
 

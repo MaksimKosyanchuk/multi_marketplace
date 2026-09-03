@@ -182,6 +182,10 @@
     white-space: nowrap;
 }
 
+.sellerOrderItems {
+    width: 100%;
+}
+
 .sellerOrderActions {
     display: flex;
     justify-content: flex-end;

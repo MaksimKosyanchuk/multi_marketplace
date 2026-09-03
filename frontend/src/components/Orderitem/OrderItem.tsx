@@ -14,6 +14,7 @@ interface OrderItemProps {
     onStatusChange?: (orderId: string, status: OrderStatus) => Promise<void>;
     onReview?: (orderItemId: string) => Promise<void>;
     onOpenDispute?: (sellerOrderId: string) => Promise<void>;
+    reviewedProductIds?: Set<string>;
     isAdmin?: boolean;
 }
 
@@ -37,6 +38,7 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
     onStatusChange,
     onReview,
     onOpenDispute,
+    reviewedProductIds,
     isAdmin = false,
 }) => {
     const [isProcessing, setIsProcessing] = useState(false);
@@ -102,10 +104,9 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
     };
 
     const isCancelable =
-        order.status === 'NEW' ||
-        order.status === 'PAYMENT_PENDING' ||
-        order.status === 'PROCESSING' ||
-        order.status === 'SHIPPED';
+        order.status !== 'CANCELLED' &&
+        order.status !== 'COMPLETED' &&
+        ['NEW', 'PAYMENT_PENDING', 'PROCESSING', 'SHIPPED'].includes(order.status);
 
     const isTerminalState =
         order.status === 'CANCELLED' || order.status === 'COMPLETED';
@@ -138,6 +139,8 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
         .reduce((total, sellerOrder) => total + Number(sellerOrder.subtotal), 0);
     const amountDue = sellerOrders.length > 0 ? unpaidAmount : totalAmount;
     const sellerCanCancel = (sellerOrder: SellerOrder) =>
+        sellerOrder.status !== 'CANCELLED' &&
+        sellerOrder.status !== 'COMPLETED' &&
         ['NEW', 'PAYMENT_PENDING', 'PROCESSING', 'SHIPPED'].includes(sellerOrder.status);
     const hasUnpaidSellerOrder = sellerOrders.some(
         (sellerOrder) =>
@@ -195,9 +198,8 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
                     </div>
                 </div>
 
-                <div className={styles.itemsList}>
-                    {(sellerOrders.length ? sellerOrders.flatMap((sellerOrder) =>
-                        sellerOrder.items.map((item) => ({ ...item, sellerOrder }))) : order.items.map((item) => ({ ...item, sellerOrder: undefined }))).map(({ sellerOrder, ...item }) => {
+                {!sellerOrders.length && <div className={styles.itemsList}>
+                    {order.items.map((item) => {
                         const price = Number((item as { price?: string | number }).price ?? item.unitPrice ?? 0);
                         const quantity = Number(item.quantity);
                         return (
@@ -206,15 +208,13 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
                                     {item.productName || 'Товар'}
                                 </span>
                                 <span className={styles.itemDetails}>
-                                    {sellerOrder?.seller?.nickName ?? sellerOrder?.seller?.email ?? ''}
-                                    {sellerOrder ? ' · ' : ''}
                                     {!isNaN(quantity) ? quantity : 0} шт. × $
                                     {!isNaN(price) ? price.toFixed(2) : '0.00'}
                                 </span>
                             </div>
                         );
                     })}
-                </div>
+                </div>}
 
                 {sellerOrders.length > 0 && (
                     <div className={styles.sellerOrders}>
@@ -228,12 +228,22 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
                                     </strong>
                                     <OrderStatusBadge status={sellerOrder.status} scope="suborder" />
                                 </div>
+                                <div className={styles.sellerOrderItems}>
+                                    {sellerOrder.items.map((item) => (
+                                        <div className={styles.itemRow} key={item.id}>
+                                            <span className={styles.itemName}>{item.productName}</span>
+                                            <span className={styles.itemDetails}>
+                                                {item.quantity} шт. × ${Number(item.unitPrice).toFixed(2)}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
                                 <div className={styles.sellerOrderMeta}>
                                     ${Number(sellerOrder.subtotal).toFixed(2)}
                                 </div>
                                 {sellerOrder.status === 'COMPLETED' && (
                                     <div className={styles.sellerOrderActions}>
-                                        {onReview && sellerOrder.items.map((item) => (
+                                        {onReview && sellerOrder.items.filter((item) => !reviewedProductIds?.has(item.productId)).map((item) => (
                                             <Button key={item.id} variant="secondary" size="small" onClick={() => void onReview(item.id)}>
                                                 Залишити відгук
                                             </Button>
