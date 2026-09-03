@@ -23,6 +23,7 @@ import { MetricsModule } from './metrics/metrics.module';
 import { DisputesModule } from './disputes/disputes.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ReviewsModule } from './reviews/reviews.module';
+import { DatabaseModule } from './database/database.module';
 import { MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { CorrelationMiddleware } from './common/correlation/correlation.middleware';
 import { HttpLoggingInterceptor } from './common/interceptors/http-logging.interceptor';
@@ -64,6 +65,7 @@ import { AllExceptionsFilter } from './common/filters/http-exception.filter';
         DisputesModule,
         NotificationsModule,
         ReviewsModule,
+        DatabaseModule,
         ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]),
     ],
 

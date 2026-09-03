@@ -1,0 +1,131 @@
+import { Injectable } from '@nestjs/common';
+import { Prisma, ProductStatus, ProductType } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import type { DatabaseClient } from './database.types';
+
+type CatalogProduct = Prisma.ProductGetPayload<{
+    include: {
+        category: true;
+        reviews: { select: { rating: true } };
+    };
+}>;
+
+@Injectable()
+export class ProductRepository {
+    constructor(private readonly prisma: PrismaService) {}
+
+    decrementStockForCheckout(
+        productId: string,
+        quantity: number,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.product.updateMany({
+            where: {
+                id: productId,
+                stock: { gte: quantity },
+                status: ProductStatus.ACTIVE,
+                type: ProductType.FIXED_PRICE,
+                isArchived: false,
+            },
+            data: {
+                stock: { decrement: quantity },
+                version: { increment: 1 },
+            },
+        });
+    }
+
+    findById(productId: string, db: DatabaseClient = this.prisma) {
+        return db.product.findUnique({ where: { id: productId } });
+    }
+
+    findByIdWithCatalogDetails(
+        productId: string,
+        db: DatabaseClient = this.prisma,
+    ): Promise<CatalogProduct | null> {
+        return db.product.findUnique({
+            where: { id: productId },
+            include: {
+                category: true,
+                reviews: { select: { rating: true } },
+            },
+        });
+    }
+
+    findOwned(
+        productId: string,
+        sellerId: string,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.product.findFirst({
+            where: { id: productId, sellerId },
+            include: { category: true },
+        });
+    }
+
+    list(
+        where: Prisma.ProductWhereInput,
+        orderBy: Prisma.ProductOrderByWithRelationInput,
+        skip: number,
+        take: number,
+        include: Prisma.ProductInclude,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.product.findMany({ where, orderBy, skip, take, include });
+    }
+
+    count(where: Prisma.ProductWhereInput, db: DatabaseClient = this.prisma) {
+        return db.product.count({ where });
+    }
+
+    create(
+        data: Prisma.ProductCreateArgs['data'],
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.product.create({ data });
+    }
+
+    update(
+        productId: string,
+        data: Prisma.ProductUpdateArgs['data'],
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.product.update({ where: { id: productId }, data });
+    }
+
+    claimStatus(
+        productId: string,
+        where: Prisma.ProductWhereInput,
+        data: Prisma.ProductUpdateArgs['data'],
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.product.updateMany({
+            where: { id: productId, ...where },
+            data,
+        });
+    }
+
+    findOrThrow(
+        productId: string,
+        include: Prisma.ProductInclude,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.product.findUniqueOrThrow({
+            where: { id: productId },
+            include,
+        });
+    }
+
+    incrementStock(
+        productId: string,
+        quantity: number,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.product.update({
+            where: { id: productId },
+            data: {
+                stock: { increment: quantity },
+                version: { increment: 1 },
+            },
+        });
+    }
+}

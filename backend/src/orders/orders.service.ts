@@ -25,6 +25,12 @@ import { UpdateSellerOrderStatusDto } from './dto/update-seller-order-status.dto
 import { MockPaymentService } from '../payments/mock-payment.service';
 import { getCorrelationId } from '../common/correlation/correlation.context';
 import { OrdersGateway } from './orders.geteway';
+import {
+    CartRepository,
+    OrderRepository,
+    OutboxRepository,
+    ProductRepository,
+} from '../database';
 
 const orderDetails = {
     sellerOrders: {
@@ -73,6 +79,10 @@ export class OrdersService {
         private readonly logger: LoggerService,
         private readonly redis: RedisService,
         private readonly mockPayment: MockPaymentService,
+        private readonly cartRepository: CartRepository,
+        private readonly orderRepository: OrderRepository,
+        private readonly outboxRepository: OutboxRepository,
+        private readonly productRepository: ProductRepository,
         @Optional() private readonly ordersGateway?: OrdersGateway,
     ) {}
 
@@ -90,10 +100,11 @@ export class OrdersService {
 
         try {
             const order = await this.prisma.$transaction(async (tx) => {
-                const priorPayment = await tx.payment.findUnique({
-                    where: { idempotencyKey },
-                    include: { order: { include: orderDetails } },
-                });
+                const priorPayment =
+                    await this.orderRepository.findByPaymentIdempotencyKey(
+                        idempotencyKey,
+                        tx,
+                    );
                 if (priorPayment) {
                     if (priorPayment.order.userId !== userId) {
                         throw new ForbiddenException(
@@ -103,14 +114,13 @@ export class OrdersService {
                     return priorPayment.order;
                 }
 
-                const cart = await tx.cart.findUnique({ where: { userId } });
+                const cart = await this.cartRepository.findByUserId(userId, tx);
                 if (!cart) throw new BadRequestException('Cart is empty');
 
-                const cartItems = await tx.cartItem.findMany({
-                    where: { cartId: cart.id },
-                    include: { product: true },
-                    orderBy: { createdAt: 'asc' },
-                });
+                const cartItems = await this.cartRepository.findItems(
+                    cart.id,
+                    tx,
+                );
                 if (!cartItems.length)
                     throw new BadRequestException('Cart is empty');
 
@@ -131,26 +141,19 @@ export class OrdersService {
 
                 for (const cartItem of cartItems) {
                     const product = cartItem.product;
-                    const stockUpdate = await tx.product.updateMany({
-                        where: {
-                            id: product.id,
-                            stock: { gte: cartItem.quantity },
-                            status: ProductStatus.ACTIVE,
-                            type: ProductType.FIXED_PRICE,
-                            isArchived: false,
-                        },
-                        data: {
-                            stock: { decrement: cartItem.quantity },
-                            version: { increment: 1 },
-                        },
-                    });
+                    const stockUpdate =
+                        await this.productRepository.decrementStockForCheckout(
+                            product.id,
+                            cartItem.quantity,
+                            tx,
+                        );
                     if (!stockUpdate.count) {
                         throw new BadRequestException(
                             `Product "${product.name}" is unavailable or has insufficient stock`,
                         );
                     }
-                    await tx.outboxEvent.create({
-                        data: {
+                    await this.outboxRepository.create(
+                        {
                             aggregateType: 'Product',
                             aggregateId: product.id,
                             type: 'product.stock-changed',
@@ -161,7 +164,8 @@ export class OrdersService {
                             },
                             idempotencyKey: `${idempotencyKey}:stock:${product.id}`,
                         },
-                    });
+                        tx,
+                    );
 
                     const lineTotal = product.price.mul(cartItem.quantity);
                     totalAmount = totalAmount.add(lineTotal);
@@ -180,8 +184,8 @@ export class OrdersService {
                     bySeller.set(product.sellerId, sellerGroup);
                 }
 
-                const order = await tx.order.create({
-                    data: {
+                const order = await this.orderRepository.createCheckoutOrder(
+                    {
                         userId,
                         status: OrderStatus.NEW,
                         subtotal: totalAmount,
@@ -231,11 +235,11 @@ export class OrdersService {
                             ),
                         },
                     },
-                    include: orderDetails,
-                });
+                    tx,
+                );
 
-                await tx.outboxEvent.createMany({
-                    data: [
+                await this.outboxRepository.createMany(
+                    [
                         {
                             orderId: order.id,
                             aggregateType: 'Order',
@@ -262,9 +266,10 @@ export class OrdersService {
                             idempotencyKey: `${idempotencyKey}:seller-order:${sellerOrder.id}`,
                         })),
                     ],
-                });
+                    tx,
+                );
 
-                await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
+                await this.cartRepository.clear(cart.id, tx);
                 return order;
             });
 
@@ -300,10 +305,8 @@ export class OrdersService {
             throw new BadRequestException('Idempotency-Key header is required');
         }
         const eventKey = `payment-paid:${idempotencyKey}`;
-        const existing = await this.prisma.outboxEvent.findUnique({
-            where: { idempotencyKey: eventKey },
-            include: { order: { include: orderDetails } },
-        });
+        const existing =
+            await this.outboxRepository.findByIdempotencyKey(eventKey);
         if (existing?.order) {
             if (existing.order.userId !== userId) {
                 throw new ForbiddenException(
@@ -571,13 +574,11 @@ export class OrdersService {
 
         try {
             const result = await this.prisma.$transaction(async (tx) => {
-                const order = await tx.order.findUnique({
-                    where: { id: orderId },
-                    include: {
-                        payments: true,
-                        sellerOrders: { include: { items: true } },
-                    },
-                });
+                const order =
+                    await this.orderRepository.findOrderForPaymentCancellation(
+                        orderId,
+                        tx,
+                    );
                 if (!order) throw new NotFoundException('Order not found');
                 if (order.userId !== userId) {
                     throw new ForbiddenException(
@@ -609,35 +610,30 @@ export class OrdersService {
                     );
                 }
                 const cancellation = this.mockPayment.cancel(payment.id);
-                await tx.payment.update({
-                    where: { id: payment.id },
-                    data: {
+                await this.orderRepository.updatePayment(
+                    payment.id,
+                    {
                         status: PaymentStatus.CANCELLED,
                         providerRef: cancellation.providerRef,
                     },
-                });
+                    tx,
+                );
                 for (const sellerOrder of order.sellerOrders) {
                     if (sellerOrder.status === SellerOrderStatus.CANCELLED)
                         continue;
-                    const claimed = await tx.sellerOrder.updateMany({
-                        where: {
-                            id: sellerOrder.id,
-                            status: {
-                                in: [
-                                    SellerOrderStatus.PAYMENT_PENDING,
-                                    SellerOrderStatus.NEW,
-                                ],
-                            },
-                        },
-                        data: {
-                            status: SellerOrderStatus.CANCELLED,
-                            cancelledAt: new Date(),
-                            cancellationReason: 'Payment cancelled',
-                        },
-                    });
+                    const claimed =
+                        await this.orderRepository.claimSellerOrderCancellation(
+                            sellerOrder.id,
+                            [
+                                SellerOrderStatus.PAYMENT_PENDING,
+                                SellerOrderStatus.NEW,
+                            ],
+                            'Payment cancelled',
+                            tx,
+                        );
                     if (!claimed.count) continue;
-                    await tx.ledgerEntry.createMany({
-                        data: [
+                    await this.orderRepository.createLedgerEntries(
+                        [
                             {
                                 sellerOrderId: sellerOrder.id,
                                 type: LedgerEntryType.ADJUSTMENT,
@@ -651,9 +647,10 @@ export class OrdersService {
                                 idempotencyKey: `${eventKey}:earnings:${sellerOrder.id}`,
                             },
                         ],
-                    });
-                    await tx.outboxEvent.create({
-                        data: {
+                        tx,
+                    );
+                    await this.outboxRepository.create(
+                        {
                             orderId,
                             sellerOrderId: sellerOrder.id,
                             aggregateType: 'SellerOrder',
@@ -666,17 +663,16 @@ export class OrdersService {
                             },
                             idempotencyKey: `${eventKey}:seller-order:${sellerOrder.id}`,
                         },
-                    });
+                        tx,
+                    );
                     for (const item of sellerOrder.items) {
-                        await tx.product.update({
-                            where: { id: item.productId },
-                            data: {
-                                stock: { increment: item.quantity },
-                                version: { increment: 1 },
-                            },
-                        });
-                        await tx.outboxEvent.create({
-                            data: {
+                        await this.productRepository.incrementStock(
+                            item.productId,
+                            item.quantity,
+                            tx,
+                        );
+                        await this.outboxRepository.create(
+                            {
                                 orderId,
                                 aggregateType: 'Product',
                                 aggregateId: item.productId,
@@ -688,24 +684,23 @@ export class OrdersService {
                                 },
                                 idempotencyKey: `${eventKey}:stock:${item.productId}`,
                             },
-                        });
+                            tx,
+                        );
                     }
                 }
-                const statuses = await tx.sellerOrder.findMany({
-                    where: { orderId },
-                    select: { status: true },
-                });
-                const result = await tx.order.update({
-                    where: { id: orderId },
-                    data: {
-                        status: deriveOrderStatus(
-                            statuses.map(({ status }) => status),
-                        ),
-                    },
-                    include: orderDetails,
-                });
-                await tx.outboxEvent.create({
-                    data: {
+                const statuses =
+                    await this.orderRepository.findSellerOrderStatuses(
+                        orderId,
+                        tx,
+                    );
+                const result = await this.orderRepository.updateOrderStatus(
+                    orderId,
+                    deriveOrderStatus(statuses.map(({ status }) => status)),
+                    tx,
+                    true,
+                );
+                await this.outboxRepository.create(
+                    {
                         orderId,
                         aggregateType: 'Payment',
                         aggregateId: payment.id,
@@ -717,7 +712,8 @@ export class OrdersService {
                         },
                         idempotencyKey: eventKey,
                     },
-                });
+                    tx,
+                );
                 return result;
             });
             return result;
@@ -746,13 +742,11 @@ export class OrdersService {
                 'You do not have access to this order',
             );
         const updated = await this.prisma.$transaction(async (tx) => {
-            const currentOrder = await tx.order.findUnique({
-                where: { id: orderId },
-                include: {
-                    ...orderDetails,
-                    payments: true,
-                },
-            });
+            const currentOrder =
+                await this.orderRepository.findOrderForCancellation(
+                    orderId,
+                    tx,
+                );
             if (!currentOrder) throw new NotFoundException('Order not found');
             if (currentOrder.userId !== userId) {
                 throw new ForbiddenException(
@@ -767,15 +761,10 @@ export class OrdersService {
                     `Order cannot be cancelled in status ${currentOrder.status}`,
                 );
             }
-            const rootClaim = await tx.order.updateMany({
-                where: {
-                    id: orderId,
-                    status: {
-                        notIn: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
-                    },
-                },
-                data: { status: OrderStatus.CANCELLED },
-            });
+            const rootClaim = await this.orderRepository.claimOrderCancellation(
+                orderId,
+                tx,
+            );
             if (!rootClaim.count) {
                 throw new BadRequestException(
                     'Order cancellation was already processed',
@@ -792,38 +781,28 @@ export class OrdersService {
             );
             const now = new Date();
             for (const sellerOrder of currentOrder.sellerOrders) {
-                const claimed = await tx.sellerOrder.updateMany({
-                    where: {
-                        id: sellerOrder.id,
-                        status: {
-                            in: [
-                                SellerOrderStatus.NEW,
-                                SellerOrderStatus.PAYMENT_PENDING,
-                                SellerOrderStatus.PROCESSING,
-                                SellerOrderStatus.SHIPPED,
-                            ],
-                        },
-                    },
-                    data: {
-                        status: SellerOrderStatus.CANCELLED,
-                        cancelledAt: now,
-                        cancellationReason: 'Cancelled by customer',
-                    },
-                });
+                const claimed =
+                    await this.orderRepository.claimSellerOrderCancellation(
+                        sellerOrder.id,
+                        [
+                            SellerOrderStatus.NEW,
+                            SellerOrderStatus.PAYMENT_PENDING,
+                            SellerOrderStatus.PROCESSING,
+                            SellerOrderStatus.SHIPPED,
+                        ],
+                        'Cancelled by customer',
+                        tx,
+                    );
                 if (!claimed.count) continue;
 
                 let refundTotal = new Prisma.Decimal(0);
                 let commissionReduction = new Prisma.Decimal(0);
                 for (const item of sellerOrder.items) {
-                    const alreadyRefunded = await tx.refund.aggregate({
-                        where: {
-                            orderItemId: item.id,
-                            status: {
-                                in: ['PENDING', 'APPROVED', 'PROCESSED'],
-                            },
-                        },
-                        _sum: { quantity: true },
-                    });
+                    const alreadyRefunded =
+                        await this.orderRepository.sumRefundedQuantity(
+                            item.id,
+                            tx,
+                        );
                     const refundableQuantity = Math.max(
                         item.quantity - (alreadyRefunded._sum.quantity ?? 0),
                         0,
@@ -836,8 +815,8 @@ export class OrdersService {
                     refundTotal = refundTotal.add(refundAmount);
                     commissionReduction = commissionReduction.add(commission);
                     if (payment) {
-                        await tx.refund.create({
-                            data: {
+                        await this.orderRepository.createRefund(
+                            {
                                 sellerOrderId: sellerOrder.id,
                                 orderItemId: item.id,
                                 paymentId: payment.id,
@@ -855,17 +834,16 @@ export class OrdersService {
                                     },
                                 },
                             },
-                        });
+                            tx,
+                        );
                     }
-                    await tx.product.update({
-                        where: { id: item.productId },
-                        data: {
-                            stock: { increment: refundableQuantity },
-                            version: { increment: 1 },
-                        },
-                    });
-                    await tx.outboxEvent.create({
-                        data: {
+                    await this.productRepository.incrementStock(
+                        item.productId,
+                        refundableQuantity,
+                        tx,
+                    );
+                    await this.outboxRepository.create(
+                        {
                             aggregateType: 'Product',
                             aggregateId: item.productId,
                             type: 'product.stock-changed',
@@ -875,11 +853,12 @@ export class OrdersService {
                             },
                             idempotencyKey: `customer-cancel:${orderId}:stock:${item.productId}`,
                         },
-                    });
+                        tx,
+                    );
                 }
-                await tx.sellerOrder.update({
-                    where: { id: sellerOrder.id },
-                    data: {
+                await this.orderRepository.updateSellerOrder(
+                    sellerOrder.id,
+                    {
                         refundedAmount: {
                             increment: payment ? refundTotal : 0,
                         },
@@ -888,9 +867,10 @@ export class OrdersService {
                             decrement: refundTotal.sub(commissionReduction),
                         },
                     },
-                });
-                await tx.ledgerEntry.createMany({
-                    data: [
+                    tx,
+                );
+                await this.orderRepository.createLedgerEntries(
+                    [
                         {
                             sellerOrderId: sellerOrder.id,
                             type: LedgerEntryType.ADJUSTMENT,
@@ -904,48 +884,52 @@ export class OrdersService {
                             idempotencyKey: `customer-cancel:${orderId}:earnings:${sellerOrder.id}`,
                         },
                     ],
-                });
+                    tx,
+                );
             }
             if (payment) {
-                const refunded = await tx.refund.aggregate({
-                    where: { paymentId: payment.id, status: 'PROCESSED' },
-                    _sum: { amount: true },
-                });
-                await tx.payment.update({
-                    where: { id: payment.id },
-                    data: {
+                const refunded = await this.orderRepository.sumProcessedRefunds(
+                    payment.id,
+                    tx,
+                );
+                await this.orderRepository.updatePayment(
+                    payment.id,
+                    {
                         status: (
                             refunded._sum.amount ?? new Prisma.Decimal(0)
                         ).gte(payment.amount)
                             ? PaymentStatus.REFUNDED
                             : PaymentStatus.PARTIALLY_REFUNDED,
                     },
-                });
+                    tx,
+                );
             }
             if (pendingPayment) {
                 const cancellation = this.mockPayment.cancel(pendingPayment.id);
-                await tx.payment.update({
-                    where: { id: pendingPayment.id },
-                    data: {
+                await this.orderRepository.updatePayment(
+                    pendingPayment.id,
+                    {
                         status: PaymentStatus.CANCELLED,
                         providerRef: cancellation.providerRef,
                     },
-                });
+                    tx,
+                );
             }
-            const statuses = await tx.sellerOrder.findMany({
-                where: { orderId },
-                select: { status: true },
-            });
+            const statuses = await this.orderRepository.findSellerOrderStatuses(
+                orderId,
+                tx,
+            );
             const nextStatus = deriveOrderStatus(
                 statuses.map(({ status }) => status),
             );
-            const result = await tx.order.update({
-                where: { id: orderId },
-                data: { status: nextStatus },
-                include: orderDetails,
-            });
-            await tx.outboxEvent.createMany({
-                data: [
+            const result = await this.orderRepository.updateOrderStatus(
+                orderId,
+                nextStatus,
+                tx,
+                true,
+            );
+            await this.outboxRepository.createMany(
+                [
                     ...currentOrder.sellerOrders
                         .filter(
                             ({ status }) =>
@@ -977,7 +961,8 @@ export class OrdersService {
                         idempotencyKey: `customer-cancel:${orderId}`,
                     },
                 ],
-            });
+                tx,
+            );
             return result;
         });
         await Promise.all([
@@ -1007,13 +992,11 @@ export class OrdersService {
 
         try {
             const result = await this.prisma.$transaction(async (tx) => {
-                const sellerOrder = await tx.sellerOrder.findUnique({
-                    where: { id: sellerOrderId },
-                    include: {
-                        order: { include: { payments: true } },
-                        items: true,
-                    },
-                });
+                const sellerOrder =
+                    await this.orderRepository.findSellerOrderForCancellation(
+                        sellerOrderId,
+                        tx,
+                    );
                 if (!sellerOrder)
                     throw new NotFoundException('Seller order not found');
                 if (
@@ -1042,23 +1025,16 @@ export class OrdersService {
                         `Seller order cannot be cancelled in status ${sellerOrder.status}`,
                     );
                 }
-                const claimed = await tx.sellerOrder.updateMany({
-                    where: {
-                        id: sellerOrderId,
-                        status: {
-                            in: cancellableStatuses,
-                        },
-                    },
-                    data: {
-                        status: SellerOrderStatus.CANCELLED,
-                        cancelledAt: new Date(),
-                        cancellationReason:
-                            reason.trim() ||
+                const claimed =
+                    await this.orderRepository.claimSellerOrderCancellation(
+                        sellerOrderId,
+                        cancellableStatuses,
+                        reason.trim() ||
                             (customerId
                                 ? 'Cancelled by customer'
                                 : 'Cancelled by seller'),
-                    },
-                });
+                        tx,
+                    );
                 if (!claimed.count) {
                     throw new BadRequestException(
                         'Order cancellation was already processed',
@@ -1074,15 +1050,11 @@ export class OrdersService {
                 let refundTotal = new Prisma.Decimal(0);
                 let commissionReduction = new Prisma.Decimal(0);
                 for (const item of sellerOrder.items) {
-                    const alreadyRefunded = await tx.refund.aggregate({
-                        where: {
-                            orderItemId: item.id,
-                            status: {
-                                in: ['PENDING', 'APPROVED', 'PROCESSED'],
-                            },
-                        },
-                        _sum: { quantity: true },
-                    });
+                    const alreadyRefunded =
+                        await this.orderRepository.sumRefundedQuantity(
+                            item.id,
+                            tx,
+                        );
                     const refundableQuantity = Math.max(
                         item.quantity - (alreadyRefunded._sum.quantity ?? 0),
                         0,
@@ -1095,8 +1067,8 @@ export class OrdersService {
                     refundTotal = refundTotal.add(refundAmount);
                     commissionReduction = commissionReduction.add(commission);
                     if (payment) {
-                        await tx.refund.create({
-                            data: {
+                        await this.orderRepository.createRefund(
+                            {
                                 sellerOrderId,
                                 orderItemId: item.id,
                                 paymentId: payment.id,
@@ -1114,17 +1086,16 @@ export class OrdersService {
                                     },
                                 },
                             },
-                        });
+                            tx,
+                        );
                     }
-                    await tx.product.update({
-                        where: { id: item.productId },
-                        data: {
-                            stock: { increment: refundableQuantity },
-                            version: { increment: 1 },
-                        },
-                    });
-                    await tx.outboxEvent.create({
-                        data: {
+                    await this.productRepository.incrementStock(
+                        item.productId,
+                        refundableQuantity,
+                        tx,
+                    );
+                    await this.outboxRepository.create(
+                        {
                             orderId: sellerOrder.orderId,
                             sellerOrderId: sellerOrder.id,
                             aggregateType: 'Product',
@@ -1137,63 +1108,70 @@ export class OrdersService {
                             },
                             idempotencyKey: `${eventKey}:stock:${item.productId}`,
                         },
-                    });
+                        tx,
+                    );
                 }
 
-                const updatedSellerOrder = await tx.sellerOrder.update({
-                    where: { id: sellerOrderId },
-                    data: {
-                        status: SellerOrderStatus.CANCELLED,
-                        cancelledAt: now,
-                        cancellationReason:
-                            reason.trim() || 'Cancelled by seller',
-                        refundedAmount: {
-                            increment: payment ? refundTotal : 0,
+                const updatedSellerOrder =
+                    await this.orderRepository.updateSellerOrder(
+                        sellerOrderId,
+                        {
+                            status: SellerOrderStatus.CANCELLED,
+                            cancelledAt: now,
+                            cancellationReason:
+                                reason.trim() || 'Cancelled by seller',
+                            refundedAmount: {
+                                increment: payment ? refundTotal : 0,
+                            },
+                            commissionAmount: {
+                                decrement: commissionReduction,
+                            },
+                            sellerEarnings: {
+                                decrement: refundTotal.sub(commissionReduction),
+                            },
                         },
-                        commissionAmount: { decrement: commissionReduction },
-                        sellerEarnings: {
-                            decrement: refundTotal.sub(commissionReduction),
-                        },
-                    },
-                    include: sellerOrderDetails,
-                });
-                const siblingStatuses = await tx.sellerOrder.findMany({
-                    where: { orderId: sellerOrder.orderId },
-                    select: { status: true },
-                });
+                        tx,
+                        true,
+                    );
+                const siblingStatuses =
+                    await this.orderRepository.findSellerOrderStatuses(
+                        sellerOrder.orderId,
+                        tx,
+                    );
                 const nextOrderStatus = deriveOrderStatus(
                     siblingStatuses.map(({ status }) => status),
                 );
-                await tx.order.updateMany({
-                    where: {
-                        id: sellerOrder.orderId,
-                        status: { not: OrderStatus.CANCELLED },
-                    },
-                    data: { status: nextOrderStatus },
-                });
-                const order = await tx.order.findUnique({
-                    where: { id: sellerOrder.orderId },
-                    include: orderDetails,
-                });
+                await this.orderRepository.updateOrderStatus(
+                    sellerOrder.orderId,
+                    nextOrderStatus,
+                    tx,
+                );
+                const order =
+                    await this.orderRepository.findOrderForCancellation(
+                        sellerOrder.orderId,
+                        tx,
+                    );
                 if (!order) throw new NotFoundException('Order not found');
                 if (payment) {
-                    const refunded = await tx.refund.aggregate({
-                        where: { paymentId: payment.id, status: 'PROCESSED' },
-                        _sum: { amount: true },
-                    });
+                    const refunded =
+                        await this.orderRepository.sumProcessedRefunds(
+                            payment.id,
+                            tx,
+                        );
                     const totalRefunded =
                         refunded._sum.amount ?? new Prisma.Decimal(0);
-                    await tx.payment.update({
-                        where: { id: payment.id },
-                        data: {
+                    await this.orderRepository.updatePayment(
+                        payment.id,
+                        {
                             status: totalRefunded.gte(payment.amount)
                                 ? PaymentStatus.REFUNDED
                                 : PaymentStatus.PARTIALLY_REFUNDED,
                         },
-                    });
+                        tx,
+                    );
                 }
-                await tx.ledgerEntry.createMany({
-                    data: [
+                await this.orderRepository.createLedgerEntries(
+                    [
                         {
                             sellerOrderId,
                             type: LedgerEntryType.ADJUSTMENT,
@@ -1207,9 +1185,10 @@ export class OrdersService {
                             idempotencyKey: `${idempotencyKey}:earnings-adjustment`,
                         },
                     ],
-                });
-                await tx.outboxEvent.createMany({
-                    data: [
+                    tx,
+                );
+                await this.outboxRepository.createMany(
+                    [
                         {
                             orderId: order.id,
                             sellerOrderId,
@@ -1236,7 +1215,8 @@ export class OrdersService {
                             idempotencyKey: `${eventKey}:order-status`,
                         },
                     ],
-                });
+                    tx,
+                );
                 return { sellerOrder: updatedSellerOrder, order };
             });
             await Promise.all([
@@ -1298,10 +1278,10 @@ export class OrdersService {
         if (!idempotencyKey?.trim()) {
             throw new BadRequestException('Idempotency-Key header is required');
         }
-        const existing = await this.prisma.refund.findUnique({
-            where: { idempotencyKey },
-            include: { orderItem: true },
-        });
+        const existing =
+            await this.orderRepository.findRefundByIdempotencyKey(
+                idempotencyKey,
+            );
         if (existing) {
             if (existing.orderItemId !== orderItemId) {
                 throw new ForbiddenException(
@@ -1318,17 +1298,10 @@ export class OrdersService {
 
         try {
             const result = await this.prisma.$transaction(async (tx) => {
-                const item = await tx.orderItem.findUnique({
-                    where: { id: orderItemId },
-                    include: {
-                        sellerOrder: {
-                            include: {
-                                order: { include: { payments: true } },
-                                items: true,
-                            },
-                        },
-                    },
-                });
+                const item = await this.orderRepository.findOrderItemForRefund(
+                    orderItemId,
+                    tx,
+                );
                 if (!item) throw new NotFoundException('Order item not found');
                 if (item.sellerOrder.order.userId !== userId) {
                     throw new ForbiddenException(
@@ -1343,17 +1316,14 @@ export class OrdersService {
                         'Order item cannot be refunded in the current status',
                     );
                 }
-                await tx.sellerOrder.update({
-                    where: { id: item.sellerOrderId },
-                    data: { updatedAt: new Date() },
-                });
-                const refunded = await tx.refund.aggregate({
-                    where: {
-                        orderItemId,
-                        status: { in: ['PENDING', 'APPROVED', 'PROCESSED'] },
-                    },
-                    _sum: { quantity: true },
-                });
+                await this.orderRepository.touchSellerOrder(
+                    item.sellerOrderId,
+                    tx,
+                );
+                const refunded = await this.orderRepository.sumRefundedQuantity(
+                    orderItemId,
+                    tx,
+                );
                 const refundedQuantity = refunded._sum.quantity ?? 0;
                 if (refundedQuantity + quantity > item.quantity) {
                     throw new BadRequestException(
@@ -1372,8 +1342,8 @@ export class OrdersService {
                         'Order has no successful payment to refund',
                     );
                 }
-                const refund = await tx.refund.create({
-                    data: {
+                const refund = await this.orderRepository.createRefund(
+                    {
                         sellerOrderId: item.sellerOrderId,
                         orderItemId,
                         paymentId: payment.id,
@@ -1391,60 +1361,58 @@ export class OrdersService {
                             },
                         },
                     },
-                    include: { orderItem: true },
-                });
-                const updatedSellerOrder = await tx.sellerOrder.update({
-                    where: { id: item.sellerOrderId },
-                    data: {
-                        refundedAmount: { increment: amount },
-                        commissionAmount: { decrement: commission },
-                        sellerEarnings: { decrement: amount.sub(commission) },
-                    },
-                    include: sellerOrderDetails,
-                });
+                    tx,
+                );
+                const updatedSellerOrder =
+                    await this.orderRepository.updateSellerOrderRefunds(
+                        item.sellerOrderId,
+                        amount,
+                        commission,
+                        tx,
+                    );
                 if (item.sellerOrder.status === SellerOrderStatus.PROCESSING) {
-                    await tx.product.update({
-                        where: { id: item.productId },
-                        data: {
-                            stock: { increment: quantity },
-                            version: { increment: 1 },
-                        },
-                    });
+                    await this.productRepository.incrementStock(
+                        item.productId,
+                        quantity,
+                        tx,
+                    );
                 }
                 if (payment) {
-                    const paymentRefunds = await tx.refund.aggregate({
-                        where: { paymentId: payment.id, status: 'PROCESSED' },
-                        _sum: { amount: true },
-                    });
+                    const paymentRefunds =
+                        await this.orderRepository.sumProcessedRefunds(
+                            payment.id,
+                            tx,
+                        );
                     const totalRefunded =
                         paymentRefunds._sum.amount ?? new Prisma.Decimal(0);
-                    await tx.payment.update({
-                        where: { id: payment.id },
-                        data: {
-                            status: totalRefunded.gte(payment.amount)
-                                ? PaymentStatus.REFUNDED
-                                : PaymentStatus.PARTIALLY_REFUNDED,
-                        },
-                    });
+                    await this.orderRepository.updatePaymentStatus(
+                        payment.id,
+                        totalRefunded.gte(payment.amount)
+                            ? PaymentStatus.REFUNDED
+                            : PaymentStatus.PARTIALLY_REFUNDED,
+                        tx,
+                    );
                 }
-                await tx.ledgerEntry.create({
-                    data: {
+                await this.orderRepository.createLedgerEntry(
+                    {
                         sellerOrderId: item.sellerOrderId,
                         type: LedgerEntryType.ADJUSTMENT,
                         amount: commission.neg(),
                         idempotencyKey: `${idempotencyKey}:commission-adjustment`,
                     },
-                });
-                await tx.ledgerEntry.create({
-                    data: {
+                    tx,
+                );
+                await this.orderRepository.createLedgerEntry(
+                    {
                         sellerOrderId: item.sellerOrderId,
                         type: LedgerEntryType.ADJUSTMENT,
                         amount: amount.sub(commission).neg(),
                         idempotencyKey: `${idempotencyKey}:earnings-adjustment`,
                     },
-                });
-                await tx.outboxEvent.create({
-                    data: {
+                    tx,
+                );
+                await this.outboxRepository.create(
+                    {
                         orderId: item.sellerOrder.orderId,
                         sellerOrderId: item.sellerOrderId,
                         aggregateType: 'SellerOrder',
@@ -1458,7 +1426,8 @@ export class OrdersService {
                         },
                         idempotencyKey: `${idempotencyKey}:refund-event`,
                     },
-                });
+                    tx,
+                );
                 return { refund, sellerOrder: updatedSellerOrder };
             });
             await Promise.all([
@@ -1485,10 +1454,10 @@ export class OrdersService {
                 error instanceof Prisma.PrismaClientKnownRequestError &&
                 error.code === 'P2002'
             ) {
-                const retry = await this.prisma.refund.findUnique({
-                    where: { idempotencyKey },
-                    include: { orderItem: true },
-                });
+                const retry =
+                    await this.orderRepository.findRefundByIdempotencyKey(
+                        idempotencyKey,
+                    );
                 if (retry) return retry;
             }
             throw error;

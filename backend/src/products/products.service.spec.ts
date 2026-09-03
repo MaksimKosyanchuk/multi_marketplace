@@ -11,6 +11,7 @@ import { ProductsService } from './products.service';
 import { LoggerService } from '../logger/logger.service';
 import { ProductStatus, ProductType } from '@prisma/client';
 import * as fileUtils from '../common/utils/file';
+import { ProductRepository } from '../database';
 
 jest.mock('../common/utils/file', () => ({
     deleteFile: jest.fn().mockResolvedValue(undefined),
@@ -135,6 +136,7 @@ describe('ProductsService', () => {
                         verbose: jest.fn(),
                     },
                 },
+                ProductRepository,
             ],
         }).compile();
 

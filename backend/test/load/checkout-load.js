@@ -1,74 +1,89 @@
+import { PrismaClient } from '@prisma/client';
+import jwt from 'jsonwebtoken';
+
+const prisma = new PrismaClient();
 const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+const JWT_SECRET = 'insiders_jwt';
 
 async function main() {
     const baseUrl = process.env.LOAD_BASE_URL || 'http://localhost:3001';
-    const tokens = (process.env.LOAD_TOKENS || process.env.LOAD_TOKEN || '')
-        .split(',')
-        .map((token) => token.trim())
-        .filter(Boolean);
-    const productId = process.env.LOAD_PRODUCT_ID;
-    const quantity = Number(process.env.LOAD_QUANTITY || 1);
-    const concurrency = Number(process.env.LOAD_CONCURRENCY || 4);
-    const initialStock = Number(process.env.LOAD_INITIAL_STOCK || 2);
+    const quantity = 1;
+    const concurrency = 4;
+    const initialStock = 2;
+    const requests = 4;
 
-    if (tokens.length !== 4 || !productId || quantity !== 1 || concurrency !== 4 || initialStock !== 2) {
-        console.error(
-            'This scenario requires exactly 4 CUSTOMER JWTs, LOAD_PRODUCT_ID, quantity 1, concurrency 4, and initial stock 2.',
+    console.log('1. Creating test data in database...');
+
+    const category = await prisma.category.create({
+        data: { name: `Load Category ${runId}`, slug: `load-cat-${runId}` },
+    });
+    const seller = await prisma.user.create({
+        data: {
+            email: `seller-${runId}@example.com`,
+            nickName: `seller-${runId}`,
+            role: 'SELLER',
+        },
+    });
+
+    const product = await prisma.product.create({
+        data: {
+            sellerId: seller.id,
+            categoryId: category.id,
+            name: `Load Test Product ${runId}`,
+            slug: `load-prod-${runId}`,
+            description: 'Automated load test product',
+            type: 'FIXED_PRICE',
+            status: 'ACTIVE',
+            price: 150,
+            stock: initialStock,
+        },
+    });
+
+    const tokens = [];
+    const customerIds = [];
+    for (let i = 0; i < 4; i++) {
+        const customer = await prisma.user.create({
+            data: {
+                email: `customer-${i}-${runId}@example.com`,
+                nickName: `customer-${i}-${runId}`,
+                role: 'CUSTOMER',
+                cart: { create: {} },
+            },
+        });
+        customerIds.push(customer.id);
+
+        const token = jwt.sign(
+            {
+                sub: customer.id,
+                email: customer.email,
+                role: customer.role,
+            },
+            JWT_SECRET,
+            { expiresIn: '1h' }
         );
-        process.exitCode = 1;
-        return;
+
+        tokens.push(token);
     }
 
+    console.log('2. Preparing carts for customers...');
     const headers = (token) => ({
         authorization: 'Bearer ' + token,
         'content-type': 'application/json',
     });
 
-    const productResponse = await fetch(`${baseUrl}/products/${productId}`);
-    if (!productResponse.ok) {
-        throw new Error(
-            `Unable to inspect product: HTTP ${productResponse.status} ${await productResponse.text()}`,
-        );
-    }
-    const product = await productResponse.json();
-    if (
-        product.stock !== initialStock ||
-        product.type !== 'FIXED_PRICE' ||
-        product.status !== 'ACTIVE' ||
-        product.isArchived
-    ) {
-        throw new Error(
-            `Product precondition failed: expected ACTIVE FIXED_PRICE stock=${initialStock}, received ${JSON.stringify({
-                stock: product.stock,
-                type: product.type,
-                status: product.status,
-                isArchived: product.isArchived,
-            })}`,
-        );
-    }
-
     for (const token of tokens) {
-        const clearResponse = await fetch(baseUrl + '/cart', {
-            method: 'DELETE',
-            headers: headers(token),
-        });
-        if (!clearResponse.ok) {
-            throw new Error(
-                `Unable to clear cart: HTTP ${clearResponse.status} ${await clearResponse.text()}`,
-            );
-        }
         const response = await fetch(baseUrl + '/cart/items', {
             method: 'POST',
             headers: headers(token),
-            body: JSON.stringify({ productId, quantity }),
+            body: JSON.stringify({ productId: product.id, quantity }),
         });
         if (!response.ok) {
-            throw new Error(
-                `Unable to prepare cart: HTTP ${response.status} ${await response.text()}`,
-            );
+            throw new Error(`Unable to prepare cart: HTTP ${response.status} ${await response.text()}`);
         }
     }
 
+    console.log('3. Running load test (4 concurrent checkouts)...');
     const durations = [];
     let successfulCheckouts = 0;
     let expectedStockRejections = 0;
@@ -81,7 +96,7 @@ async function main() {
             const response = await fetch(baseUrl + '/orders/checkout', {
                 method: 'POST',
                 headers: {
-                    ...headers(tokens[index % tokens.length]),
+                    ...headers(tokens[index]),
                     'idempotency-key': `load-limited-stock-${runId}-${index}`,
                 },
             });
@@ -103,7 +118,6 @@ async function main() {
         }
     }
 
-    const requests = 4;
     const started = performance.now();
     async function worker() {
         while (nextRequest < requests) await runCheckout(nextRequest++);
@@ -115,14 +129,15 @@ async function main() {
     const elapsed = performance.now() - started;
     durations.sort((a, b) => a - b);
     const p95 = durations[Math.max(0, Math.ceil(durations.length * 0.95) - 1)];
+    
     console.log(
         JSON.stringify(
             {
-                scenario: 'limited-stock checkout',
+                scenario: 'limited-stock checkout (self-contained)',
                 endpoint: '/orders/checkout',
                 requests,
                 concurrency,
-                productId,
+                productId: product.id,
                 quantity,
                 initialStock,
                 rps: Number((requests / (elapsed / 1000)).toFixed(2)),
@@ -135,15 +150,37 @@ async function main() {
             2,
         ),
     );
+
+    console.log('4. Cleaning up test data...');
+    
+    const sellerOrders = await prisma.sellerOrder.findMany({
+        where: { sellerId: seller.id },
+        select: { orderId: true },
+    });
+    const orderIds = [...new Set(sellerOrders.map(so => so.orderId))];
+
+    if (orderIds.length > 0) {
+        await prisma.orderItem.deleteMany({ where: { sellerOrder: { orderId: { in: orderIds } } } });
+        await prisma.ledgerEntry.deleteMany({ where: { sellerOrder: { orderId: { in: orderIds } } } });
+        await prisma.payment.deleteMany({ where: { orderId: { in: orderIds } } });
+        await prisma.sellerOrder.deleteMany({ where: { orderId: { in: orderIds } } });
+        await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
+    }
+
+    await prisma.cartItem.deleteMany({ where: { productId: product.id } });
+    await prisma.product.delete({ where: { id: product.id } });
+    await prisma.category.delete({ where: { id: category.id } });
+    await prisma.cart.deleteMany({ where: { userId: { in: customerIds } } });
+    await prisma.user.deleteMany({ where: { id: { in: [seller.id, ...customerIds] } } });
+    await prisma.$disconnect();
+
     if (
         successfulCheckouts !== initialStock ||
         expectedStockRejections !== requests - initialStock ||
         successfulCheckouts * quantity > initialStock ||
         unexpectedErrors > 0
     ) {
-        console.error(
-            'Limited-stock invariant failed: expected 2 successful checkouts and 2 stock rejections.',
-        );
+        console.error('Limited-stock invariant failed.');
         process.exitCode = 1;
     }
 }

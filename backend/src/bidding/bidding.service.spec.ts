@@ -7,6 +7,11 @@ import {
     ProductType,
 } from '@prisma/client';
 import { BiddingService } from './bidding.service';
+import {
+    AuctionRepository,
+    BidRepository,
+    OutboxRepository,
+} from '../database';
 
 describe('BiddingService critical auction flows', () => {
     const queue = { add: jest.fn() };
@@ -34,6 +39,9 @@ describe('BiddingService critical auction flows', () => {
             prisma as never,
             queue as never,
             logger as never,
+            new AuctionRepository(prisma as never),
+            new BidRepository(prisma as never),
+            new OutboxRepository(prisma as never),
         );
         prisma.bid.findUnique.mockResolvedValue(null);
     });

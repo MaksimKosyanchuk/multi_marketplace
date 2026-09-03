@@ -1,0 +1,184 @@
+import { Injectable } from '@nestjs/common';
+import {
+    AuctionStatus,
+    BidStatus,
+    Prisma,
+    ProductStatus,
+    ProductType,
+} from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import type { DatabaseClient } from './database.types';
+
+const auctionDetails = {
+    product: true,
+    bids: { orderBy: { amount: 'desc' as const } },
+};
+
+@Injectable()
+export class AuctionRepository {
+    constructor(private readonly prisma: PrismaService) {}
+
+    findById(id: string, db: DatabaseClient = this.prisma) {
+        return db.auction.findUnique({ where: { id } });
+    }
+
+    findByIdWithDetails(id: string, db: DatabaseClient = this.prisma) {
+        return db.auction.findUnique({
+            where: { id },
+            include: auctionDetails,
+        });
+    }
+
+    findByProductId(productId: string, db: DatabaseClient = this.prisma) {
+        return db.auction.findUnique({ where: { productId } });
+    }
+
+    create(
+        data: Prisma.AuctionCreateArgs['data'],
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.auction.create({ data, include: auctionDetails });
+    }
+
+    activate(id: string, db: DatabaseClient = this.prisma) {
+        return db.auction.update({
+            where: { id },
+            data: { status: AuctionStatus.ACTIVE },
+            include: auctionDetails,
+        });
+    }
+
+    claimExpired(id: string, db: DatabaseClient = this.prisma) {
+        return db.auction.updateMany({
+            where: {
+                id,
+                status: AuctionStatus.ACTIVE,
+                endsAt: { lte: new Date() },
+            },
+            data: {
+                status: AuctionStatus.EXPIRED,
+                winnerId: null,
+                checkoutExpiresAt: null,
+            },
+        });
+    }
+
+    markEnded(
+        id: string,
+        winnerId: string | null,
+        status: AuctionStatus,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.auction.update({
+            where: { id },
+            data: {
+                status,
+                winnerId,
+                checkoutExpiresAt: winnerId
+                    ? new Date(Date.now() + 15 * 60 * 1000)
+                    : null,
+                version: { increment: 1 },
+            },
+            include: auctionDetails,
+        });
+    }
+
+    claimCheckoutExpiry(
+        id: string,
+        winnerId: string | null,
+        checkoutExpiresAt: Date,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.auction.updateMany({
+            where: {
+                id,
+                status: AuctionStatus.SOLD,
+                winnerId,
+                checkoutExpiresAt,
+            },
+            data: {
+                status: AuctionStatus.EXPIRED,
+                winnerId: null,
+                checkoutExpiresAt: null,
+                version: { increment: 1 },
+            },
+        });
+    }
+
+    listCreatedBySeller(sellerId: string, db: DatabaseClient = this.prisma) {
+        return db.auction.findMany({
+            where: { product: { sellerId } },
+            include: auctionDetails,
+            orderBy: { createdAt: 'desc' },
+        });
+    }
+
+    listParticipatingByBidder(
+        bidderId: string,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.auction.findMany({
+            where: { bids: { some: { bidderId } } },
+            include: auctionDetails,
+            orderBy: { createdAt: 'desc' },
+        });
+    }
+}
+
+@Injectable()
+export class BidRepository {
+    constructor(private readonly prisma: PrismaService) {}
+
+    findByIdempotencyKey(
+        idempotencyKey: string,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.bid.findUnique({ where: { idempotencyKey } });
+    }
+
+    findHighestActive(auctionId: string, db: DatabaseClient = this.prisma) {
+        return db.bid.findFirst({
+            where: { auctionId, status: BidStatus.ACTIVE },
+            orderBy: { amount: 'desc' },
+        });
+    }
+
+    claimAuctionVersion(
+        auctionId: string,
+        version: number,
+        currentPrice: Prisma.Decimal,
+        amount: Prisma.Decimal,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.auction.updateMany({
+            where: {
+                id: auctionId,
+                status: AuctionStatus.ACTIVE,
+                version,
+                currentPrice,
+            },
+            data: { currentPrice: amount, version: { increment: 1 } },
+        });
+    }
+
+    markActiveOutbid(auctionId: string, db: DatabaseClient = this.prisma) {
+        return db.bid.updateMany({
+            where: { auctionId, status: BidStatus.ACTIVE },
+            data: { status: BidStatus.OUTBID },
+        });
+    }
+
+    create(
+        data: Prisma.BidCreateArgs['data'],
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.bid.create({ data });
+    }
+
+    markWon(id: string, db: DatabaseClient = this.prisma) {
+        return db.bid.update({
+            where: { id },
+            data: { status: BidStatus.WON },
+        });
+    }
+}

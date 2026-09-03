@@ -22,6 +22,11 @@ import { getCorrelationId } from '../common/correlation/correlation.context';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAuctionDto } from './dto/create-auction.dto';
 import { LoggerService } from '../logger/logger.service';
+import {
+    AuctionRepository,
+    BidRepository,
+    OutboxRepository,
+} from '../database';
 
 const auctionDetails = {
     product: true,
@@ -34,6 +39,9 @@ export class BiddingService {
         private readonly prisma: PrismaService,
         @InjectQueue('auctions') private readonly auctionsQueue: Queue,
         private readonly logger: LoggerService,
+        private readonly auctionRepository: AuctionRepository,
+        private readonly bidRepository: BidRepository,
+        private readonly outboxRepository: OutboxRepository,
     ) {}
 
     async createAuction(sellerId: string, dto: CreateAuctionDto) {
@@ -64,14 +72,15 @@ export class BiddingService {
                     'Only a draft, pending, or active auction product can be listed',
                 );
             }
-            const existing = await tx.auction.findUnique({
-                where: { productId: dto.productId },
-            });
+            const existing = await this.auctionRepository.findByProductId(
+                dto.productId,
+                tx,
+            );
             if (existing)
                 throw new ConflictException('Product already has an auction');
 
-            return tx.auction.create({
-                data: {
+            return this.auctionRepository.create(
+                {
                     productId: dto.productId,
                     startingPrice: new Prisma.Decimal(dto.startingPrice),
                     currentPrice: new Prisma.Decimal(dto.startingPrice),
@@ -80,8 +89,8 @@ export class BiddingService {
                     endsAt,
                     status: AuctionStatus.DRAFT,
                 },
-                include: auctionDetails,
-            });
+                tx,
+            );
         });
         await this.auctionsQueue.add(
             'end-auction',
@@ -119,9 +128,10 @@ export class BiddingService {
 
     async startAuction(auctionId: string) {
         return this.prisma.$transaction(async (tx) => {
-            const auction = await tx.auction.findUnique({
-                where: { id: auctionId },
-            });
+            const auction = await this.auctionRepository.findById(
+                auctionId,
+                tx,
+            );
             if (
                 !auction ||
                 auction.status !== AuctionStatus.DRAFT ||
@@ -134,22 +144,19 @@ export class BiddingService {
             if (product?.status !== ProductStatus.ACTIVE) {
                 return auction;
             }
-            const result = await tx.auction.update({
-                where: { id: auctionId },
-                data: { status: AuctionStatus.ACTIVE },
-                include: auctionDetails,
-            });
-            await tx.outboxEvent.create({
-                data: {
+            const result = await this.auctionRepository.activate(auctionId, tx);
+            await this.outboxRepository.create(
+                {
                     aggregateType: 'Auction',
                     aggregateId: auctionId,
                     type: 'auction.started',
                     payload: { auctionId, correlationId: getCorrelationId() },
                     idempotencyKey: `auction-started:${auctionId}`,
                 },
-            });
-            await tx.outboxEvent.create({
-                data: {
+                tx,
+            );
+            await this.outboxRepository.create(
+                {
                     aggregateType: 'Product',
                     aggregateId: auction.productId,
                     type: 'product.auction-status-changed',
@@ -159,7 +166,8 @@ export class BiddingService {
                     },
                     idempotencyKey: `product-auction-status:${auctionId}:ACTIVE`,
                 },
-            });
+                tx,
+            );
             void this.logger.audit(BiddingService.name, 'Auction started', {
                 auctionId,
                 productId: auction.productId,
@@ -169,10 +177,8 @@ export class BiddingService {
     }
 
     async findAuction(auctionId: string) {
-        const current = await this.prisma.auction.findUnique({
-            where: { id: auctionId },
-            include: auctionDetails,
-        });
+        const current =
+            await this.auctionRepository.findByIdWithDetails(auctionId);
         if (
             current &&
             current.status === AuctionStatus.ACTIVE &&
@@ -184,19 +190,11 @@ export class BiddingService {
     }
 
     findCreatedAuctions(sellerId: string) {
-        return this.prisma.auction.findMany({
-            where: { product: { sellerId } },
-            include: auctionDetails,
-            orderBy: { createdAt: 'desc' },
-        });
+        return this.auctionRepository.listCreatedBySeller(sellerId);
     }
 
     findParticipatingAuctions(bidderId: string) {
-        return this.prisma.auction.findMany({
-            where: { bids: { some: { bidderId } } },
-            include: auctionDetails,
-            orderBy: { createdAt: 'desc' },
-        });
+        return this.auctionRepository.listParticipatingByBidder(bidderId);
     }
 
     async placeBid(
@@ -207,9 +205,8 @@ export class BiddingService {
     ) {
         if (!idempotencyKey?.trim())
             throw new BadRequestException('Idempotency-Key header is required');
-        const existing = await this.prisma.bid.findUnique({
-            where: { idempotencyKey },
-        });
+        const existing =
+            await this.bidRepository.findByIdempotencyKey(idempotencyKey);
         if (existing) {
             if (
                 existing.bidderId !== bidderId ||
@@ -224,9 +221,10 @@ export class BiddingService {
 
         try {
             const result = await this.prisma.$transaction(async (tx) => {
-                const auction = await tx.auction.findUnique({
-                    where: { id: auctionId },
-                });
+                const auction = await this.auctionRepository.findById(
+                    auctionId,
+                    tx,
+                );
                 if (!auction) throw new NotFoundException('Auction not found');
                 const now = new Date();
                 if (
@@ -257,18 +255,13 @@ export class BiddingService {
                         `Bid must be at least ${minimum.toString()}`,
                     );
                 }
-                const updated = await tx.auction.updateMany({
-                    where: {
-                        id: auctionId,
-                        status: AuctionStatus.ACTIVE,
-                        version: auction.version,
-                        currentPrice: auction.currentPrice,
-                    },
-                    data: {
-                        currentPrice: bidAmount,
-                        version: { increment: 1 },
-                    },
-                });
+                const updated = await this.bidRepository.claimAuctionVersion(
+                    auctionId,
+                    auction.version,
+                    auction.currentPrice,
+                    bidAmount,
+                    tx,
+                );
                 if (!updated.count) {
                     void this.logger.warn(
                         BiddingService.name,
@@ -283,20 +276,18 @@ export class BiddingService {
                         'Auction changed; retry the bid',
                     );
                 }
-                await tx.bid.updateMany({
-                    where: { auctionId, status: BidStatus.ACTIVE },
-                    data: { status: BidStatus.OUTBID },
-                });
-                const bid = await tx.bid.create({
-                    data: {
+                await this.bidRepository.markActiveOutbid(auctionId, tx);
+                const bid = await this.bidRepository.create(
+                    {
                         auctionId,
                         bidderId,
                         amount: bidAmount,
                         idempotencyKey,
                     },
-                });
-                await tx.outboxEvent.create({
-                    data: {
+                    tx,
+                );
+                await this.outboxRepository.create(
+                    {
                         aggregateType: 'Auction',
                         aggregateId: auctionId,
                         type: 'auction.bid-placed',
@@ -308,7 +299,8 @@ export class BiddingService {
                         },
                         idempotencyKey: `${idempotencyKey}:event`,
                     },
-                });
+                    tx,
+                );
                 return { bid, currentPrice: bidAmount };
             });
             void this.logger.audit(BiddingService.name, 'Bid accepted', {
@@ -334,62 +326,42 @@ export class BiddingService {
 
     async endAuction(auctionId: string) {
         return this.prisma.$transaction(async (tx) => {
-            const auction = await tx.auction.findUnique({
-                where: { id: auctionId },
-            });
+            const auction = await this.auctionRepository.findById(
+                auctionId,
+                tx,
+            );
             if (!auction || auction.status !== AuctionStatus.ACTIVE)
                 return auction;
             if (new Date() < auction.endsAt) return auction;
-            const claimed = await tx.auction.updateMany({
-                where: {
-                    id: auctionId,
-                    status: AuctionStatus.ACTIVE,
-                    endsAt: { lte: new Date() },
-                },
-                data: {
-                    status: AuctionStatus.EXPIRED,
-                    winnerId: null,
-                    checkoutExpiresAt: null,
-                },
-            });
+            const claimed = await this.auctionRepository.claimExpired(
+                auctionId,
+                tx,
+            );
             if (!claimed.count)
-                return tx.auction.findUnique({
-                    where: { id: auctionId },
-                    include: auctionDetails,
-                });
-            const winner = await tx.bid.findFirst({
-                where: { auctionId, status: BidStatus.ACTIVE },
-                orderBy: { amount: 'desc' },
-            });
+                return this.auctionRepository.findByIdWithDetails(
+                    auctionId,
+                    tx,
+                );
+            const winner = await this.bidRepository.findHighestActive(
+                auctionId,
+                tx,
+            );
             const status = winner ? AuctionStatus.SOLD : AuctionStatus.EXPIRED;
-            await tx.auction.update({
-                where: { id: auctionId },
-                data: {
-                    status,
-                    winnerId: winner?.bidderId ?? null,
-                    checkoutExpiresAt: winner
-                        ? new Date(Date.now() + 15 * 60 * 1000)
-                        : null,
-                    version: { increment: 1 },
-                },
-            });
-            const result = await tx.auction.findUnique({
-                where: { id: auctionId },
-                include: auctionDetails,
-            });
-            if (winner)
-                await tx.bid.update({
-                    where: { id: winner.id },
-                    data: { status: BidStatus.WON },
-                });
+            const result = await this.auctionRepository.markEnded(
+                auctionId,
+                winner?.bidderId ?? null,
+                status,
+                tx,
+            );
+            if (winner) await this.bidRepository.markWon(winner.id, tx);
             void this.logger.audit(BiddingService.name, 'Auction ended', {
                 auctionId,
                 status,
                 winnerId: winner?.bidderId ?? null,
                 winningBidId: winner?.id ?? null,
             });
-            await tx.outboxEvent.create({
-                data: {
+            await this.outboxRepository.create(
+                {
                     aggregateType: 'Auction',
                     aggregateId: auctionId,
                     type: 'auction.ended',
@@ -401,16 +373,18 @@ export class BiddingService {
                     },
                     idempotencyKey: `auction-ended:${auctionId}`,
                 },
-            });
+                tx,
+            );
             return result;
         });
     }
 
     async expireWinnerCheckout(auctionId: string) {
         return this.prisma.$transaction(async (tx) => {
-            const auction = await tx.auction.findUnique({
-                where: { id: auctionId },
-            });
+            const auction = await this.auctionRepository.findById(
+                auctionId,
+                tx,
+            );
             if (
                 !auction ||
                 auction.status !== AuctionStatus.SOLD ||
@@ -418,33 +392,24 @@ export class BiddingService {
                 auction.checkoutExpiresAt > new Date()
             )
                 return auction;
-            const claimed = await tx.auction.updateMany({
-                where: {
-                    id: auctionId,
-                    status: AuctionStatus.SOLD,
-                    winnerId: auction.winnerId,
-                    checkoutExpiresAt: auction.checkoutExpiresAt,
-                },
-                data: {
-                    status: AuctionStatus.EXPIRED,
-                    winnerId: null,
-                    checkoutExpiresAt: null,
-                    version: { increment: 1 },
-                },
-            });
+            const claimed = await this.auctionRepository.claimCheckoutExpiry(
+                auctionId,
+                auction.winnerId,
+                auction.checkoutExpiresAt,
+                tx,
+            );
             if (!claimed.count) return auction;
-            const result = await tx.auction.findUnique({
-                where: { id: auctionId },
-            });
-            await tx.outboxEvent.create({
-                data: {
+            const result = await this.auctionRepository.findById(auctionId, tx);
+            await this.outboxRepository.create(
+                {
                     aggregateType: 'Auction',
                     aggregateId: auctionId,
                     type: 'auction.checkout-expired',
                     payload: { auctionId, correlationId: getCorrelationId() },
                     idempotencyKey: `auction-checkout-expired:${auctionId}`,
                 },
-            });
+                tx,
+            );
             void this.logger.audit(
                 BiddingService.name,
                 'Auction winner checkout expired',

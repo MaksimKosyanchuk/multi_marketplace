@@ -14,6 +14,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { MockPaymentService } from '../payments/mock-payment.service';
 import { deriveOrderStatus, OrdersService } from './orders.service';
+import {
+    CartRepository,
+    OrderRepository,
+    OutboxRepository,
+    ProductRepository,
+} from '../database';
 
 describe('OrdersService checkout', () => {
     let service: OrdersService;
@@ -68,6 +74,10 @@ describe('OrdersService checkout', () => {
                     provide: MockPaymentService,
                     useValue: { authorize: jest.fn() },
                 },
+                CartRepository,
+                OrderRepository,
+                OutboxRepository,
+                ProductRepository,
             ],
         }).compile();
         service = module.get(OrdersService);

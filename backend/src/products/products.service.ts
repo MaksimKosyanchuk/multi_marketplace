@@ -18,6 +18,7 @@ import {
 import { deleteFile } from '../common/utils/file';
 import { LoggerService } from '../logger/logger.service';
 import { getCorrelationId } from '../common/correlation/correlation.context';
+import { ProductRepository } from '../database';
 
 interface ProductWithCategory {
     id: string;
@@ -57,6 +58,7 @@ export class ProductsService {
         private prisma: PrismaService,
         private redis: RedisService,
         private logger: LoggerService,
+        private readonly productRepository: ProductRepository,
     ) {}
 
     async findAll(query: QueryProductDto): Promise<PaginatedProductsResult> {
@@ -446,15 +448,16 @@ export class ProductsService {
             const imageUrl = uploadedFilePath ?? dto.imageUrl ?? null;
 
             const product = await this.prisma.$transaction(async (tx) => {
-                const created = await tx.product.create({
-                    data: {
+                const created = await this.productRepository.create(
+                    {
                         ...productData,
                         sellerId,
                         slug: this.createSlug(dto.name),
                         description: dto.description ?? '',
                         imageUrl,
                     },
-                });
+                    tx,
+                );
                 await tx.outboxEvent.create({
                     data: {
                         aggregateType: 'Product',
@@ -525,14 +528,15 @@ export class ProductsService {
         try {
             const updatedProduct = await this.prisma.$transaction(
                 async (tx) => {
-                    const updated = await tx.product.update({
-                        where: { id },
-                        data: {
+                    const updated = await this.productRepository.update(
+                        id,
+                        {
                             ...productData,
                             imageUrl: newImageUrl,
                             version: { increment: 1 },
                         },
-                    });
+                        tx,
+                    );
                     await tx.outboxEvent.create({
                         data: {
                             aggregateType: 'Product',

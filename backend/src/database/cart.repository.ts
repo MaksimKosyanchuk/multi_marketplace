@@ -1,0 +1,25 @@
+import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import type { DatabaseClient } from './database.types';
+
+@Injectable()
+export class CartRepository {
+    constructor(private readonly prisma: PrismaService) {}
+
+    findByUserId(userId: string, db: DatabaseClient = this.prisma) {
+        return db.cart.findUnique({ where: { userId } });
+    }
+
+    findItems(cartId: string, db: DatabaseClient = this.prisma) {
+        return db.cartItem.findMany({
+            where: { cartId },
+            include: { product: true },
+            orderBy: { createdAt: 'asc' },
+        });
+    }
+
+    clear(cartId: string, db: DatabaseClient = this.prisma) {
+        return db.cartItem.deleteMany({ where: { cartId } });
+    }
+}
