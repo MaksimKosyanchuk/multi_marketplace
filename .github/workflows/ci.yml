@@ -24,19 +24,23 @@ jobs:
             frontend/package-lock.json
 
       - name: Install Backend Dependencies
-        run: npm ci --prefix backend
+        run: npm ci
+        working-directory: backend
 
       - name: Install Frontend Dependencies
-        run: npm ci --prefix frontend
+        run: npm ci
+        working-directory: frontend
 
       - name: Run Backend Linter
-        run: npm run lint --prefix backend
+        run: npm run lint
+        working-directory: backend
 
       - name: Run Frontend Linter
-        run: npm run lint --prefix frontend
+        run: npm run lint
+        working-directory: frontend
 
   backend-test:
-    name: Backend Tests (Unit & E2E)
+    name: Backend Tests (Unit, E2E & Load)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -90,6 +94,17 @@ jobs:
 
       - name: Run E2E Tests
         run: npm run test:e2e --prefix backend
+        env:
+          DATABASE_HOST: localhost
+          DATABASE_PORT: 5432
+          DATABASE_USER: postgres
+          DATABASE_PASSWORD: password
+          DATABASE_NAME: marketplace_test
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+
+      - name: Run Load Tests
+        run: npm run test:load --prefix backend
         env:
           DATABASE_HOST: localhost
           DATABASE_PORT: 5432
