@@ -38,10 +38,8 @@ asynchronous event delivery.
 - Storybook coverage for all required key components is not complete.
 - Docker Compose configuration for the full required stack is not complete.
 - Frontend component test coverage is incomplete.
-- Some backend tests still require updates to match the current transaction and
-  outbox implementation.
-- Full E2E suite, deployment verification and complete benchmark history remain
-  open.
+- Full E2E coverage, deployment verification and complete benchmark history
+  remain open.
 
 ## Technology stack
 
@@ -120,6 +118,13 @@ cd backend && npm run test:e2e
 cd backend && npm run test:load
 cd frontend && npm test
 ```
+
+The critical integration suite in `backend/test/order-flow-e2e-spec.ts` covers:
+
+- multi-seller cart checkout with one `SellerOrder` per seller and stock
+  decrements for every product;
+- concurrent bids with optimistic version protection and one accepted bid;
+- repeated outbox delivery with one consumer receipt and no duplicate effect.
 
 The load result above is the currently recorded runtime verification. Full
 test completion and the remaining delivery requirements are listed as open
