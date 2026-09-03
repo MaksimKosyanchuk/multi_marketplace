@@ -98,8 +98,11 @@ export const orderService = {
     },
 
     getAllOrders: async (): Promise<{ items: Order[]; meta: unknown }> => {
-        const response = await api.get('/orders');
-        return response.data;
+        const response = await api.get<{ items: unknown[]; meta: unknown }>('/orders');
+        return {
+            items: response.data.items.map(normalizeOrder),
+            meta: response.data.meta,
+        };
     },
 
     async updateStatus(orderId: string, status: OrderStatus): Promise<Order> {
