@@ -141,6 +141,14 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
     const isValidTotal = !isNaN(totalAmount) && totalAmount >= 0;
 
     const sellerOrders = order.sellerOrders ?? [];
+    const unpaidAmount = sellerOrders
+        .filter(
+            (sellerOrder) =>
+                sellerOrder.status === 'NEW' ||
+                sellerOrder.status === 'PAYMENT_PENDING',
+        )
+        .reduce((total, sellerOrder) => total + Number(sellerOrder.subtotal), 0);
+    const amountDue = sellerOrders.length > 0 ? unpaidAmount : totalAmount;
     const sellerStatusLabels: Record<SellerOrderStatus, string> = {
         NEW: 'Нове',
         PAYMENT_PENDING: 'Не оплачено',
@@ -151,6 +159,11 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
     };
     const sellerCanCancel = (sellerOrder: SellerOrder) =>
         ['NEW', 'PAYMENT_PENDING', 'PROCESSING', 'SHIPPED'].includes(sellerOrder.status);
+    const hasUnpaidSellerOrder = sellerOrders.some(
+        (sellerOrder) =>
+            sellerOrder.status === 'NEW' ||
+            sellerOrder.status === 'PAYMENT_PENDING',
+    );
 
     return (
         <>
@@ -262,13 +275,22 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
                 <div className={styles.footer}>
                     <div className={styles.total}>
                         <span>{isAdmin ? 'Загальна сума:' : 'Сума до сплати:'}</span>
-                        <strong>${isValidTotal ? totalAmount.toFixed(2) : '0.00'}</strong>
+                        <strong>
+                            {isAdmin
+                                ? isValidTotal
+                                    ? totalAmount.toFixed(2)
+                                    : '0.00'
+                                : amountDue.toFixed(2)}
+                                $
+                        </strong>
+                        
                     </div>
 
                     {!isAdmin && (
                         <div className={styles.actions}>
                             {(order.status === 'NEW' ||
-                                order.status === 'PAYMENT_PENDING') &&
+                                order.status === 'PAYMENT_PENDING' ||
+                                hasUnpaidSellerOrder) &&
                                 onPay && (
                                 <Button
                                     variant="primary"

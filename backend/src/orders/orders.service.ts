@@ -361,7 +361,8 @@ export class OrdersService {
                 }
                 if (
                     order.status !== OrderStatus.PAYMENT_PENDING &&
-                    order.status !== OrderStatus.NEW
+                    order.status !== OrderStatus.NEW &&
+                    order.status !== OrderStatus.PARTIALLY_CANCELLED
                 ) {
                     throw new BadRequestException(
                         `Order cannot be paid in status ${order.status}`,
@@ -402,13 +403,25 @@ export class OrdersService {
                     where: { orderId },
                     select: { id: true, status: true, sellerId: true, subtotal: true },
                 });
+                const payableAmount = sellerOrdersForPayment
+                    .filter(({ status }) => status !== SellerOrderStatus.CANCELLED)
+                    .reduce(
+                        (total, sellerOrder) => total.add(sellerOrder.subtotal),
+                        new Prisma.Decimal(0),
+                    );
+                if (payableAmount.isZero()) {
+                    throw new BadRequestException(
+                        'Order has no payable seller orders',
+                    );
+                }
                 const charge = this.mockPayment.charge(
                     payment.id,
-                    payment.amount,
+                    payableAmount,
                 );
                 await tx.payment.update({
                     where: { id: payment.id },
                     data: {
+                        amount: payableAmount,
                         status: PaymentStatus.PAID,
                         providerRef: charge.providerRef,
                         paidAt: new Date(),
