@@ -3,6 +3,7 @@ import {
     ForbiddenException,
     Injectable,
     NotFoundException,
+    Optional,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -23,6 +24,7 @@ import { QueryOrderDto } from './dto/query-order.dto';
 import { UpdateSellerOrderStatusDto } from './dto/update-seller-order-status.dto';
 import { MockPaymentService } from '../payments/mock-payment.service';
 import { getCorrelationId } from '../common/correlation/correlation.context';
+import { OrdersGateway } from './orders.geteway';
 
 const orderDetails = {
     sellerOrders: {
@@ -83,6 +85,7 @@ export class OrdersService {
         private readonly logger: LoggerService,
         private readonly redis: RedisService,
         private readonly mockPayment: MockPaymentService,
+        @Optional() private readonly ordersGateway?: OrdersGateway,
     ) {}
 
     /** Creates all seller sub-orders, stock mutations, ledger entries, and outbox events atomically. */
@@ -322,6 +325,26 @@ export class OrdersService {
                 );
             }
             return existing.order;
+        }
+
+        const pendingOrder = await this.prisma.order.findUnique({
+            where: { id: orderId },
+            include: { payments: true },
+        });
+        if (!pendingOrder) throw new NotFoundException('Order not found');
+        if (pendingOrder.userId !== userId) {
+            throw new ForbiddenException('You do not have access to this order');
+        }
+        if (
+            pendingOrder.status === OrderStatus.PAYMENT_PENDING &&
+            pendingOrder.payments.some(({ status }) => status === PaymentStatus.PENDING)
+        ) {
+            this.ordersGateway?.emitOrderStatusUpdate(
+                userId,
+                orderId,
+                OrderStatus.PAYMENT_PENDING,
+            );
+            await new Promise((resolve) => setTimeout(resolve, 5000));
         }
 
         try {
@@ -956,14 +979,17 @@ export class OrdersService {
                     where: {
                         id: sellerOrderId,
                         status: {
-                            in: [SellerOrderStatus.PROCESSING],
+                            in: cancellableStatuses,
                         },
                     },
                     data: {
                         status: SellerOrderStatus.CANCELLED,
                         cancelledAt: new Date(),
                         cancellationReason:
-                            reason.trim() || 'Cancelled by seller',
+                            reason.trim() ||
+                            (customerId
+                                ? 'Cancelled by customer'
+                                : 'Cancelled by seller'),
                     },
                 });
                 if (!claimed.count) {

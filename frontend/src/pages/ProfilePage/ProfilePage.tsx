@@ -159,7 +159,16 @@ export const ProfilePage: React.FC = () => {
     };
 
     const handleOrderUpdate = useCallback(
-        async (_payload?: { orderId?: string; status?: string }) => {
+        async (payload?: { orderId?: string; status?: string }) => {
+            if (payload?.orderId && payload.status) {
+                setOrders((current) =>
+                    current.map((order) =>
+                        order.id === payload.orderId
+                            ? { ...order, status: payload.status as Order['status'] }
+                            : order,
+                    ),
+                );
+            }
             try {
                 const newOrders = await orderService.getMyOrders();
 
@@ -213,7 +222,6 @@ export const ProfilePage: React.FC = () => {
 
     const handlePayOrder = async (orderId: string) => {
         try {
-            await new Promise((resolve) => window.setTimeout(resolve, 5000));
             await orderService.payOrder(orderId);
             setOrders((current) =>
                 current.map((order) =>
