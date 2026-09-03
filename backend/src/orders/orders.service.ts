@@ -42,39 +42,27 @@ const sellerOrderDetails = {
 } satisfies Prisma.SellerOrderInclude;
 
 export function deriveOrderStatus(statuses: SellerOrderStatus[]): OrderStatus {
-    if (
-        !statuses.length ||
-        statuses.every((status) => status === SellerOrderStatus.NEW)
-    ) {
+    if (!statuses.length) {
         return OrderStatus.NEW;
     }
     if (statuses.every((status) => status === SellerOrderStatus.CANCELLED)) {
         return OrderStatus.CANCELLED;
     }
-    if (statuses.some((status) => status === SellerOrderStatus.CANCELLED)) {
-        return OrderStatus.PARTIALLY_CANCELLED;
-    }
-    if (
-        statuses.every((status) => status === SellerOrderStatus.PAYMENT_PENDING)
-    ) {
-        return OrderStatus.PAYMENT_PENDING;
-    }
-    if (statuses.every((status) => status === SellerOrderStatus.COMPLETED)) {
-        return OrderStatus.COMPLETED;
-    }
-    if (statuses.some((status) => status === SellerOrderStatus.COMPLETED)) {
-        return OrderStatus.PARTIALLY_COMPLETED;
-    }
-    if (statuses.every((status) => status === SellerOrderStatus.SHIPPED)) {
-        return OrderStatus.SHIPPED;
-    }
-    if (statuses.some((status) => status === SellerOrderStatus.SHIPPED)) {
-        return OrderStatus.PARTIALLY_SHIPPED;
-    }
-    if (statuses.some((status) => status === SellerOrderStatus.PROCESSING)) {
-        return OrderStatus.PROCESSING;
-    }
-    return OrderStatus.NEW;
+    const statusPriority: Record<SellerOrderStatus, number> = {
+        [SellerOrderStatus.NEW]: 1,
+        [SellerOrderStatus.PAYMENT_PENDING]: 2,
+        [SellerOrderStatus.PROCESSING]: 3,
+        [SellerOrderStatus.SHIPPED]: 4,
+        [SellerOrderStatus.COMPLETED]: 5,
+        [SellerOrderStatus.CANCELLED]: 0,
+    };
+    const highestActiveStatus = statuses
+        .filter((status) => status !== SellerOrderStatus.CANCELLED)
+        .sort((left, right) => statusPriority[right] - statusPriority[left])[0];
+
+    return highestActiveStatus === undefined
+        ? OrderStatus.CANCELLED
+        : (highestActiveStatus as OrderStatus);
 }
 
 @Injectable()

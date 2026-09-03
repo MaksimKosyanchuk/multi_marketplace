@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Role, SellerOrderStatus } from '@prisma/client';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
+import { OrdersGateway } from './orders.geteway';
 import { QueryOrderDto } from './dto/query-order.dto';
 import { UpdateSellerOrderStatusDto } from './dto/update-seller-order-status.dto';
 
@@ -90,6 +91,10 @@ describe('OrdersController', () => {
                     provide: OrdersService,
                     useValue: mockOrdersService,
                 },
+                {
+                    provide: OrdersGateway,
+                    useValue: { emitOrderStatusUpdate: jest.fn() },
+                },
             ],
         }).compile();
 
@@ -115,7 +120,7 @@ describe('OrdersController', () => {
         it('should call ordersService.payOrder with user id and order id', async () => {
             await controller.payOrder(mockUserReq, 'order-1');
 
-            expect(payOrderMock).toHaveBeenCalledWith('user-1', 'order-1');
+            expect(payOrderMock).toHaveBeenCalledWith('user-1', 'order-1', '');
             expect(payOrderMock).toHaveBeenCalledTimes(1);
         });
     });

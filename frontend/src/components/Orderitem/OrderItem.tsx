@@ -108,10 +108,12 @@ export const OrderItemCard: React.FC<OrderItemProps> = ({
         }
     };
 
-    const statusInfo = statusLabels[order.status] || {
-        text: order.status ?? 'Невідомий',
-        className: '',
-    };
+    const statusInfo = isProcessing && order.status === 'PAYMENT_PENDING'
+        ? { text: 'Оплата обробляється', className: styles.statusPending }
+        : statusLabels[order.status] || {
+            text: order.status ?? 'Невідомий',
+            className: '',
+        };
 
     const isCancelable =
         order.status === 'NEW' ||

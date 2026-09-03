@@ -127,9 +127,9 @@ describe('OrdersService checkout', () => {
     it.each([
         [[SellerOrderStatus.NEW], OrderStatus.NEW],
         [[SellerOrderStatus.PROCESSING, SellerOrderStatus.PROCESSING], OrderStatus.PROCESSING],
-        [[SellerOrderStatus.SHIPPED, SellerOrderStatus.PROCESSING], OrderStatus.PARTIALLY_SHIPPED],
-        [[SellerOrderStatus.COMPLETED, SellerOrderStatus.SHIPPED], OrderStatus.PARTIALLY_COMPLETED],
-        [[SellerOrderStatus.CANCELLED, SellerOrderStatus.PROCESSING], OrderStatus.PARTIALLY_CANCELLED],
+        [[SellerOrderStatus.SHIPPED, SellerOrderStatus.PROCESSING], OrderStatus.SHIPPED],
+        [[SellerOrderStatus.COMPLETED, SellerOrderStatus.SHIPPED], OrderStatus.COMPLETED],
+        [[SellerOrderStatus.CANCELLED, SellerOrderStatus.PROCESSING], OrderStatus.PROCESSING],
         [[SellerOrderStatus.CANCELLED], OrderStatus.CANCELLED],
     ])('derives parent status from seller-order statuses', (statuses, expected) => {
         expect(deriveOrderStatus(statuses)).toBe(expected);

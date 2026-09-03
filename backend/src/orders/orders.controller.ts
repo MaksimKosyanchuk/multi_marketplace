@@ -19,6 +19,7 @@ import {
 } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { OrdersService } from './orders.service';
+import { OrdersGateway } from './orders.geteway';
 import { UpdateSellerOrderStatusDto } from './dto/update-seller-order-status.dto';
 import { CancelSellerOrderDto } from './dto/cancel-seller-order.dto';
 import { RefundOrderItemDto } from './dto/refund-order-item.dto';
@@ -37,7 +38,10 @@ import {
 @UseGuards(JwtAuthGuard)
 @Controller('orders')
 export class OrdersController {
-    constructor(private readonly ordersService: OrdersService) {}
+    constructor(
+        private readonly ordersService: OrdersService,
+        private readonly ordersGateway: OrdersGateway,
+    ) {}
 
     @Post('checkout')
     @UseGuards(JwtAuthGuard, RolesGuard)
@@ -98,6 +102,11 @@ export class OrdersController {
         @Param('id') id: string,
         @Headers('idempotency-key') idempotencyKey: string | undefined,
     ): ReturnType<OrdersService['payOrder']> {
+        this.ordersGateway.emitOrderStatusUpdate(
+            req.user.id,
+            id,
+            'PAYMENT_PENDING',
+        );
         return this.ordersService.payOrder(
             req.user.id,
             id,

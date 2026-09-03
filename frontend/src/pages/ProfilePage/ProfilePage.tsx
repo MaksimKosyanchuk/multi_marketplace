@@ -169,6 +169,9 @@ export const ProfilePage: React.FC = () => {
                     ),
                 );
             }
+            if (payload?.status === 'PAYMENT_PENDING') {
+                return;
+            }
             try {
                 const newOrders = await orderService.getMyOrders();
 
@@ -190,8 +193,8 @@ export const ProfilePage: React.FC = () => {
             return;
         }
 
-        const handleOrderStatusUpdate = () => {
-            if (isCustomer) void handleOrderUpdate();
+        const handleOrderStatusUpdate = (payload?: { orderId?: string; status?: string }) => {
+            if (isCustomer) void handleOrderUpdate(payload);
             if (isSeller) void fetchSales();
         };
         const handleReconnect = () => {
@@ -222,6 +225,13 @@ export const ProfilePage: React.FC = () => {
 
     const handlePayOrder = async (orderId: string) => {
         try {
+            setOrders((current) =>
+                current.map((order) =>
+                    order.id === orderId
+                        ? { ...order, status: 'PAYMENT_PENDING' }
+                        : order,
+                ),
+            );
             await orderService.payOrder(orderId);
             setOrders((current) =>
                 current.map((order) =>
