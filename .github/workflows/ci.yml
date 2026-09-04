@@ -69,7 +69,7 @@ jobs:
           VITE_API_URL: http://localhost:3001
 
   backend-test:
-    name: Backend Tests & Load Tests
+    name: Tests
     needs: build-and-lint
     runs-on: ubuntu-latest
     services:
