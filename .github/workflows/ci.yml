@@ -64,6 +64,16 @@ jobs:
             backend/package-lock.json
             frontend/package-lock.json
 
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            backend/node_modules
+            frontend/node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('backend/package-lock.json', 'frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-modules-
+
       - name: Install Backend Dependencies
         run: npm ci --verbose
         working-directory: backend
