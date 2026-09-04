@@ -18,6 +18,16 @@ jobs:
       - name: Validate Docker Compose Configuration
         run: docker compose config --quiet
 
+      - name: Verify Backend Lint Script
+        working-directory: backend
+        run: |
+          node -e "const p=require('./package.json'); if (!p.scripts?.lint || p.scripts.lint.includes('--fix')) { console.error('Backend lint script must exist and must not contain --fix'); process.exit(1); }"
+
+      - name: Verify Frontend Lint Script
+        working-directory: frontend
+        run: |
+          node -e "const p=require('./package.json'); if (!p.scripts?.lint || p.scripts.lint.includes('--fix')) { console.error('Frontend lint script must exist and must not contain --fix'); process.exit(1); }"
+
       - name: Lint Backend Dockerfile
         run: docker build --check -f backend/Dockerfile backend/
 
@@ -81,75 +91,37 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Cache Backend Docker Build
-        uses: actions/cache@v4
-        with:
-          path: /tmp/.buildx-cache-backend
-          key: ${{ runner.os }}-docker-backend-v2-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-docker-backend-v2-
-
-      - name: Cache Frontend Docker Build
-        uses: actions/cache@v4
-        with:
-          path: /tmp/.buildx-cache-frontend
-          key: ${{ runner.os }}-docker-frontend-v2-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-docker-frontend-v2-
-
-      - name: Build Backend Docker Image
-        uses: docker/build-push-action@v6
-        with:
-          context: ./backend
-          file: ./backend/Dockerfile
-          push: false
-          load: true
-          tags: marketplace-backend:ci
-          cache-from: type=local,src=/tmp/.buildx-cache-backend
-          cache-to: type=local,dest=/tmp/.buildx-cache-backend-new,mode=max
-
-      - name: Build Frontend Docker Image
-        uses: docker/build-push-action@v6
-        with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
-          push: false
-          load: true
-          tags: marketplace-frontend:ci
-          cache-from: type=local,src=/tmp/.buildx-cache-frontend
-          cache-to: type=local,dest=/tmp/.buildx-cache-frontend-new,mode=max
-
-      - name: Replace Docker Build Cache
-        if: always()
+      - name: Verify Backend Lint Script
+        working-directory: backend
         run: |
-          rm -rf /tmp/.buildx-cache-backend
-          if [ -d /tmp/.buildx-cache-backend-new ]; then
-            mv /tmp/.buildx-cache-backend-new /tmp/.buildx-cache-backend
-          fi
+          node -e "const p=require('./package.json'); if (!p.scripts?.lint || p.scripts.lint.includes('--fix')) { console.error('Backend lint script must exist and must not contain --fix'); process.exit(1); }"
 
-          rm -rf /tmp/.buildx-cache-frontend
-          if [ -d /tmp/.buildx-cache-frontend-new ]; then
-            mv /tmp/.buildx-cache-frontend-new /tmp/.buildx-cache-frontend
-          fi
+      - name: Verify Frontend Lint Script
+        working-directory: frontend
+        run: |
+          node -e "const p=require('./package.json'); if (!p.scripts?.lint || p.scripts.lint.includes('--fix')) { console.error('Frontend lint script must exist and must not contain --fix'); process.exit(1); }"
+
+      - name: Remove Previous Docker Environment
+        run: docker compose down -v --remove-orphans
+
+      - name: Build Docker Images Without Cache
+        run: docker compose build --no-cache --pull
 
       - name: Build and Start Docker Environment
         env:
-          DATABASE_URL: postgresql://postgres:password@postgres:5432/marketplace_test?schema=public
+          DATABASE_URL: postgresql://postgres:postgres@postgres:5432/marketplace?schema=public
           REDIS_HOST: redis
           REDIS_PORT: 6379
           JWT_ACCESS_SECRET: insiders_jwt
           JWT_REFRESH_SECRET: insiders_refresh_jwt
-        run: docker compose up -d
+        run: docker compose up -d --force-recreate
 
       - name: Show Docker Status
         run: docker compose ps
 
       - name: Run Prisma Migrations
         env:
-          DATABASE_URL: postgresql://postgres:password@postgres:5432/marketplace_test?schema=public
+          DATABASE_URL: postgresql://postgres:postgres@postgres:5432/marketplace?schema=public
         run: docker compose exec -T backend npx prisma migrate deploy
 
       - name: Run Backend Linter
@@ -160,7 +132,7 @@ jobs:
 
       - name: Run Backend E2E Tests
         env:
-          DATABASE_URL: postgresql://postgres:password@postgres:5432/marketplace_test?schema=public
+          DATABASE_URL: postgresql://postgres:postgres@postgres:5432/marketplace?schema=public
           REDIS_HOST: redis
           REDIS_PORT: 6379
           JWT_ACCESS_SECRET: insiders_jwt
@@ -169,7 +141,7 @@ jobs:
 
       - name: Run Backend Load Tests
         env:
-          DATABASE_URL: postgresql://postgres:password@postgres:5432/marketplace_test?schema=public
+          DATABASE_URL: postgresql://postgres:postgres@postgres:5432/marketplace?schema=public
           REDIS_HOST: redis
           REDIS_PORT: 6379
           JWT_ACCESS_SECRET: insiders_jwt
@@ -182,4 +154,4 @@ jobs:
 
       - name: Stop Docker Environment
         if: always()
-        run: docker compose down -v
+        run: docker compose down -v --remove-orphans
