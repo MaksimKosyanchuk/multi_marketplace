@@ -35,24 +35,32 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '26.3.0'
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
 
-      - name: Cache Backend Node Modules
+      - name: Cache Backend Node Modules & Prisma Engines
         uses: actions/cache@v4
         id: cache-backend
         with:
-          path: backend/node_modules
-          key: ${{ runner.os }}-backend-node-${{ hashFiles('backend/package-lock.json') }}
+          path: |
+            backend/node_modules
+            backend/prisma/.cache
+          key: ${{ runner.os }}-backend-${{ hashFiles('backend/package-lock.json', 'backend/prisma/schema.prisma') }}
           restore-keys: |
-            ${{ runner.os }}-backend-node-
+            ${{ runner.os }}-backend-
 
-      - name: Cache Frontend Node Modules
+      - name: Cache Frontend Node Modules & Vite Cache
         uses: actions/cache@v4
         id: cache-frontend
         with:
-          path: frontend/node_modules
-          key: ${{ runner.os }}-frontend-node-${{ hashFiles('frontend/package-lock.json') }}
+          path: |
+            frontend/node_modules
+            frontend/node_modules/.vite
+          key: ${{ runner.os }}-frontend-${{ hashFiles('frontend/package-lock.json') }}
           restore-keys: |
-            ${{ runner.os }}-frontend-node-
+            ${{ runner.os }}-frontend-
 
       - name: Install Backend Dependencies
         if: steps.cache-backend.outputs.cache-hit != 'true'
@@ -63,7 +71,7 @@ jobs:
         run: npm ci --prefix frontend
 
       - name: Generate Prisma Client
-        run: npx prisma generate --schema=backend/prisma/schema.prisma
+        run: npx --prefix backend prisma generate --schema=prisma/schema.prisma
 
       - name: Build Backend Application
         run: NODE_OPTIONS="--max-old-space-size=2048" npm run build --prefix backend
