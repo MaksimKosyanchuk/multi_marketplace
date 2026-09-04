@@ -111,3 +111,82 @@ jobs:
       - name: Run Frontend Linter
         working-directory: frontend
         run: npm run lint
+
+  # Infra-only compose (postgres/redis/meilisearch images). Do not
+  # `compose up --build` backend/frontend here: two Nest/Vite image
+  # builds plus the stack OOM GitHub's ~7GB runner (exit 137).
+  e2e-and-load:
+    name: Backend E2E & Load
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [infra-lint, lint, unit-and-build]
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/marketplace?schema=public
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+      MEILISEARCH_URL: http://localhost:7700
+      JWT_ACCESS_SECRET: insiders_jwt
+      JWT_REFRESH_SECRET: insiders_refresh_jwt
+      PORT: '3001'
+      CLIENT_URL: http://localhost:5173
+      THROTTLE_DISABLED: 'true'
+      LOAD_BASE_URL: http://localhost:3001
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '26.3.0'
+
+      - name: Start Postgres, Redis and Meilisearch
+        run: docker compose up -d --no-build postgres redis meilisearch
+
+      - name: Wait for infrastructure
+        run: |
+          timeout 90 bash -c 'until docker compose exec -T postgres pg_isready -U postgres -d marketplace; do sleep 2; done'
+          timeout 90 bash -c 'until docker compose exec -T redis redis-cli ping | grep -q PONG; do sleep 2; done'
+          timeout 90 bash -c 'until curl -sf http://localhost:7700/health; do sleep 2; done'
+
+      - name: Install Backend Dependencies
+        working-directory: backend
+        run: npm ci --no-audit
+
+      - name: Generate Prisma Client and migrate
+        working-directory: backend
+        run: |
+          npx prisma generate --schema=prisma/schema.prisma
+          npx prisma migrate deploy --schema=prisma/schema.prisma
+
+      - name: Run Backend E2E Tests
+        working-directory: backend
+        run: npm run test:e2e
+
+      - name: Build Backend
+        working-directory: backend
+        env:
+          NODE_OPTIONS: --max-old-space-size=2048
+        run: npm run build
+
+      - name: Start Backend
+        working-directory: backend
+        env:
+          NODE_OPTIONS: --max-old-space-size=1536
+        run: |
+          node dist/main > ../backend-ci.log 2>&1 &
+          echo $! > ../backend.pid
+          timeout 90 bash -c 'until curl -sf http://localhost:3001/metrics >/dev/null; do sleep 2; done'
+
+      - name: Run Backend Load Test
+        working-directory: backend
+        run: npm run test:load
+
+      - name: Stop Backend and Docker
+        if: always()
+        run: |
+          if [ -f backend.pid ]; then kill "$(cat backend.pid)" || true; fi
+          docker compose down -v
+          if [ -f backend-ci.log ]; then cat backend-ci.log; fi
