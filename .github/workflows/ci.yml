@@ -23,50 +23,8 @@ jobs:
       - name: Lint Frontend Dockerfile
         run: docker build --check -f frontend/Dockerfile frontend/
 
-  build-and-lint:
-    name: Install, Lint, Build
-    needs: infra-lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '26.3.0'
-          cache: 'npm'
-          cache-dependency-path: |
-            backend/package-lock.json
-            frontend/package-lock.json
-
-      - name: Install Backend Dependencies
-        run: npm ci --verbose
-        working-directory: backend
-
-      - name: Install Frontend Dependencies
-        run: npm ci --verbose
-        working-directory: frontend
-
-      - name: Run Backend Linter
-        run: npm run lint
-        working-directory: backend
-
-      - name: Run Frontend Linter
-        run: npm run lint
-        working-directory: frontend
-
-      - name: Build Backend Application
-        run: npm run build --prefix backend
-
-      - name: Build Frontend Application
-        run: npm run build --prefix frontend
-        env:
-          VITE_API_URL: http://localhost:3001
-
-  Tests:
-    name: Tests
-    needs: build-and-lint
+  ci-pipeline:
+    name: Build, Lint, Start & Test
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -106,10 +64,29 @@ jobs:
             backend/package-lock.json
             frontend/package-lock.json
 
-      - name: Install Dependencies (Backend & Frontend)
-        run: |
-          npm ci --prefix backend --verbose
-          npm ci --prefix frontend --verbose
+      - name: Install Backend Dependencies
+        run: npm ci --verbose
+        working-directory: backend
+
+      - name: Install Frontend Dependencies
+        run: npm ci --verbose
+        working-directory: frontend
+
+      - name: Run Backend Linter
+        run: npm run lint
+        working-directory: backend
+
+      - name: Run Frontend Linter
+        run: npm run lint
+        working-directory: frontend
+
+      - name: Build Backend Application
+        run: npm run build --prefix backend
+
+      - name: Build Frontend Application
+        run: npm run build --prefix frontend
+        env:
+          VITE_API_URL: http://localhost:3001
 
       - name: Generate Prisma Client
         run: npx prisma generate
@@ -123,21 +100,6 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:password@localhost:5432/marketplace_test?schema=public
 
-      - name: Run Backend Unit Tests
-        run: npm run test --prefix backend
-        env:
-          DATABASE_URL: postgresql://postgres:password@localhost:5432/marketplace_test?schema=public
-          DATABASE_HOST: localhost
-          DATABASE_PORT: 5432
-          DATABASE_USER: postgres
-          DATABASE_PASSWORD: password
-          DATABASE_NAME: marketplace_test
-          REDIS_HOST: localhost
-          REDIS_PORT: 6379
-          JWT_ACCESS_SECRET: insiders_jwt
-          JWT_REFRESH_SECRET: insiders_refresh_jwt
-          CLIENT_URL: http://localhost:5173
-
       - name: Start Backend Server in Background
         run: |
           npm run start:prod --prefix backend &
@@ -150,6 +112,36 @@ jobs:
         env:
           PORT: 3001
           DATABASE_URL: postgresql://postgres:password@localhost:5432/marketplace_test?schema=public
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          JWT_ACCESS_SECRET: insiders_jwt
+          JWT_REFRESH_SECRET: insiders_refresh_jwt
+          CLIENT_URL: http://localhost:5173
+
+      - name: Start Frontend Preview/Server in Background
+        run: |
+          npm run preview --prefix frontend -- --port 5173 &
+          echo "Waiting for frontend to start..."
+          for i in {1..30}; do
+            nc -z localhost 5173 && echo "Frontend is up!" && exit 0
+            sleep 1
+          done
+          echo "Frontend failed to start" && exit 1
+        env:
+          VITE_API_URL: http://localhost:3001
+
+      - name: Run Frontend Unit Tests
+        run: npm run test --prefix frontend -- --run
+
+      - name: Run Backend Unit Tests
+        run: npm run test --prefix backend
+        env:
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/marketplace_test?schema=public
+          DATABASE_HOST: localhost
+          DATABASE_PORT: 5432
+          DATABASE_USER: postgres
+          DATABASE_PASSWORD: password
+          DATABASE_NAME: marketplace_test
           REDIS_HOST: localhost
           REDIS_PORT: 6379
           JWT_ACCESS_SECRET: insiders_jwt
@@ -185,6 +177,3 @@ jobs:
           JWT_ACCESS_SECRET: insiders_jwt
           JWT_REFRESH_SECRET: insiders_refresh_jwt
           CLIENT_URL: http://localhost:5173
-
-      - name: Run Frontend Tests (Vitest)
-        run: npm run test --prefix frontend -- --run
