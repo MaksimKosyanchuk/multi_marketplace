@@ -24,38 +24,13 @@ jobs:
         run: docker build --check -f frontend/Dockerfile frontend/
 
   ci-pipeline:
-    name: Build, Lint, Start & Test
+    name: Build, Lint & Test via Docker Compose
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: password
-          POSTGRES_DB: marketplace_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js (for local linting/dependencies cache if needed)
         uses: actions/setup-node@v4
         with:
           node-version: '26.3.0'
@@ -64,23 +39,10 @@ jobs:
             backend/package-lock.json
             frontend/package-lock.json
 
-      - name: Cache node_modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            backend/node_modules
-            frontend/node_modules
-          key: ${{ runner.os }}-node-modules-${{ hashFiles('backend/package-lock.json', 'frontend/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-modules-
-
-      - name: Install Backend Dependencies
-        run: npm ci --verbose
-        working-directory: backend
-
-      - name: Install Frontend Dependencies
-        run: npm ci --verbose
-        working-directory: frontend
+      - name: Install Backend & Frontend Dependencies
+        run: |
+          npm ci --prefix backend
+          npm ci --prefix frontend
 
       - name: Run Backend Linter
         run: npm run lint
@@ -90,55 +52,15 @@ jobs:
         run: npm run lint
         working-directory: frontend
 
-      - name: Build Backend Application
-        run: npm run build --prefix backend
-
-      - name: Build Frontend Application
-        run: npm run build --prefix frontend
+      - name: Build and Start Containers via Docker Compose
+        run: docker compose up -d --build
         env:
-          VITE_API_URL: http://localhost:3001
-
-      - name: Generate Prisma Client
-        run: npx prisma generate
-        working-directory: backend
-        env:
-          DATABASE_URL: postgresql://postgres:password@localhost:5432/marketplace_test?schema=public
-
-      - name: Run Prisma Migrations
-        run: npx prisma migrate deploy
-        working-directory: backend
-        env:
-          DATABASE_URL: postgresql://postgres:password@localhost:5432/marketplace_test?schema=public
-
-      - name: Start Backend Server in Background
-        run: |
-          NODE_ENV=production node backend/dist/main &
-          echo "Waiting for backend to start..."
-          for i in {1..30}; do
-            nc -z localhost 3001 && echo "Backend is up!" && exit 0
-            sleep 1
-          done
-          echo "Backend failed to start" && exit 1
-        env:
-          PORT: 3001
-          DATABASE_URL: postgresql://postgres:password@localhost:5432/marketplace_test?schema=public
-          REDIS_HOST: localhost
-          REDIS_PORT: 6379
+          DATABASE_URL: postgresql://postgres:password@postgres:5432/marketplace_test?schema=public
           JWT_ACCESS_SECRET: insiders_jwt
           JWT_REFRESH_SECRET: insiders_refresh_jwt
-          CLIENT_URL: http://localhost:5173
 
-      - name: Start Frontend Preview/Server in Background
-        run: |
-          npm run preview --prefix frontend -- --port 5173 &
-          echo "Waiting for frontend to start..."
-          for i in {1..30}; do
-            nc -z localhost 5173 && echo "Frontend is up!" && exit 0
-            sleep 1
-          done
-          echo "Frontend failed to start" && exit 1
-        env:
-          VITE_API_URL: http://localhost:3001
+      - name: Run Prisma Migrations
+        run: docker compose exec -T backend npx prisma migrate deploy
 
       - name: Run Frontend Unit Tests
         run: npm run test --prefix frontend -- --run
@@ -187,3 +109,7 @@ jobs:
           JWT_ACCESS_SECRET: insiders_jwt
           JWT_REFRESH_SECRET: insiders_refresh_jwt
           CLIENT_URL: http://localhost:5173
+
+      - name: Stop Docker Compose
+        if: always()
+        run: docker compose down -v
