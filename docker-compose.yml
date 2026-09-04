@@ -55,7 +55,7 @@ services:
       dockerfile: Dockerfile
     container_name: marketplace-backend
     restart: unless-stopped
-    command: sh -c "npx prisma migrate deploy && npm run start:dev"
+    command: sh -c "npx prisma migrate deploy && npm run start:prod"
     ports:
       - '3001:3001'
     environment:
