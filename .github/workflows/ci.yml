@@ -154,7 +154,7 @@ jobs:
           REDIS_PORT: 6379
 
   infra-lint:
-    name: Infrastructure Lint
+    name: Infrastructure & Docker Lint
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -162,3 +162,9 @@ jobs:
 
       - name: Validate Docker Compose Configuration
         run: docker compose -f docker-compose.yml config --quiet
+
+      - name: Lint Backend Dockerfile
+        run: docker build --check -f backend/Dockerfile backend/
+
+      - name: Lint Frontend Dockerfile
+        run: docker build --check -f frontend/Dockerfile frontend/
