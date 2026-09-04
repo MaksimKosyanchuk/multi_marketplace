@@ -1,4 +1,3 @@
-```dockerfile
 FROM node:26-alpine
 
 RUN apk add --no-cache openssl libc6-compat
@@ -18,4 +17,3 @@ RUN npm run build
 EXPOSE 3001
 
 CMD ["npm", "run", "start:prod"]
-```
