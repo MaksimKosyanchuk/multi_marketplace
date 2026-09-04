@@ -81,9 +81,22 @@ jobs:
       - name: Install Dependencies
         run: npm ci --prefix backend
 
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/marketplace_test?schema=public
+
+      - name: Run Prisma Migrations
+        run: npx prisma migrate deploy
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/marketplace_test?schema=public
+
       - name: Run Unit Tests
         run: npm run test --prefix backend
         env:
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/marketplace_test?schema=public
           DATABASE_HOST: localhost
           DATABASE_PORT: 5432
           DATABASE_USER: postgres
@@ -95,6 +108,7 @@ jobs:
       - name: Run E2E Tests
         run: npm run test:e2e --prefix backend
         env:
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/marketplace_test?schema=public
           DATABASE_HOST: localhost
           DATABASE_PORT: 5432
           DATABASE_USER: postgres
@@ -106,6 +120,7 @@ jobs:
       - name: Run Load Tests
         run: npm run test:load --prefix backend
         env:
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/marketplace_test?schema=public
           DATABASE_HOST: localhost
           DATABASE_PORT: 5432
           DATABASE_USER: postgres
