@@ -112,14 +112,10 @@ jobs:
         working-directory: frontend
         run: npm run lint
 
-  # Infra-only compose (postgres/redis/meilisearch images). Do not
-  # `compose up --build` backend/frontend here: two Nest/Vite image
-  # builds plus the stack OOM GitHub's ~7GB runner (exit 137).
   e2e-and-load:
     name: Backend E2E & Load
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    needs: [infra-lint, lint, unit-and-build]
     env:
       NODE_ENV: test
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/marketplace?schema=public
