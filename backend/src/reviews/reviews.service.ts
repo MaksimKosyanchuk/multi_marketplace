@@ -7,14 +7,18 @@ import {
 } from '@nestjs/common';
 import { Prisma, type Review } from '@prisma/client';
 import { getCorrelationId } from '../common/correlation/correlation.context';
-import { PrismaService } from '../prisma/prisma.service';
+import { ProductRepository } from '../database/product.repository';
+import { ReviewRepository } from '../database/review.repository';
+import { UnitOfWork } from '../database/unit-of-work';
 import { RedisService } from '../redis/redis.service';
 import { CreateReviewDto } from './dto/create-review.dto';
 
 @Injectable()
 export class ReviewsService {
     constructor(
-        private readonly prisma: PrismaService,
+        private readonly reviews: ReviewRepository,
+        private readonly products: ProductRepository,
+        private readonly unitOfWork: UnitOfWork,
         private readonly redis: RedisService,
     ) {}
 
@@ -24,12 +28,15 @@ export class ReviewsService {
                 'Rating must be an integer from 1 to 5',
             );
         }
-        const review = await this.prisma.$transaction(
-            async (tx: Prisma.TransactionClient): Promise<Review> => {
-                const orderItem = await tx.orderItem.findUnique({
-                    where: { id: dto.orderItemId },
-                    include: { sellerOrder: { include: { order: true } } },
-                });
+        const review = await this.unitOfWork.run(
+            async ({
+                reviewRepository,
+                orderRepository,
+                outboxRepository,
+            }): Promise<Review> => {
+                const orderItem = await orderRepository.findOrderItemForReview(
+                    dto.orderItemId,
+                );
 
                 if (!orderItem)
                     throw new NotFoundException('Order item not found');
@@ -43,26 +50,20 @@ export class ReviewsService {
                         'A review requires a completed seller order',
                     );
                 }
-                if (
-                    await tx.review.findUnique({
-                        where: { orderItemId: dto.orderItemId },
-                    })
-                ) {
+                if (await reviewRepository.findByOrderItemId(dto.orderItemId)) {
                     throw new ConflictException(
                         'This order item has already been reviewed',
                     );
                 }
 
-                let review: Review;
+                let created: Review;
                 try {
-                    review = await tx.review.create({
-                        data: {
-                            orderItemId: dto.orderItemId,
-                            productId: orderItem.productId,
-                            authorId,
-                            rating: dto.rating,
-                            comment: dto.comment?.trim() || null,
-                        },
+                    created = await reviewRepository.create({
+                        orderItemId: dto.orderItemId,
+                        productId: orderItem.productId,
+                        authorId,
+                        rating: dto.rating,
+                        comment: dto.comment?.trim() || null,
                     });
                 } catch (error) {
                     if (
@@ -76,23 +77,21 @@ export class ReviewsService {
                     throw error;
                 }
 
-                await tx.outboxEvent.create({
-                    data: {
-                        aggregateType: 'Review',
-                        aggregateId: review.id,
-                        type: 'review.created',
-                        payload: {
-                            reviewId: review.id,
-                            productId: review.productId,
-                            orderItemId: review.orderItemId,
-                            authorId,
-                            rating: review.rating,
-                            correlationId: getCorrelationId(),
-                        },
-                        idempotencyKey: `review-created:${review.id}`,
+                await outboxRepository.create({
+                    aggregateType: 'Review',
+                    aggregateId: created.id,
+                    type: 'review.created',
+                    payload: {
+                        reviewId: created.id,
+                        productId: created.productId,
+                        orderItemId: created.orderItemId,
+                        authorId,
+                        rating: created.rating,
+                        correlationId: getCorrelationId(),
                     },
+                    idempotencyKey: `review-created:${created.id}`,
                 });
-                return review;
+                return created;
             },
         );
         await Promise.all([
@@ -104,23 +103,12 @@ export class ReviewsService {
     }
 
     async findByProduct(productId: string) {
-        const product = await this.prisma.product.findUnique({
-            where: { id: productId },
-            select: { id: true },
-        });
+        const product = await this.products.findByIdSelectId(productId);
         if (!product) throw new NotFoundException('Product not found');
 
-        const [reviews, aggregate] = await this.prisma.$transaction([
-            this.prisma.review.findMany({
-                where: { productId },
-                orderBy: { createdAt: 'desc' },
-                include: { author: { select: { id: true, nickName: true } } },
-            }),
-            this.prisma.review.aggregate({
-                where: { productId },
-                _avg: { rating: true },
-                _count: { _all: true },
-            }),
+        const [reviews, aggregate] = await Promise.all([
+            this.reviews.findByProduct(productId),
+            this.reviews.aggregateByProduct(productId),
         ]);
 
         return {
@@ -132,9 +120,6 @@ export class ReviewsService {
     }
 
     async findByAuthor(authorId: string) {
-        return this.prisma.review.findMany({
-            where: { authorId },
-            select: { productId: true, orderItemId: true },
-        });
+        return this.reviews.findByAuthor(authorId);
     }
 }

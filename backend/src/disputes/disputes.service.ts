@@ -11,65 +11,65 @@ import {
     Prisma,
     SellerOrderStatus,
 } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
 import { CreateDisputeDto } from './dto/create-dispute.dto';
 import { ResolveDisputeDto } from './dto/resolve-dispute.dto';
 import { getCorrelationId } from '../common/correlation/correlation.context';
 import { MockPaymentService } from '../payments/mock-payment.service';
 import { LoggerService } from '../logger/logger.service';
+import { DisputeRepository } from '../database/dispute.repository';
+import { UnitOfWork } from '../database/unit-of-work';
 
 @Injectable()
 export class DisputesService {
     constructor(
-        private readonly prisma: PrismaService,
+        private readonly disputes: DisputeRepository,
+        private readonly unitOfWork: UnitOfWork,
         private readonly mockPayment: MockPaymentService,
         private readonly logger: LoggerService,
     ) {}
 
     async open(customerId: string, dto: CreateDisputeDto) {
-        return this.prisma.$transaction(async (tx) => {
-            const sellerOrder = await tx.sellerOrder.findUnique({
-                where: { id: dto.sellerOrderId },
-                include: { order: true },
-            });
-            if (!sellerOrder)
-                throw new NotFoundException('Seller order not found');
-            if (sellerOrder.order.userId !== customerId)
-                throw new ForbiddenException(
-                    'You do not have access to this seller order',
-                );
-            if (sellerOrder.status !== 'COMPLETED')
-                throw new ConflictException(
-                    'Dispute requires a completed seller order',
-                );
-            const existing = await tx.dispute.findFirst({
-                where: {
-                    sellerOrderId: dto.sellerOrderId,
-                    status: {
-                        in: [DisputeStatus.OPEN, DisputeStatus.UNDER_REVIEW],
-                    },
-                },
-            });
-            if (existing)
-                throw new ConflictException('An active dispute already exists');
-            const dispute = await tx.dispute.create({
-                data: {
+        return this.unitOfWork.run(
+            async ({
+                disputeRepository,
+                orderRepository,
+                outboxRepository,
+            }) => {
+                const sellerOrder =
+                    await orderRepository.findSellerOrderWithOrder(
+                        dto.sellerOrderId,
+                    );
+                if (!sellerOrder)
+                    throw new NotFoundException('Seller order not found');
+                if (sellerOrder.order.userId !== customerId)
+                    throw new ForbiddenException(
+                        'You do not have access to this seller order',
+                    );
+                if (sellerOrder.status !== 'COMPLETED')
+                    throw new ConflictException(
+                        'Dispute requires a completed seller order',
+                    );
+                const existing =
+                    await disputeRepository.findActiveForSellerOrder(
+                        dto.sellerOrderId,
+                    );
+                if (existing)
+                    throw new ConflictException(
+                        'An active dispute already exists',
+                    );
+                const dispute = await disputeRepository.create({
                     sellerOrderId: dto.sellerOrderId,
                     openedById: customerId,
                     subject: dto.subject.trim(),
                     description: dto.description.trim(),
-                },
-            });
-            await tx.disputeHistory.create({
-                data: {
+                });
+                await disputeRepository.createHistory({
                     disputeId: dispute.id,
                     actorId: customerId,
                     status: DisputeStatus.OPEN,
                     note: 'Dispute opened',
-                },
-            });
-            await tx.outboxEvent.create({
-                data: {
+                });
+                await outboxRepository.create({
                     sellerOrderId: dto.sellerOrderId,
                     aggregateType: 'Dispute',
                     aggregateId: dispute.id,
@@ -81,51 +81,32 @@ export class DisputesService {
                         correlationId: getCorrelationId(),
                     },
                     idempotencyKey: `dispute-opened:${dispute.id}`,
-                },
-            });
-            void this.logger.audit(DisputesService.name, 'Dispute created', {
-                disputeId: dispute.id,
-                sellerOrderId: dto.sellerOrderId,
-                customerId,
-                operation: 'dispute.create',
-            });
-            return dispute;
-        });
-    }
-
-    private list(where: Prisma.DisputeWhereInput) {
-        return this.prisma.dispute.findMany({
-            where,
-            include: {
-                sellerOrder: {
-                    include: {
-                        order: {
-                            include: {
-                                user: { select: { id: true, nickName: true } },
-                            },
-                        },
-                        seller: { select: { id: true, nickName: true } },
-                        items: true,
+                });
+                void this.logger.audit(
+                    DisputesService.name,
+                    'Dispute created',
+                    {
+                        disputeId: dispute.id,
+                        sellerOrderId: dto.sellerOrderId,
+                        customerId,
+                        operation: 'dispute.create',
                     },
-                },
-                openedBy: { select: { id: true, nickName: true } },
-                resolvedBy: { select: { id: true, nickName: true } },
-                history: { orderBy: { createdAt: 'asc' } },
+                );
+                return dispute;
             },
-            orderBy: { createdAt: 'desc' },
-        });
+        );
     }
 
     listForCustomer(customerId: string) {
-        return this.list({ openedById: customerId });
+        return this.disputes.list({ openedById: customerId });
     }
 
     listForSeller(sellerId: string) {
-        return this.list({ sellerOrder: { sellerId } });
+        return this.disputes.list({ sellerOrder: { sellerId } });
     }
 
     listForAdmin() {
-        return this.list({});
+        return this.disputes.list({});
     }
 
     async listForUser(userId: string, role: string) {
@@ -135,70 +116,63 @@ export class DisputesService {
     }
 
     async resolve(adminId: string, disputeId: string, dto: ResolveDisputeDto) {
-        return this.prisma.$transaction(async (tx) => {
-            const dispute = await tx.dispute.findUnique({
-                where: { id: disputeId },
-                include: {
-                    sellerOrder: {
-                        include: {
-                            items: true,
-                            order: { include: { payments: true } },
-                        },
-                    },
-                },
-            });
-            if (!dispute) throw new NotFoundException('Dispute not found');
-            if (
-                dispute.status !== DisputeStatus.OPEN &&
-                dispute.status !== DisputeStatus.UNDER_REVIEW
-            )
-                throw new ConflictException('Dispute is already resolved');
-            if (
-                ![
-                    DisputeStatus.RESOLVED_FOR_CUSTOMER,
-                    DisputeStatus.RESOLVED_FOR_SELLER,
-                ].some((status) => status === dto.status)
-            ) {
-                throw new ConflictException(
-                    'Invalid dispute resolution status',
-                );
-            }
-            const shouldRefund =
-                dto.status === DisputeStatus.RESOLVED_FOR_CUSTOMER &&
-                dispute.sellerOrder.status === SellerOrderStatus.COMPLETED;
-            let refundAmount = new Prisma.Decimal(0);
-            if (shouldRefund) {
-                const payment = dispute.sellerOrder.order.payments.find(
-                    (candidate) =>
-                        candidate.status === PaymentStatus.PAID ||
-                        candidate.status === PaymentStatus.PARTIALLY_REFUNDED,
-                );
-                if (!payment) {
+        return this.unitOfWork.run(
+            async ({
+                disputeRepository,
+                orderRepository,
+                outboxRepository,
+            }) => {
+                const dispute =
+                    await disputeRepository.findByIdForResolve(disputeId);
+                if (!dispute) throw new NotFoundException('Dispute not found');
+                if (
+                    dispute.status !== DisputeStatus.OPEN &&
+                    dispute.status !== DisputeStatus.UNDER_REVIEW
+                )
+                    throw new ConflictException('Dispute is already resolved');
+                if (
+                    ![
+                        DisputeStatus.RESOLVED_FOR_CUSTOMER,
+                        DisputeStatus.RESOLVED_FOR_SELLER,
+                    ].some((status) => status === dto.status)
+                ) {
                     throw new ConflictException(
-                        'Completed dispute cannot be refunded without a paid payment',
+                        'Invalid dispute resolution status',
                     );
                 }
-                for (const item of dispute.sellerOrder.items) {
-                    const refunded = await tx.refund.aggregate({
-                        where: {
-                            orderItemId: item.id,
-                            status: 'PROCESSED',
-                        },
-                        _sum: { quantity: true },
-                    });
-                    const quantity =
-                        item.quantity - (refunded._sum.quantity ?? 0);
-                    if (quantity <= 0) continue;
-                    const amount = new Prisma.Decimal(item.unitPrice).mul(
-                        quantity,
+                const shouldRefund =
+                    dto.status === DisputeStatus.RESOLVED_FOR_CUSTOMER &&
+                    dispute.sellerOrder.status === SellerOrderStatus.COMPLETED;
+                let refundAmount = new Prisma.Decimal(0);
+                if (shouldRefund) {
+                    const payment = dispute.sellerOrder.order.payments.find(
+                        (candidate) =>
+                            candidate.status === PaymentStatus.PAID ||
+                            candidate.status ===
+                                PaymentStatus.PARTIALLY_REFUNDED,
                     );
-                    refundAmount = refundAmount.add(amount);
-                    const providerRefund = this.mockPayment.refund(
-                        payment.id,
-                        amount,
-                    );
-                    await tx.refund.create({
-                        data: {
+                    if (!payment) {
+                        throw new ConflictException(
+                            'Completed dispute cannot be refunded without a paid payment',
+                        );
+                    }
+                    for (const item of dispute.sellerOrder.items) {
+                        const refunded =
+                            await orderRepository.sumProcessedRefundQuantity(
+                                item.id,
+                            );
+                        const quantity =
+                            item.quantity - (refunded._sum.quantity ?? 0);
+                        if (quantity <= 0) continue;
+                        const amount = new Prisma.Decimal(item.unitPrice).mul(
+                            quantity,
+                        );
+                        refundAmount = refundAmount.add(amount);
+                        const providerRefund = this.mockPayment.refund(
+                            payment.id,
+                            amount,
+                        );
+                        await orderRepository.createRefund({
                             sellerOrderId: dispute.sellerOrderId,
                             orderItemId: item.id,
                             paymentId: payment.id,
@@ -209,56 +183,43 @@ export class DisputesService {
                             providerRef: providerRefund.providerRef,
                             idempotencyKey: `dispute-refund:${disputeId}:${item.id}`,
                             processedAt: new Date(),
-                        },
-                    });
-                    await tx.ledgerEntry.create({
-                        data: {
+                        });
+                        await orderRepository.createLedgerEntry({
                             sellerOrderId: dispute.sellerOrderId,
                             paymentId: payment.id,
                             type: LedgerEntryType.REFUND,
                             amount: amount.neg(),
                             idempotencyKey: `dispute-refund-ledger:${disputeId}:${item.id}`,
-                        },
-                    });
-                }
-                await tx.sellerOrder.update({
-                    where: { id: dispute.sellerOrderId },
-                    data: { refundedAmount: { increment: refundAmount } },
-                });
-                const totalRefunded = await tx.refund.aggregate({
-                    where: { paymentId: payment.id, status: 'PROCESSED' },
-                    _sum: { amount: true },
-                });
-                await tx.payment.update({
-                    where: { id: payment.id },
-                    data: {
-                        status: (
+                        });
+                    }
+                    await orderRepository.updateSellerOrder(
+                        dispute.sellerOrderId,
+                        { refundedAmount: { increment: refundAmount } },
+                    );
+                    const totalRefunded =
+                        await orderRepository.sumProcessedRefunds(payment.id);
+                    await orderRepository.updatePaymentStatus(
+                        payment.id,
+                        (
                             totalRefunded._sum.amount ?? new Prisma.Decimal(0)
                         ).gte(payment.amount)
                             ? PaymentStatus.REFUNDED
                             : PaymentStatus.PARTIALLY_REFUNDED,
-                    },
-                });
-            }
-            const resolved = await tx.dispute.update({
-                where: { id: disputeId },
-                data: {
+                    );
+                }
+                const resolved = await disputeRepository.update(disputeId, {
                     status: dto.status,
                     resolution: dto.resolution?.trim(),
                     resolvedById: adminId,
                     resolvedAt: new Date(),
-                },
-            });
-            await tx.disputeHistory.create({
-                data: {
+                });
+                await disputeRepository.createHistory({
                     disputeId,
                     actorId: adminId,
                     status: dto.status,
                     note: dto.resolution?.trim(),
-                },
-            });
-            await tx.outboxEvent.create({
-                data: {
+                });
+                await outboxRepository.create({
                     sellerOrderId: dispute.sellerOrderId,
                     aggregateType: 'Dispute',
                     aggregateId: disputeId,
@@ -271,16 +232,20 @@ export class DisputesService {
                         correlationId: getCorrelationId(),
                     },
                     idempotencyKey: `dispute-resolved:${disputeId}:${dto.status}`,
-                },
-            });
-            void this.logger.audit(DisputesService.name, 'Dispute resolved', {
-                disputeId,
-                adminId,
-                status: dto.status,
-                refundAmount: refundAmount.toString(),
-                operation: 'dispute.resolve',
-            });
-            return resolved;
-        });
+                });
+                void this.logger.audit(
+                    DisputesService.name,
+                    'Dispute resolved',
+                    {
+                        disputeId,
+                        adminId,
+                        status: dto.status,
+                        refundAmount: refundAmount.toString(),
+                        operation: 'dispute.resolve',
+                    },
+                );
+                return resolved;
+            },
+        );
     }
 }

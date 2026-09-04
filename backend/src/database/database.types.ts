@@ -10,4 +10,13 @@ export interface TransactionRepositories {
     productRepository: import('./product.repository').ProductRepository;
     auctionRepository: import('./auction.repository').AuctionRepository;
     bidRepository: import('./auction.repository').BidRepository;
+    userRepository: import('./user.repository').UserRepository;
+    refreshTokenRepository: import('./refresh-token.repository').RefreshTokenRepository;
+    categoryRepository: import('./category.repository').CategoryRepository;
+    notificationRepository: import('./notification.repository').NotificationRepository;
+    logRepository: import('./log.repository').LogRepository;
+    sellerProfileRepository: import('./seller-profile.repository').SellerProfileRepository;
+    reviewRepository: import('./review.repository').ReviewRepository;
+    disputeRepository: import('./dispute.repository').DisputeRepository;
+    analyticsRepository: import('./analytics.repository').AnalyticsRepository;
 }

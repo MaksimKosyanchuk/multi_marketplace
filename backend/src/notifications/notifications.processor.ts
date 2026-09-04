@@ -128,8 +128,9 @@ export class NotificationsProcessor extends WorkerHost {
                     },
                     update: {},
                 });
-                this.notifications.notifyUser(userId, event.type, {
+                this.notifications.notifyUser(userId, 'notification_created', {
                     eventId: event.id,
+                    type: event.type,
                     ...payload,
                     correlationId: job.data.correlationId,
                 });

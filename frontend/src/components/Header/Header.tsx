@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { NotificationBell } from '../NotificationBell/NotificationBell';
 import { useAuth } from '../../context/AuthContext/useAuth';
 import { Role } from '../../types';
 import styles from './Header.module.css';
@@ -25,6 +26,7 @@ export const Header: React.FC = () => {
                                 Кошик
                             </Link>
                         )}
+                        <NotificationBell />
                         <Link to="/profile" className={styles.link}>
                             Профіль / Замовлення
                         </Link>

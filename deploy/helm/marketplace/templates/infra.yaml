@@ -1,0 +1,113 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "marketplace.fullname" . }}-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "marketplace.fullname" . }}-postgres
+  template:
+    metadata:
+      labels:
+        app: {{ include "marketplace.fullname" . }}-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - name: POSTGRES_USER
+              value: {{ .Values.postgres.user | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "marketplace.fullname" . }}-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.database | quote }}
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "marketplace.fullname" . }}-postgres
+spec:
+  selector:
+    app: {{ include "marketplace.fullname" . }}-postgres
+  ports:
+    - port: {{ .Values.service.postgresPort }}
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "marketplace.fullname" . }}-redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "marketplace.fullname" . }}-redis
+  template:
+    metadata:
+      labels:
+        app: {{ include "marketplace.fullname" . }}-redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "marketplace.fullname" . }}-redis
+spec:
+  selector:
+    app: {{ include "marketplace.fullname" . }}-redis
+  ports:
+    - port: {{ .Values.service.redisPort }}
+      targetPort: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "marketplace.fullname" . }}-meilisearch
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "marketplace.fullname" . }}-meilisearch
+  template:
+    metadata:
+      labels:
+        app: {{ include "marketplace.fullname" . }}-meilisearch
+    spec:
+      containers:
+        - name: meilisearch
+          image: getmeili/meilisearch:v1.10
+          env:
+            - name: MEILI_ENV
+              value: {{ .Values.meilisearch.env | quote }}
+            - name: MEILI_NO_ANALYTICS
+              value: "true"
+          ports:
+            - containerPort: 7700
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "marketplace.fullname" . }}-meilisearch
+spec:
+  selector:
+    app: {{ include "marketplace.fullname" . }}-meilisearch
+  ports:
+    - port: {{ .Values.service.meilisearchPort }}
+      targetPort: 7700

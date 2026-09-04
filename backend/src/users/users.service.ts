@@ -1,10 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { User, Role } from '@prisma/client';
-import { UsersRepository } from './users.repository';
+import { UserRepository } from '../database/user.repository';
 
 @Injectable()
 export class UsersService {
-    constructor(private readonly usersRepository: UsersRepository) {}
+    constructor(private readonly usersRepository: UserRepository) {}
 
     findByEmail(email: string): Promise<User | null> {
         return this.usersRepository.findByEmail(email.toLowerCase());

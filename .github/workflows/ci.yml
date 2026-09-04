@@ -2,9 +2,9 @@ name: CI / Multi-Vendor Marketplace
 
 on:
   push:
-    branches: [ main, master, develop ]
+    branches: [main, master, develop]
   pull_request:
-    branches: [ main, master, develop ]
+    branches: [main, master, develop]
 
 jobs:
   infra-lint:
@@ -46,7 +46,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: '26.3.0'
+          node-version: "26.3.0"
 
       - name: Install Backend Dependencies
         working-directory: backend
@@ -94,7 +94,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: '26.3.0'
+          node-version: "26.3.0"
 
       - name: Install Backend Dependencies
         working-directory: backend
@@ -120,13 +120,13 @@ jobs:
       NODE_ENV: test
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/marketplace?schema=public
       REDIS_HOST: localhost
-      REDIS_PORT: '6379'
+      REDIS_PORT: "6379"
       MEILISEARCH_URL: http://localhost:7700
       JWT_ACCESS_SECRET: insiders_jwt
       JWT_REFRESH_SECRET: insiders_refresh_jwt
-      PORT: '3001'
+      PORT: "3001"
       CLIENT_URL: http://localhost:5173
-      THROTTLE_DISABLED: 'true'
+      THROTTLE_DISABLED: "true"
       LOAD_BASE_URL: http://localhost:3001
 
     steps:
@@ -136,7 +136,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: '26.3.0'
+          node-version: "26.3.0"
 
       - name: Start Postgres, Redis and Meilisearch
         run: docker compose up -d --no-build postgres redis meilisearch
@@ -179,6 +179,14 @@ jobs:
       - name: Run Backend Load Test
         working-directory: backend
         run: npm run test:load
+
+      - name: Seed k6 auction scenario
+        working-directory: backend
+        run: node ./test/load/k6-auction-seed.js
+
+      - name: Run k6 concurrent auction bids
+        working-directory: backend
+        run: docker run --rm --network host -v "$PWD/test/load:/scripts" grafana/k6:0.54.0 run /scripts/auction-bids.k6.js
 
       - name: Stop Backend and Docker
         if: always()

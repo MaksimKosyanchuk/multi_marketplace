@@ -1,13 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { LogRepository } from '../database/log.repository';
 import { getCorrelationId } from '../common/correlation/correlation.context';
 
 export type LogMetadata = Record<string, unknown>;
 
 @Injectable()
 export class LoggerService {
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(private readonly logs: LogRepository) {}
 
     log(context: string, message: string, meta?: Prisma.InputJsonValue): void {
         this.saveToDb('INFO', context, message, this.withCorrelation(meta));
@@ -59,15 +59,13 @@ export class LoggerService {
         meta?: Prisma.InputJsonValue,
     ): void {
         const correlationId = getCorrelationId();
-        void this.prisma.log
+        void this.logs
             .create({
-                data: {
-                    level,
-                    context,
-                    message,
-                    correlationId,
-                    meta,
-                },
+                level,
+                context,
+                message,
+                correlationId,
+                meta,
             })
             .catch((error: unknown) => {
                 console.error('[logger] Failed to write log to DB', {

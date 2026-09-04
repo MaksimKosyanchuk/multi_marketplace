@@ -167,6 +167,12 @@ docker compose up --build
 
 Backend runs Prisma migrations on startup. Stop with `docker compose down`.
 
+Optional Kubernetes sketch (not the local required path):
+
+```bash
+helm upgrade --install marketplace ./deploy/helm/marketplace
+```
+
 ### Environment
 
 Backend loads `.env.${NODE_ENV}` then `.env`:
@@ -215,7 +221,7 @@ own runner). A **green workflow means all of them passed**:
 | Infrastructure Lint | compose / CI / Docker lint | `docker compose config`, Dockerfile `--check`, lint scripts exist and have no `--fix` |
 | Frontend & Backend Lint | lint on PR | `npm run lint` in `backend/` and `frontend/` |
 | Build & Unit Tests | unit tests | Prisma generate, Nest + Vite build, frontend Vitest, backend Jest unit |
-| Backend E2E & Load | e2e + load | Compose **only** Postgres/Redis/Meilisearch (`--no-build`, no app image builds), `npm run test:e2e`, Nest build, API process, `npm run test:load` |
+| Backend E2E & Load | e2e + load | Compose **only** Postgres/Redis/Meilisearch (`--no-build`, no app image builds), `npm run test:e2e`, Nest build, API process, `npm run test:load`, then k6 auction-bid storm |
 
 The e2e/load job does **not** `docker compose up --build` for frontend/backend:
 two Node image builds plus the stack OOMs a ~7GB GitHub runner (exit **137**).
@@ -226,7 +232,8 @@ Infra images + tests on the runner is the TZ pipeline without that spike.
 ```bash
 cd backend && npm test
 cd backend && npm run test:e2e    # Postgres + Redis + Meilisearch
-cd backend && npm run test:load   # running API on :3001 + DB
+cd backend && npm run test:load   # Node checkout race (stock 2 vs 4 buyers)
+cd backend && npm run test:load:k6 # extra k6 concurrent-bid storm (Docker)
 cd frontend && npm test
 ```
 
@@ -247,7 +254,8 @@ sub-order cancel, archive vs foreign cart.
 Storybook exists for key UI pieces.
 
 **Load:** limited-stock checkout (TZ: many concurrent checkouts on scarce
-stock). Self-contained: four customers, stock `2`, four parallel checkouts.
+stock) via `npm run test:load`. Additional k6 auction-bid storm via
+`npm run test:load:k6` (seeds an active auction, then `grafana/k6`).
 
 ## Load test report
 
@@ -274,6 +282,12 @@ errors: 0
 Successful quantity must never exceed initial stock. Request order does not
 matter.
 
+k6 (does **not** replace the Node script):
+
+```bash
+cd backend && npm run test:load:k6
+```
+
 ## Observability
 
 Structured logs: HTTP, domain audit (orders, bids, moderation, status), queue
@@ -288,17 +302,13 @@ duration** (orders, auctions, search, notifications workers).
 
 - Mock payments only; no real payouts.
 - UI is functional, not a design system.
-- Not 100% test coverage; CI covers lint, unit, critical e2e and one load scenario.
-- Modular monolith, not a service mesh / K8s. No Helm chart.
+- Not 100% test coverage; CI covers lint, unit, critical e2e, checkout load, and k6 bids.
+- Local/dev path is Docker Compose. Helm chart under `deploy/helm/marketplace/` is a bonus K8s sketch (build images yourself; Vite API URL is bake-time).
 - Similar products = same-category rule, not ML.
-- Non-core modules (auth/sellers/reviews/disputes/analytics/logger) still talk
-  to Prisma in places; UnitOfWork is complete for orders/cart, bidding, products.
-- In-app notifications are API + workers; a richer inbox UI is optional.
+- Queue processors still read outbox rows for claim/delivery (infrastructure, not domain services).
 - Seller cannot buy/bid by policy (see Roles).
 
 ### What we would do differently with more time
 
 - Redis-backed throttler if the API is horizontally scaled.
-- Dedicated k6/Artillery auction-bid storm in addition to the checkout race.
-- Finish repository migration for remaining modules.
-- Richer notification UI.
+- Production-hardening of Helm (PVC, probes, image registry, ingress TLS).

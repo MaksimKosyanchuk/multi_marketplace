@@ -3,7 +3,8 @@ import {
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { CategoryRepository } from '../database/category.repository';
+import { ProductRepository } from '../database/product.repository';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { RedisService } from '../redis/redis.service';
@@ -11,31 +12,29 @@ import { RedisService } from '../redis/redis.service';
 @Injectable()
 export class CategoriesService {
     constructor(
-        private prisma: PrismaService,
-        private redis: RedisService,
+        private readonly categories: CategoryRepository,
+        private readonly products: ProductRepository,
+        private readonly redis: RedisService,
     ) {}
 
     async create(dto: CreateCategoryDto) {
-        const exists = await this.prisma.category.findUnique({
-            where: { name: dto.name },
-        });
+        const exists = await this.categories.findByName(dto.name);
         if (exists)
             throw new ConflictException(
                 'Category with this name already exists',
             );
-        return this.prisma.category.create({
-            data: { ...dto, slug: await this.createUniqueSlug(dto.name) },
+        return this.categories.create({
+            ...dto,
+            slug: await this.createUniqueSlug(dto.name),
         });
     }
 
     findAll() {
-        return this.prisma.category.findMany({ orderBy: { name: 'asc' } });
+        return this.categories.findAllOrdered();
     }
 
     async findOne(id: string) {
-        const category = await this.prisma.category.findUnique({
-            where: { id },
-        });
+        const category = await this.categories.findById(id);
         if (!category) throw new NotFoundException('Category not found');
         return category;
     }
@@ -45,9 +44,9 @@ export class CategoriesService {
         const slug = dto.name
             ? await this.createUniqueSlug(dto.name, id)
             : undefined;
-        const updatedCategory = await this.prisma.category.update({
-            where: { id },
-            data: { ...dto, ...(slug && { slug }) },
+        const updatedCategory = await this.categories.update(id, {
+            ...dto,
+            ...(slug && { slug }),
         });
         await this.redis.delByPattern(`products:list:*`);
         return updatedCategory;
@@ -55,15 +54,16 @@ export class CategoriesService {
 
     async remove(id: string) {
         await this.findOne(id);
-        const productsCount = await this.prisma.product.count({
-            where: { categoryId: id, isArchived: false },
+        const productsCount = await this.products.count({
+            categoryId: id,
+            isArchived: false,
         });
         if (productsCount > 0) {
             throw new ConflictException(
                 'Cannot delete category with existing products',
             );
         }
-        return this.prisma.category.delete({ where: { id } });
+        return this.categories.delete(id);
     }
 
     private async createUniqueSlug(name: string, categoryId?: string) {
@@ -80,9 +80,7 @@ export class CategoriesService {
         for (let suffix = 1; ; suffix += 1) {
             const slug =
                 suffix === 1 ? normalizedBase : `${normalizedBase}-${suffix}`;
-            const existing = await this.prisma.category.findUnique({
-                where: { slug },
-            });
+            const existing = await this.categories.findBySlug(slug);
             if (!existing || existing.id === categoryId) return slug;
         }
     }

@@ -1,6 +1,8 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
+import { CategoryRepository } from '../database/category.repository';
+import { ProductRepository } from '../database/product.repository';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { CategoriesService } from './categories.service';
@@ -36,6 +38,8 @@ describe('CategoriesService', () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 CategoriesService,
+                CategoryRepository,
+                ProductRepository,
                 {
                     provide: PrismaService,
                     useValue: mockPrismaService,

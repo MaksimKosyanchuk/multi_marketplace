@@ -64,3 +64,9 @@
     background-color: var(--bg-primary);
     overflow-y: auto;
 }
+
+.topBar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 1rem;
+}

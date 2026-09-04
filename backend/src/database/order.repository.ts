@@ -221,6 +221,39 @@ export class OrderRepository {
         });
     }
 
+    findSellerOrderWithOrder(
+        sellerOrderId: string,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.sellerOrder.findUnique({
+            where: { id: sellerOrderId },
+            include: { order: true },
+        });
+    }
+
+    findOrderItemForReview(
+        orderItemId: string,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.orderItem.findUnique({
+            where: { id: orderItemId },
+            include: { sellerOrder: { include: { order: true } } },
+        });
+    }
+
+    sumProcessedRefundQuantity(
+        orderItemId: string,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.refund.aggregate({
+            where: {
+                orderItemId,
+                status: 'PROCESSED',
+            },
+            _sum: { quantity: true },
+        });
+    }
+
     findOrderItemForRefund(
         orderItemId: string,
         db: DatabaseClient = this.prisma,

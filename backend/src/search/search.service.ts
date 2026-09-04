@@ -1,7 +1,8 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, ProductStatus, ProductType } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { ProductRepository } from '../database/product.repository';
+import { UnitOfWork } from '../database/unit-of-work';
 import { RedisService } from '../redis/redis.service';
 import {
     ProductSort,
@@ -49,7 +50,8 @@ export class SearchService implements OnModuleInit {
     private lastRecoveryWarningAt = 0;
 
     constructor(
-        private readonly prisma: PrismaService,
+        private readonly products: ProductRepository,
+        private readonly unitOfWork: UnitOfWork,
         config: ConfigService,
         private readonly redis: RedisService,
         private readonly auditLogger: LoggerService,
@@ -159,9 +161,7 @@ export class SearchService implements OnModuleInit {
             };
             if (
                 result.estimatedTotalHits === 0 &&
-                (await this.prisma.product.count({
-                    where: { status: ProductStatus.ACTIVE, isArchived: false },
-                })) > 0
+                (await this.products.countActiveNotArchived()) > 0
             ) {
                 this.recoverEmptyIndex();
                 const fallback = await this.fallback(query);
@@ -210,13 +210,7 @@ export class SearchService implements OnModuleInit {
     }
 
     async indexProduct(productId: string): Promise<void> {
-        const product = await this.prisma.product.findUnique({
-            where: { id: productId },
-            include: {
-                reviews: { select: { rating: true } },
-                auction: { select: { id: true, status: true } },
-            },
-        });
+        const product = await this.products.findForSearchIndex(productId);
         if (!product) return;
         const rating = product.reviews.length
             ? product.reviews.reduce((sum, review) => sum + review.rating, 0) /
@@ -238,12 +232,7 @@ export class SearchService implements OnModuleInit {
     }
 
     private async reindexAllProducts(): Promise<void> {
-        const products = await this.prisma.product.findMany({
-            include: {
-                reviews: { select: { rating: true } },
-                auction: { select: { id: true, status: true } },
-            },
-        });
+        const products = await this.products.findAllForSearchIndex();
         if (!products.length) return;
 
         await this.request(
@@ -390,41 +379,23 @@ export class SearchService implements OnModuleInit {
                 },
             }),
         };
-        return this.prisma.$transaction(async (tx) => {
+        return this.unitOfWork.run(async ({ productRepository }) => {
             const [hits, total, categoryFacets, sellerFacets, typeFacets] =
                 await Promise.all([
-                    tx.product.findMany({
+                    productRepository.findFallbackHits(
                         where,
-                        include: {
-                            category: true,
-                            reviews: { select: { rating: true } },
-                            auction: { select: { id: true, status: true } },
-                        },
-                        orderBy:
-                            query.sort === ProductSort.PRICE_ASC
-                                ? { price: 'asc' }
-                                : query.sort === ProductSort.PRICE_DESC
-                                  ? { price: 'desc' }
-                                  : { createdAt: 'desc' },
-                        skip: (query.page - 1) * query.limit,
-                        take: query.limit,
-                    }),
-                    tx.product.count({ where }),
-                    tx.product.groupBy({
-                        by: ['categoryId'],
-                        where,
-                        _count: { _all: true },
-                    }),
-                    tx.product.groupBy({
-                        by: ['sellerId'],
-                        where,
-                        _count: { _all: true },
-                    }),
-                    tx.product.groupBy({
-                        by: ['type'],
-                        where,
-                        _count: { _all: true },
-                    }),
+                        query.sort === ProductSort.PRICE_ASC
+                            ? { price: 'asc' }
+                            : query.sort === ProductSort.PRICE_DESC
+                              ? { price: 'desc' }
+                              : { createdAt: 'desc' },
+                        (query.page - 1) * query.limit,
+                        query.limit,
+                    ),
+                    productRepository.count(where),
+                    productRepository.groupByCategory(where),
+                    productRepository.groupBySeller(where),
+                    productRepository.groupByType(where),
                 ]);
             return {
                 hits: hits.map((product) => ({

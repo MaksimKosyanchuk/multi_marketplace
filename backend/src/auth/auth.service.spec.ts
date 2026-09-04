@@ -8,6 +8,11 @@ import { UsersService } from '../users/users.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoggerService } from '../logger/logger.service';
 import { RedisService } from '../redis/redis.service';
+import { RefreshTokenRepository } from '../database/refresh-token.repository';
+import {
+    createTransactionRepositories,
+    UnitOfWork,
+} from '../database/unit-of-work';
 import * as bcrypt from 'bcrypt';
 
 jest.mock('bcrypt');
@@ -286,6 +291,24 @@ describe('AuthService', () => {
                     useValue: mockPrismaService,
                 },
                 {
+                    provide: UnitOfWork,
+                    useValue: {
+                        run: (
+                            callback: (
+                                repositories: ReturnType<
+                                    typeof createTransactionRepositories
+                                >,
+                            ) => Promise<MockUser>,
+                        ) =>
+                            callback(
+                                createTransactionRepositories(
+                                    mockPrismaService as never,
+                                ),
+                            ),
+                    },
+                },
+                RefreshTokenRepository,
+                {
                     provide: LoggerService,
                     useValue: mockLoggerService,
                 },
@@ -299,10 +322,6 @@ describe('AuthService', () => {
         service = module.get<AuthService>(AuthService);
 
         jest.clearAllMocks();
-        mockPrismaService.$transaction.mockImplementation(
-            async (callback: (tx: MockPrismaService) => Promise<MockUser>) =>
-                callback(mockPrismaService),
-        );
     });
 
     it('should be defined', () => {

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { LedgerEntryType, OrderStatus, Prisma } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { OrderStatus, Prisma } from '@prisma/client';
+import { AnalyticsRepository } from '../database/analytics.repository';
 
 export interface DateFilterDto {
     from?: string;
@@ -27,7 +27,7 @@ export interface SellerAnalytics {
 export class AnalyticsService {
     private readonly TIME_ZONE = 'Europe/Kyiv';
 
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(private readonly analytics: AnalyticsRepository) {}
 
     private getRevenueStatuses(): OrderStatus[] {
         return [
@@ -71,50 +71,14 @@ export class AnalyticsService {
             sellerOrders,
             cartItems,
         ] = await Promise.all([
-            this.prisma.order.aggregate({
-                where: orderFilter,
-                _count: { id: true },
-                _sum: { totalAmount: true },
-            }),
-            this.prisma.sellerOrder.aggregate({
-                where: { order: orderFilter },
-                _sum: { commissionAmount: true },
-            }),
-            this.prisma.order.aggregate({
-                where: orderFilter,
-                _sum: { totalAmount: true },
-            }),
-            this.prisma.orderItem.groupBy({
-                by: ['productId', 'productName'],
-                where: { sellerOrder: { order: orderFilter } },
-                _sum: { quantity: true, totalAmount: true },
-                orderBy: { _sum: { quantity: 'desc' } },
-                take: 5,
-            }),
-            this.prisma.ledgerEntry.findMany({
-                where: {
-                    type: LedgerEntryType.PLATFORM_COMMISSION,
-                    sellerOrder: { order: orderFilter },
-                },
-                select: {
-                    amount: true,
-                    sellerOrder: {
-                        select: { order: { select: { createdAt: true } } },
-                    },
-                },
-                orderBy: { createdAt: 'asc' },
-            }),
-            this.prisma.sellerOrder.findMany({
-                where: { order: orderFilter },
-                select: {
-                    sellerId: true,
-                    sellerEarnings: true,
-                    refundedAmount: true,
-                    commissionAmount: true,
-                },
-            }),
-            this.prisma.cartItem.count({
-                where: (() => {
+            this.analytics.aggregateOrders(orderFilter),
+            this.analytics.aggregateSellerOrderCommission(orderFilter),
+            this.analytics.aggregateOrders(orderFilter),
+            this.analytics.groupTopOrderItems(orderFilter),
+            this.analytics.findCommissionLedger(orderFilter),
+            this.analytics.findSellerOrdersForDashboard(orderFilter),
+            this.analytics.countCartItems(
+                (() => {
                     const updatedAt: Prisma.DateTimeFilter<'Cart'> = {};
                     if (dto.from)
                         updatedAt.gte = new Date(`${dto.from}T00:00:00.000Z`);
@@ -124,7 +88,7 @@ export class AnalyticsService {
                         ? { cart: { updatedAt } }
                         : {};
                 })(),
-            }),
+            ),
         ]);
 
         const platformRevenue = Number(
@@ -188,11 +152,9 @@ export class AnalyticsService {
 
     async generateOrdersCsv(dto: DateFilterDto): Promise<string> {
         const dashboard = await this.getDashboardData(dto);
-        const orders = await this.prisma.order.findMany({
-            where: this.buildDateFilter(dto.from, dto.to),
-            include: { user: { select: { email: true } } },
-            orderBy: { createdAt: 'desc' },
-        });
+        const orders = await this.analytics.findOrdersForExport(
+            this.buildDateFilter(dto.from, dto.to),
+        );
         const summary = [
             'Analytics summary',
             `Platform commission,${dashboard.summary.platformCommission.toFixed(2)}`,
@@ -224,10 +186,10 @@ export class AnalyticsService {
         dto: DateFilterDto,
     ): Promise<SellerAnalytics> {
         const orderFilter = this.buildDateFilter(dto.from, dto.to);
-        const sellerOrders = await this.prisma.sellerOrder.findMany({
-            where: { sellerId, order: orderFilter },
-            include: { items: true },
-        });
+        const sellerOrders = await this.analytics.findSellerOrdersWithItems(
+            sellerId,
+            orderFilter,
+        );
         const revenue = sellerOrders.reduce(
             (sum, order) =>
                 sum +
@@ -271,13 +233,11 @@ export class AnalyticsService {
         const cartCreatedAt: Prisma.DateTimeFilter = {};
         if (dto.from) cartCreatedAt.gte = new Date(`${dto.from}T00:00:00.000Z`);
         if (dto.to) cartCreatedAt.lte = new Date(`${dto.to}T23:59:59.999Z`);
-        const cartCount = await this.prisma.cartItem.count({
-            where: {
-                product: { sellerId },
-                ...(Object.keys(cartCreatedAt).length > 0 && {
-                    cart: { updatedAt: cartCreatedAt },
-                }),
-            },
+        const cartCount = await this.analytics.countCartItems({
+            product: { sellerId },
+            ...(Object.keys(cartCreatedAt).length > 0 && {
+                cart: { updatedAt: cartCreatedAt },
+            }),
         });
         const conversion =
             cartCount > 0
@@ -298,16 +258,9 @@ export class AnalyticsService {
     }
 
     async getSellerRankings(dto: DateFilterDto) {
-        const sellerOrders = await this.prisma.sellerOrder.findMany({
-            where: { order: this.buildDateFilter(dto.from, dto.to) },
-            select: {
-                sellerId: true,
-                sellerEarnings: true,
-                refundedAmount: true,
-                commissionAmount: true,
-                status: true,
-            },
-        });
+        const sellerOrders = await this.analytics.findSellerOrdersForRanking(
+            this.buildDateFilter(dto.from, dto.to),
+        );
         const ranking = new Map<
             string,
             {
@@ -366,15 +319,10 @@ export class AnalyticsService {
     }
 
     async getSellerTimeline(sellerId: string, dto: DateFilterDto) {
-        const orders = await this.prisma.sellerOrder.findMany({
-            where: { sellerId, order: this.buildDateFilter(dto.from, dto.to) },
-            select: {
-                createdAt: true,
-                sellerEarnings: true,
-                refundedAmount: true,
-            },
-            orderBy: { createdAt: 'asc' },
-        });
+        const orders = await this.analytics.findSellerOrdersForTimeline(
+            sellerId,
+            this.buildDateFilter(dto.from, dto.to),
+        );
         const timeline = new Map<string, { revenue: number; orders: number }>();
         for (const order of orders) {
             const date = this.formatDateToLocal(order.createdAt);

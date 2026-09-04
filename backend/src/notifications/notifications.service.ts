@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { Server } from 'socket.io';
-import { PrismaService } from '../prisma/prisma.service';
+import { NotificationRepository } from '../database/notification.repository';
 
 @Injectable()
 export class NotificationsService {
     private server?: Server;
 
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(private readonly notifications: NotificationRepository) {}
 
     registerServer(server: Server): void {
         this.server = server;
@@ -25,16 +25,10 @@ export class NotificationsService {
     }
 
     async listForUser(userId: string, unreadOnly = false) {
-        return this.prisma.notification.findMany({
-            where: { userId, ...(unreadOnly ? { readAt: null } : {}) },
-            orderBy: { createdAt: 'desc' },
-        });
+        return this.notifications.listForUser(userId, unreadOnly);
     }
 
     async markRead(userId: string, notificationId: string) {
-        return this.prisma.notification.updateMany({
-            where: { id: notificationId, userId, readAt: null },
-            data: { readAt: new Date() },
-        });
+        return this.notifications.markRead(userId, notificationId);
     }
 }

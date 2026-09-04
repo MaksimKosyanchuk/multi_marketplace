@@ -1,0 +1,31 @@
+replicaCount:
+  backend: 1
+  frontend: 1
+
+image:
+  backend: marketplace-backend:local
+  frontend: marketplace-frontend:local
+  pullPolicy: IfNotPresent
+
+service:
+  backendPort: 3001
+  frontendPort: 5173
+  postgresPort: 5432
+  redisPort: 6379
+  meilisearchPort: 7700
+
+postgres:
+  user: postgres
+  password: postgres
+  database: marketplace
+
+jwt:
+  accessSecret: insiders_jwt
+  refreshSecret: insiders_refresh_jwt
+
+meilisearch:
+  env: production
+
+ingress:
+  enabled: false
+  host: marketplace.local

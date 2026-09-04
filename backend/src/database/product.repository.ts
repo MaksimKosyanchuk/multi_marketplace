@@ -40,6 +40,91 @@ export class ProductRepository {
         return db.product.findUnique({ where: { id: productId } });
     }
 
+    findByIdSelectId(productId: string, db: DatabaseClient = this.prisma) {
+        return db.product.findUnique({
+            where: { id: productId },
+            select: { id: true },
+        });
+    }
+
+    findForSearchIndex(productId: string, db: DatabaseClient = this.prisma) {
+        return db.product.findUnique({
+            where: { id: productId },
+            include: {
+                reviews: { select: { rating: true } },
+                auction: { select: { id: true, status: true } },
+            },
+        });
+    }
+
+    findAllForSearchIndex(db: DatabaseClient = this.prisma) {
+        return db.product.findMany({
+            include: {
+                reviews: { select: { rating: true } },
+                auction: { select: { id: true, status: true } },
+            },
+        });
+    }
+
+    countActiveNotArchived(db: DatabaseClient = this.prisma) {
+        return db.product.count({
+            where: { status: ProductStatus.ACTIVE, isArchived: false },
+        });
+    }
+
+    findFallbackHits(
+        where: Prisma.ProductWhereInput,
+        orderBy: Prisma.ProductOrderByWithRelationInput,
+        skip: number,
+        take: number,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.product.findMany({
+            where,
+            include: {
+                category: true,
+                reviews: { select: { rating: true } },
+                auction: { select: { id: true, status: true } },
+            },
+            orderBy,
+            skip,
+            take,
+        });
+    }
+
+    groupByCategory(
+        where: Prisma.ProductWhereInput,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.product.groupBy({
+            by: ['categoryId'],
+            where,
+            _count: { _all: true },
+        });
+    }
+
+    groupBySeller(
+        where: Prisma.ProductWhereInput,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.product.groupBy({
+            by: ['sellerId'],
+            where,
+            _count: { _all: true },
+        });
+    }
+
+    groupByType(
+        where: Prisma.ProductWhereInput,
+        db: DatabaseClient = this.prisma,
+    ) {
+        return db.product.groupBy({
+            by: ['type'],
+            where,
+            _count: { _all: true },
+        });
+    }
+
     findByIdWithCategory(productId: string, db: DatabaseClient = this.prisma) {
         return db.product.findUnique({
             where: { id: productId },

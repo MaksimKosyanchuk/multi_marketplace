@@ -7,7 +7,6 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 
-import { PrismaModule } from '../prisma/prisma.module';
 import { UsersModule } from '../users/users.module';
 import { RedisModule } from '../redis/redis.module';
 
@@ -22,7 +21,6 @@ import { RedisModule } from '../redis/redis.module';
             }),
         }),
 
-        PrismaModule,
         UsersModule,
         RedisModule,
     ],

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Outlet } from 'react-router-dom';
+import { NotificationBell } from '../../components/NotificationBell/NotificationBell';
 import { Sidebar, type SidebarItem } from '../../components/Sidebar/Sidebar';
 import styles from './AdminLayout.module.css';
 
@@ -17,6 +18,9 @@ export const AdminLayout: React.FC = () => {
             <Sidebar title="Admin Panel" items={adminNavItems} />
 
             <main className={styles.mainContent}>
+                <div className={styles.topBar}>
+                    <NotificationBell />
+                </div>
                 <Outlet />
             </main>
         </div>

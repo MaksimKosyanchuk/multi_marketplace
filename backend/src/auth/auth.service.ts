@@ -8,7 +8,6 @@ import { JwtService } from '@nestjs/jwt';
 import { createHash, randomBytes } from 'crypto';
 import * as bcrypt from 'bcrypt';
 
-import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -19,6 +18,8 @@ import { GoogleLoginDto } from './dto/google-login.dto';
 import { GoogleRegisterCompleteDto } from './dto/google-register-complete.dto';
 import { RedisService } from '../redis/redis.service';
 import { LoggerService } from '../logger/logger.service';
+import { RefreshTokenRepository } from '../database/refresh-token.repository';
+import { UnitOfWork } from '../database/unit-of-work';
 
 const SALT_ROUNDS = 10;
 
@@ -28,7 +29,8 @@ export class AuthService {
         private readonly usersService: UsersService,
         private readonly jwtService: JwtService,
         private readonly config: ConfigService,
-        private readonly prisma: PrismaService,
+        private readonly unitOfWork: UnitOfWork,
+        private readonly refreshTokens: RefreshTokenRepository,
         private readonly redis: RedisService,
         private readonly logger: LoggerService,
     ) {}
@@ -48,17 +50,14 @@ export class AuthService {
         const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
         let user: User;
         try {
-            user = await this.prisma.$transaction<User>(
-                async (tx) => {
-                    const userCount = await tx.user.count();
-                    return tx.user.create({
-                        data: {
-                            email: dto.email.toLowerCase(),
-                            passwordHash,
-                            nickName: dto.nickName,
-                            role: userCount === 0 ? Role.ADMIN : Role.CUSTOMER,
-                            cart: { create: {} },
-                        },
+            user = await this.unitOfWork.run<User>(
+                async ({ userRepository }) => {
+                    const userCount = await userRepository.count();
+                    return userRepository.create({
+                        email: dto.email.toLowerCase(),
+                        passwordHash,
+                        nickName: dto.nickName,
+                        role: userCount === 0 ? Role.ADMIN : Role.CUSTOMER,
                     });
                 },
                 {
@@ -194,15 +193,12 @@ export class AuthService {
         const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
         let user: User;
         try {
-            user = await this.prisma.$transaction<User>(async (tx) =>
-                tx.user.create({
-                    data: {
-                        email,
-                        nickName: dto.nickName.trim(),
-                        passwordHash,
-                        role: Role.CUSTOMER,
-                        cart: { create: {} },
-                    },
+            user = await this.unitOfWork.run<User>(async ({ userRepository }) =>
+                userRepository.create({
+                    email,
+                    nickName: dto.nickName.trim(),
+                    passwordHash,
+                    role: Role.CUSTOMER,
                 }),
             );
         } catch (error: unknown) {
@@ -221,24 +217,17 @@ export class AuthService {
     async refresh(refreshToken: string) {
         const tokenHash = this.hashToken(refreshToken);
 
-        const stored = await this.prisma.refreshToken.findUnique({
-            where: { tokenHash },
-            include: { user: true },
-        });
+        const stored = await this.refreshTokens.findByTokenHash(tokenHash);
 
         if (!stored || stored.expiresAt < new Date()) {
             if (stored) {
-                await this.prisma.refreshToken.delete({
-                    where: { id: stored.id },
-                });
+                await this.refreshTokens.deleteById(stored.id);
             }
 
             throw new UnauthorizedException('Invalid refresh token');
         }
 
-        await this.prisma.refreshToken.delete({
-            where: { id: stored.id },
-        });
+        await this.refreshTokens.deleteById(stored.id);
 
         return this.issueTokens(
             stored.user.id,
@@ -250,9 +239,7 @@ export class AuthService {
     async logout(refreshToken: string): Promise<void> {
         const tokenHash = this.hashToken(refreshToken);
 
-        await this.prisma.refreshToken.deleteMany({
-            where: { tokenHash },
-        });
+        await this.refreshTokens.deleteByTokenHash(tokenHash);
     }
 
     async me(userId: string) {
@@ -287,12 +274,10 @@ export class AuthService {
 
         const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
-        await this.prisma.refreshToken.create({
-            data: {
-                tokenHash: this.hashToken(refreshToken),
-                userId,
-                expiresAt,
-            },
+        await this.refreshTokens.create({
+            tokenHash: this.hashToken(refreshToken),
+            userId,
+            expiresAt,
         });
 
         return {
@@ -307,7 +292,7 @@ export class AuthService {
 
     /** Revokes every existing refresh token so a new login invalidates prior sessions. */
     private async invalidateRefreshTokens(userId: string): Promise<void> {
-        await this.prisma.refreshToken.deleteMany({ where: { userId } });
+        await this.refreshTokens.deleteByUserId(userId);
     }
 
     private parseDurationDays(value: string): number {

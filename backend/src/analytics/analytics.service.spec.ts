@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { OrderStatus, Prisma } from '@prisma/client';
+import { AnalyticsRepository } from '../database/analytics.repository';
 import { PrismaService } from '../prisma/prisma.service';
 import { AnalyticsService } from './analytics.service';
 
@@ -17,6 +18,7 @@ describe('AnalyticsService', () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 AnalyticsService,
+                AnalyticsRepository,
                 { provide: PrismaService, useValue: prisma },
             ],
         }).compile();
