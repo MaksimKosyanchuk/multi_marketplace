@@ -113,7 +113,7 @@ jobs:
         run: npm run lint
 
   e2e-and-load:
-    name: Backend E2E & Load
+    name: Backend E2E, Load & k6
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -180,13 +180,9 @@ jobs:
         working-directory: backend
         run: npm run test:load
 
-      - name: Seed k6 auction scenario
+      - name: Run k6 Auction Bid Load Test
         working-directory: backend
-        run: node ./test/load/k6-auction-seed.js
-
-      - name: Run k6 concurrent auction bids
-        working-directory: backend
-        run: docker run --rm --network host -v "$PWD/test/load:/scripts" grafana/k6:0.54.0 run /scripts/auction-bids.k6.js
+        run: npm run test:load:k6
 
       - name: Stop Backend and Docker
         if: always()

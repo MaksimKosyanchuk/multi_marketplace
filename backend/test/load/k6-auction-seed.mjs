@@ -1,7 +1,12 @@
 import { PrismaClient } from '@prisma/client';
 import { writeFileSync } from 'fs';
-import { join } from 'path';
-import jwt from 'jsonwebtoken';
+import { createRequire } from 'module';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
+
+const require = createRequire(import.meta.url);
+const jwt = require('jsonwebtoken');
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const prisma = new PrismaClient();
 const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;

@@ -221,7 +221,7 @@ own runner). A **green workflow means all of them passed**:
 | Infrastructure Lint | compose / CI / Docker lint | `docker compose config`, Dockerfile `--check`, lint scripts exist and have no `--fix` |
 | Frontend & Backend Lint | lint on PR | `npm run lint` in `backend/` and `frontend/` |
 | Build & Unit Tests | unit tests | Prisma generate, Nest + Vite build, frontend Vitest, backend Jest unit |
-| Backend E2E & Load | e2e + load | Compose **only** Postgres/Redis/Meilisearch (`--no-build`, no app image builds), `npm run test:e2e`, Nest build, API process, `npm run test:load`, then k6 auction-bid storm |
+| Backend E2E, Load & k6 | e2e + load | Compose **only** Postgres/Redis/Meilisearch (`--no-build`, no app image builds), `npm run test:e2e`, Nest build, API process, `npm run test:load`, then `npm run test:load:k6` |
 
 The e2e/load job does **not** `docker compose up --build` for frontend/backend:
 two Node image builds plus the stack OOMs a ~7GB GitHub runner (exit **137**).

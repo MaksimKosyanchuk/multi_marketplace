@@ -20,7 +20,7 @@
     "test:debug": "NODE_ENV=test node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "NODE_ENV=test node --max-old-space-size=1024 node_modules/.bin/jest --config ./test/jest-e2e.json --runInBand",
     "test:load": "node ./test/load/checkout-load.js",
-    "test:load:k6": "node ./test/load/k6-auction-seed.js && docker run --rm --network host -v \"$PWD/test/load:/scripts\" grafana/k6:0.54.0 run /scripts/auction-bids.k6.js"
+    "test:load:k6": "node ./test/load/k6-auction-seed.mjs && docker run --rm --network host -v \"$PWD/test/load:/scripts\" grafana/k6:0.54.0 run /scripts/auction-bids.k6.js"
   },
   "dependencies": {
     "@nestjs/bullmq": "^12.0.0",
