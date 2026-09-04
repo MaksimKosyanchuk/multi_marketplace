@@ -42,9 +42,13 @@ describe('Critical marketplace flows (integration)', () => {
         module = await Test.createTestingModule({
             imports: [AppModule],
         }).compile();
+        
         app = module.createNestApplication();
-        await app.init();
         prisma = module.get(PrismaService);
+        
+        await prisma.$connect();
+        await app.init();
+
         bidding = module.get(BiddingService);
         orders = module.get(OrdersService);
         products = module.get(ProductsService);
