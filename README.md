@@ -30,7 +30,8 @@ locking on bids and a limited winner checkout window.
 | Real-time | Socket.IO | Live stock, auction bids, order status; REST resync after reconnect |
 | Auth | JWT access + refresh, Google OAuth2 | Cookie refresh; Google merges into the same user by verified email |
 | Observability | Structured logs + `GET /metrics` | Correlation ID across HTTP, outbox and workers; Prometheus text |
-| Containers | Docker + Compose | Postgres, Redis, Meilisearch, backend, frontend. No Helm (optional in TZ) |
+| Containers | Docker + Compose | Postgres, Redis, Meilisearch, backend, frontend — required local path |
+| Kubernetes | Helm chart `deploy/helm/marketplace/` | Optional bonus: same services as Compose (build images yourself) |
 
 Swagger: `http://localhost:3001/api/docs`
 
@@ -76,11 +77,12 @@ Modular monolith. Module map vs TZ:
 mock charge), `analytics`, `notifications`, plus `disputes`, `reviews`,
 `logger`, `metrics`, `redis`, `queue`.
 
-**Controller → service → repository:** checkout, bidding and product catalog
-go through `backend/src/database/` (`UnitOfWork` + cart/order/product/outbox/
-auction/bid repositories). Domain rules stay in services. BullMQ and Meilisearch
-are isolated behind dispatchers/processors and `SearchService` (PostgreSQL
-fallback if the index is down).
+**Controller → service → repository:** checkout, bidding, product catalog and
+non-core modules (auth, sellers, categories, reviews, disputes, analytics,
+notifications, logger, search fallback) go through `backend/src/database/`
+(`UnitOfWork` + focused repositories). Domain rules stay in services. BullMQ
+and Meilisearch are isolated behind dispatchers/processors and `SearchService`
+(PostgreSQL fallback if the index is down).
 
 Analytics uses dedicated read queries (dashboard aggregates, CSV/JSON export).
 
@@ -140,6 +142,11 @@ and per-item partial refund.
 **Realtime.** Socket.IO: remaining stock, live bid, order status for customer
 and seller. Reconnect + REST resync.
 
+**In-app notifications.** Backend is queue + outbox + `GET /notifications` +
+`PATCH /notifications/:id/read` + Socket.IO `notification_created`. The header
+and admin layout show a **Сповіщення** bell: unread badge, list with Ukrainian
+copy (not raw event types), mark-as-read, live append on reconnect.
+
 **Admin / seller cabinets.** Seller apply + product moderation, disputes,
 platform commission, revenue by seller, top products/sellers, 30-day sales
 chart vs previous period, CSV and JSON export. Seller dashboard: own revenue,
@@ -167,11 +174,20 @@ docker compose up --build
 
 Backend runs Prisma migrations on startup. Stop with `docker compose down`.
 
-Optional Kubernetes sketch (not the local required path):
+### Kubernetes / Helm (optional)
+
+Compose is the supported local run path. A Helm chart mirrors that stack for
+Kubernetes:
 
 ```bash
+# from repo root, after building/tagging images to match values.yaml
 helm upgrade --install marketplace ./deploy/helm/marketplace
 ```
+
+Chart: `deploy/helm/marketplace/` (Deployments + Services for Postgres, Redis,
+Meilisearch, backend, frontend; Secret for `DATABASE_URL` and JWT). Ingress is
+off by default (`ingress.enabled`). This is a sketch, not a production chart
+(emptyDir for Postgres, no probes/PVC/TLS).
 
 ### Environment
 
@@ -191,11 +207,12 @@ Backend loads `.env.${NODE_ENV}` then `.env`:
 - Place bid: **30/min**
 - `/metrics` is not throttled
 
-Load tests against a running API:
+Load tests against a running API (throttling off):
 
 ```bash
 THROTTLE_DISABLED=true docker compose up --build
-cd backend && npm run test:load
+cd backend && npm run test:load      # scarce-stock checkout (Node)
+cd backend && npm run test:load:k6   # concurrent auction bids (k6)
 ```
 
 ### Local (infra only in Compose)
@@ -250,12 +267,17 @@ update; repeated outbox delivery → one consumer receipt. Extra races: last
 second bid, winner checkout vs expiry, concurrent partial refunds, isolated
 sub-order cancel, archive vs foreign cart.
 
-**Frontend:** ProductCard / OrderItem; Socket.IO reconnect (room + REST resync).
+**Frontend:** ProductCard / OrderItem; Socket.IO reconnect (room + REST resync);
+notification bell (REST list + live `notification_created`).
 Storybook exists for key UI pieces.
 
-**Load:** limited-stock checkout (TZ: many concurrent checkouts on scarce
-stock) via `npm run test:load`. Additional k6 auction-bid storm via
-`npm run test:load:k6` (seeds an active auction, then `grafana/k6`).
+**Load:** two scenarios, both on CI job **Backend E2E, Load & k6** after the API
+is up:
+
+| Script | Command | What it checks |
+| --- | --- | --- |
+| Node checkout race | `npm run test:load` | Four customers, stock `2`, four parallel `/orders/checkout` — winners never exceed stock |
+| k6 auction bids | `npm run test:load:k6` | Seeds an `ACTIVE` auction, then `grafana/k6` concurrent `POST /auctions/:id/bids` (does **not** replace the Node script) |
 
 ## Load test report
 
@@ -263,7 +285,7 @@ stock) via `npm run test:load`. Additional k6 auction-bid storm via
 cd backend && npm run test:load
 ```
 
-Recorded result (also executed on CI job **Backend E2E & Load**):
+Recorded checkout result (also executed on CI):
 
 ```text
 scenario: limited-stock checkout (self-contained)
@@ -282,11 +304,16 @@ errors: 0
 Successful quantity must never exceed initial stock. Request order does not
 matter.
 
-k6 (does **not** replace the Node script):
+k6 (additive; needs Docker + a running API on `:3001`):
 
 ```bash
 cd backend && npm run test:load:k6
 ```
+
+Seed: `backend/test/load/k6-auction-seed.mjs` writes
+`backend/test/load/.k6-auction-fixture.json`. Runner:
+`backend/test/load/auction-bids.k6.js` (`grafana/k6:0.54.0`). CI uses the same
+`npm run test:load:k6` step as locally.
 
 ## Observability
 
@@ -303,7 +330,7 @@ duration** (orders, auctions, search, notifications workers).
 - Mock payments only; no real payouts.
 - UI is functional, not a design system.
 - Not 100% test coverage; CI covers lint, unit, critical e2e, checkout load, and k6 bids.
-- Local/dev path is Docker Compose. Helm chart under `deploy/helm/marketplace/` is a bonus K8s sketch (build images yourself; Vite API URL is bake-time).
+- Local/dev path is Docker Compose. Helm under `deploy/helm/marketplace/` is an optional K8s sketch (build images yourself; Vite `VITE_API_URL` is bake-time).
 - Similar products = same-category rule, not ML.
 - Queue processors still read outbox rows for claim/delivery (infrastructure, not domain services).
 - Seller cannot buy/bid by policy (see Roles).
