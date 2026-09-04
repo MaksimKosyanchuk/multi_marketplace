@@ -10,12 +10,13 @@ jobs:
   infra-lint:
     name: Infrastructure Lint
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Validate Docker Compose Configuration
-        run: docker compose -f docker-compose.yml config --quiet
+        run: docker compose config --quiet
 
       - name: Lint Backend Dockerfile
         run: docker build --check -f backend/Dockerfile backend/
@@ -23,10 +24,12 @@ jobs:
       - name: Lint Frontend Dockerfile
         run: docker build --check -f frontend/Dockerfile frontend/
 
+
   unit-and-build:
     name: Build & Unit Tests
-    needs: infra-lint
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -40,18 +43,16 @@ jobs:
             backend/package-lock.json
             frontend/package-lock.json
 
-      - name: Cache Backend Node Modules & Prisma Engines
+      - name: Cache Backend Node Modules
         uses: actions/cache@v4
         id: cache-backend
         with:
-          path: |
-            backend/node_modules
-            backend/prisma/.cache
-          key: ${{ runner.os }}-backend-${{ hashFiles('backend/package-lock.json', 'backend/prisma/schema.prisma') }}
+          path: backend/node_modules
+          key: ${{ runner.os }}-backend-${{ hashFiles('backend/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-backend-
 
-      - name: Cache Frontend Node Modules & Vite Cache
+      - name: Cache Frontend Node Modules
         uses: actions/cache@v4
         id: cache-frontend
         with:
@@ -64,70 +65,95 @@ jobs:
 
       - name: Install Backend Dependencies
         if: steps.cache-backend.outputs.cache-hit != 'true'
-        run: npm ci --prefix backend
+        working-directory: backend
+        run: npm ci
 
       - name: Install Frontend Dependencies
         if: steps.cache-frontend.outputs.cache-hit != 'true'
-        run: npm ci --prefix frontend
+        working-directory: frontend
+        run: npm ci
 
       - name: Generate Prisma Client
-        run: npx --prefix backend prisma generate --schema=prisma/schema.prisma
+        working-directory: backend
+        run: npx prisma generate
 
-      - name: Build Backend Application
-        run: NODE_OPTIONS="--max-old-space-size=2048" npm run build --prefix backend
+      - name: Build Backend
+        working-directory: backend
+        env:
+          NODE_OPTIONS: --max-old-space-size=2048
+        run: npm run build
 
-      - name: Build Frontend Application
-        run: npm run build --prefix frontend
+      - name: Build Frontend
+        working-directory: frontend
+        run: npm run build
 
       - name: Run Frontend Unit Tests
-        run: npm run test --prefix frontend -- --run
+        working-directory: frontend
+        run: npm run test -- --run
 
       - name: Run Backend Unit Tests
-        run: npm run test --prefix backend
+        working-directory: backend
         env:
           DATABASE_URL: postgresql://postgres:password@localhost:5432/marketplace_test?schema=public
           JWT_ACCESS_SECRET: insiders_jwt
           JWT_REFRESH_SECRET: insiders_refresh_jwt
+        run: npm run test
 
-  e2e-and-load:
-    name: Docker Environment, Linter & Heavy Tests
-    needs: unit-and-build
+
+  docker-tests:
+    name: Docker Lint, E2E & Load Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Build and Start Containers (Production Mode)
-        run: docker compose up -d --build
+      - name: Build and Start Docker Environment
         env:
           DATABASE_URL: postgresql://postgres:password@postgres:5432/marketplace_test?schema=public
+          REDIS_HOST: redis
+          REDIS_PORT: 6379
           JWT_ACCESS_SECRET: insiders_jwt
           JWT_REFRESH_SECRET: insiders_refresh_jwt
+        run: docker compose up -d --build
+
+      - name: Show Docker Status
+        run: docker compose ps
 
       - name: Run Prisma Migrations
+        env:
+          DATABASE_URL: postgresql://postgres:password@postgres:5432/marketplace_test?schema=public
         run: docker compose exec -T backend npx prisma migrate deploy
 
-      - name: Run Backend Linter in Docker
+      - name: Run Backend Linter
         run: docker compose exec -T backend npm run lint
 
+      - name: Run Frontend Linter
+        run: docker compose exec -T frontend npm run lint
+
       - name: Run Backend E2E Tests
-        run: docker compose exec -T backend npm run test:e2e
         env:
           DATABASE_URL: postgresql://postgres:password@postgres:5432/marketplace_test?schema=public
           REDIS_HOST: redis
           REDIS_PORT: 6379
           JWT_ACCESS_SECRET: insiders_jwt
           JWT_REFRESH_SECRET: insiders_refresh_jwt
+        run: docker compose exec -T backend npm run test:e2e
 
       - name: Run Backend Load Tests
-        run: docker compose exec -T backend npm run test:load
         env:
           DATABASE_URL: postgresql://postgres:password@postgres:5432/marketplace_test?schema=public
           REDIS_HOST: redis
           REDIS_PORT: 6379
           JWT_ACCESS_SECRET: insiders_jwt
           JWT_REFRESH_SECRET: insiders_refresh_jwt
+        run: docker compose exec -T backend npm run test:load
 
-      - name: Stop Docker Compose
+      - name: Show Docker Logs on Failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Stop Docker Environment
         if: always()
         run: docker compose down -v
