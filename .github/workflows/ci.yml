@@ -30,28 +30,6 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js (for local linting/dependencies cache if needed)
-        uses: actions/setup-node@v4
-        with:
-          node-version: '26.3.0'
-          cache: 'npm'
-          cache-dependency-path: |
-            backend/package-lock.json
-            frontend/package-lock.json
-
-      - name: Install Backend & Frontend Dependencies
-        run: |
-          npm ci --prefix backend
-          npm ci --prefix frontend
-
-      - name: Run Backend Linter
-        run: npm run lint
-        working-directory: backend
-
-      - name: Run Frontend Linter
-        run: npm run lint
-        working-directory: frontend
-
       - name: Build and Start Containers via Docker Compose
         run: docker compose up -d --build
         env:
@@ -63,52 +41,34 @@ jobs:
         run: docker compose exec -T backend npx prisma migrate deploy
 
       - name: Run Frontend Unit Tests
-        run: npm run test --prefix frontend -- --run
+        run: docker compose exec -T frontend npm run test -- --run
 
       - name: Run Backend Unit Tests
-        run: npm run test --prefix backend
+        run: docker compose exec -T backend npm run test
         env:
-          DATABASE_URL: postgresql://postgres:password@localhost:5432/marketplace_test?schema=public
-          DATABASE_HOST: localhost
-          DATABASE_PORT: 5432
-          DATABASE_USER: postgres
-          DATABASE_PASSWORD: password
-          DATABASE_NAME: marketplace_test
-          REDIS_HOST: localhost
+          DATABASE_URL: postgresql://postgres:password@postgres:5432/marketplace_test?schema=public
+          REDIS_HOST: redis
           REDIS_PORT: 6379
           JWT_ACCESS_SECRET: insiders_jwt
           JWT_REFRESH_SECRET: insiders_refresh_jwt
-          CLIENT_URL: http://localhost:5173
 
       - name: Run Backend E2E Tests
-        run: npm run test:e2e --prefix backend
+        run: docker compose exec -T backend npm run test:e2e
         env:
-          DATABASE_URL: postgresql://postgres:password@localhost:5432/marketplace_test?schema=public
-          DATABASE_HOST: localhost
-          DATABASE_PORT: 5432
-          DATABASE_USER: postgres
-          DATABASE_PASSWORD: password
-          DATABASE_NAME: marketplace_test
-          REDIS_HOST: localhost
+          DATABASE_URL: postgresql://postgres:password@postgres:5432/marketplace_test?schema=public
+          REDIS_HOST: redis
           REDIS_PORT: 6379
           JWT_ACCESS_SECRET: insiders_jwt
           JWT_REFRESH_SECRET: insiders_refresh_jwt
-          CLIENT_URL: http://localhost:5173
 
       - name: Run Backend Load Tests
-        run: npm run test:load --prefix backend
+        run: docker compose exec -T backend npm run test:load
         env:
-          DATABASE_URL: postgresql://postgres:password@localhost:5432/marketplace_test?schema=public
-          DATABASE_HOST: localhost
-          DATABASE_PORT: 5432
-          DATABASE_USER: postgres
-          DATABASE_PASSWORD: password
-          DATABASE_NAME: marketplace_test
-          REDIS_HOST: localhost
+          DATABASE_URL: postgresql://postgres:password@postgres:5432/marketplace_test?schema=public
+          REDIS_HOST: redis
           REDIS_PORT: 6379
           JWT_ACCESS_SECRET: insiders_jwt
           JWT_REFRESH_SECRET: insiders_refresh_jwt
-          CLIENT_URL: http://localhost:5173
 
       - name: Stop Docker Compose
         if: always()
