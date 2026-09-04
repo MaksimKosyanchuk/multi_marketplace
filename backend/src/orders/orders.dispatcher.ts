@@ -5,6 +5,8 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoggerService } from '../logger/logger.service';
 
+const ORDER_OUTBOX_AGGREGATES = ['Order', 'SellerOrder', 'Payment'] as const;
+
 @Injectable()
 export class OrdersDispatcher implements OnModuleInit, OnModuleDestroy {
     private timer?: ReturnType<typeof setInterval>;
@@ -32,6 +34,7 @@ export class OrdersDispatcher implements OnModuleInit, OnModuleDestroy {
             const now = new Date();
             await this.prisma.outboxEvent.updateMany({
                 where: {
+                    aggregateType: { in: [...ORDER_OUTBOX_AGGREGATES] },
                     status: OutboxStatus.PROCESSING,
                     availableAt: { lte: now },
                     attempts: { lt: 5 },
@@ -40,7 +43,7 @@ export class OrdersDispatcher implements OnModuleInit, OnModuleDestroy {
             });
             const events = await this.prisma.outboxEvent.findMany({
                 where: {
-                    aggregateType: { in: ['Order', 'SellerOrder', 'Payment'] },
+                    aggregateType: { in: [...ORDER_OUTBOX_AGGREGATES] },
                     status: OutboxStatus.PENDING,
                     availableAt: { lte: new Date() },
                     attempts: { lt: 5 },

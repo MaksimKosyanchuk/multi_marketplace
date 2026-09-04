@@ -17,6 +17,12 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
                 },
             }),
         }),
+        BullModule.registerQueue(
+            { name: 'orders' },
+            { name: 'auctions' },
+            { name: 'search' },
+            { name: 'notifications' },
+        ),
     ],
     exports: [BullModule],
 })

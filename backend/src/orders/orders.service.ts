@@ -5,8 +5,6 @@ import {
     NotFoundException,
     Optional,
 } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
 import {
     LedgerEntryType,
     OrderStatus,
@@ -53,7 +51,6 @@ export function deriveOrderStatus(statuses: SellerOrderStatus[]): OrderStatus {
 export class OrdersService {
     constructor(
         private readonly unitOfWork: UnitOfWork,
-        @InjectQueue('orders') private readonly ordersQueue: Queue,
         private readonly logger: LoggerService,
         private readonly redis: RedisService,
         private readonly mockPayment: MockPaymentService,
@@ -461,7 +458,6 @@ export class OrdersService {
                     return result;
                 },
             );
-            await this.ordersQueue.add('process-order', { orderId });
             for (const sellerOrder of updated.sellerOrders) {
                 this.ordersGateway?.emitOrderStatusUpdate(
                     sellerOrder.sellerId,
@@ -1093,19 +1089,6 @@ export class OrdersService {
                 this.redis.delByPattern('search:products:*'),
                 this.redis.delByPattern('products:detail:*'),
             ]);
-            const event =
-                await this.outboxRepository.findEventIdByIdempotencyKey(
-                    eventKey,
-                );
-            if (event)
-                await this.ordersQueue.add(
-                    'deliver-outbox-event',
-                    { outboxEventId: event.id },
-                    {
-                        attempts: 5,
-                        backoff: { type: 'exponential', delay: 1000 },
-                    },
-                );
             return { ...result.sellerOrder, order: result.order };
         } catch (error: unknown) {
             if (
@@ -1297,19 +1280,6 @@ export class OrdersService {
                 this.redis.delByPattern('search:products:*'),
                 this.redis.delByPattern('products:detail:*'),
             ]);
-            const event =
-                await this.outboxRepository.findEventIdByIdempotencyKey(
-                    `${idempotencyKey}:refund-event`,
-                );
-            if (event)
-                await this.ordersQueue.add(
-                    'deliver-outbox-event',
-                    { outboxEventId: event.id },
-                    {
-                        attempts: 5,
-                        backoff: { type: 'exponential', delay: 1000 },
-                    },
-                );
             this.metrics.recordRefund();
             return result;
         } catch (error: unknown) {

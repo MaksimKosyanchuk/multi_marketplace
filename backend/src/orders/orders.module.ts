@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { BullModule } from '@nestjs/bullmq';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 import { OrdersProcessor } from './orders.processor';
@@ -10,14 +9,7 @@ import { PaymentsModule } from '../payments/payments.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-    imports: [
-        BullModule.registerQueue({
-            name: 'orders',
-        }),
-        AuthModule,
-        PaymentsModule,
-        NotificationsModule,
-    ],
+    imports: [AuthModule, PaymentsModule, NotificationsModule],
     controllers: [OrdersController],
     providers: [
         OrdersService,

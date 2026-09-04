@@ -17,7 +17,6 @@ import {
 } from '../database';
 
 describe('BiddingService critical auction flows', () => {
-    const queue = { add: jest.fn() };
     const logger = { audit: jest.fn(), warn: jest.fn() };
     const metrics = {
         recordBidAccepted: jest.fn(),
@@ -47,7 +46,6 @@ describe('BiddingService critical auction flows', () => {
         jest.clearAllMocks();
         service = new BiddingService(
             new UnitOfWork(prisma as never),
-            queue as never,
             logger as never,
             new AuctionRepository(prisma as never),
             new BidRepository(prisma as never),
@@ -158,7 +156,11 @@ describe('BiddingService critical auction flows', () => {
                         status: AuctionStatus.SOLD,
                     }),
                 updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-                update: jest.fn(),
+                update: jest.fn().mockResolvedValue({
+                    id: 'auction-1',
+                    status: AuctionStatus.SOLD,
+                    checkoutExpiresAt: new Date(Date.now() + 15 * 60 * 1000),
+                }),
             },
             bid: {
                 findFirst: jest.fn().mockResolvedValue(winner),
@@ -185,6 +187,20 @@ describe('BiddingService critical auction flows', () => {
             where: { id: 'bid-2' },
             data: { status: BidStatus.WON },
         });
+        expect(tx.outboxEvent.create).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({
+                    type: 'auction.ended',
+                }),
+            }),
+        );
+        expect(tx.outboxEvent.create).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({
+                    type: 'auction.schedule-checkout-expiry',
+                }),
+            }),
+        );
     });
 
     it('does not query stock when creating an auction', async () => {
@@ -204,6 +220,7 @@ describe('BiddingService critical auction flows', () => {
                     status: AuctionStatus.DRAFT,
                 }),
             },
+            outboxEvent: { create: jest.fn() },
         };
         prisma.$transaction.mockImplementation(
             (callback: (txContext: typeof tx) => unknown) => callback(tx),
@@ -221,6 +238,23 @@ describe('BiddingService critical auction flows', () => {
             where: { id: 'product-1' },
         });
         expect(tx.product).not.toHaveProperty('updateMany');
+        expect(tx.outboxEvent.create).toHaveBeenCalledTimes(2);
+        expect(tx.outboxEvent.create).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({
+                    type: 'auction.schedule-end',
+                    aggregateId: 'auction-1',
+                }),
+            }),
+        );
+        expect(tx.outboxEvent.create).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({
+                    type: 'auction.schedule-start',
+                    aggregateId: 'auction-1',
+                }),
+            }),
+        );
     });
 
     it('accepts a last-second bid while the deadline is still in the future', async () => {

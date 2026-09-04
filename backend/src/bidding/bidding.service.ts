@@ -5,7 +5,6 @@ import {
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bullmq';
 import {
     AuctionStatus,
     LedgerEntryType,
@@ -16,7 +15,6 @@ import {
     ProductType,
     SellerOrderStatus,
 } from '@prisma/client';
-import { Queue } from 'bullmq';
 import { getCorrelationId } from '../common/correlation/correlation.context';
 import { CreateAuctionDto } from './dto/create-auction.dto';
 import { LoggerService } from '../logger/logger.service';
@@ -34,7 +32,6 @@ import { MetricsService } from '../metrics/metrics.service';
 export class BiddingService {
     constructor(
         private readonly unitOfWork: UnitOfWork,
-        @InjectQueue('auctions') private readonly auctionsQueue: Queue,
         private readonly logger: LoggerService,
         private readonly auctionRepository: AuctionRepository,
         private readonly bidRepository: BidRepository,
@@ -54,7 +51,11 @@ export class BiddingService {
         }
 
         const auction = await this.unitOfWork.run(
-            async ({ productRepository, auctionRepository }) => {
+            async ({
+                productRepository,
+                auctionRepository,
+                outboxRepository,
+            }) => {
                 const product = await productRepository.findById(dto.productId);
                 if (!product) throw new NotFoundException('Product not found');
                 if (product.sellerId !== sellerId) {
@@ -79,7 +80,7 @@ export class BiddingService {
                         'Product already has an auction',
                     );
 
-                return auctionRepository.create({
+                const created = await auctionRepository.create({
                     productId: dto.productId,
                     startingPrice: new Prisma.Decimal(dto.startingPrice),
                     currentPrice: new Prisma.Decimal(dto.startingPrice),
@@ -88,30 +89,33 @@ export class BiddingService {
                     endsAt,
                     status: AuctionStatus.DRAFT,
                 });
+                await outboxRepository.create({
+                    aggregateType: 'Auction',
+                    aggregateId: created.id,
+                    type: 'auction.schedule-end',
+                    availableAt: endsAt,
+                    payload: {
+                        auctionId: created.id,
+                        correlationId: getCorrelationId(),
+                    },
+                    idempotencyKey: `auction-schedule-end:${created.id}`,
+                });
+                if (created.status === AuctionStatus.DRAFT) {
+                    await outboxRepository.create({
+                        aggregateType: 'Auction',
+                        aggregateId: created.id,
+                        type: 'auction.schedule-start',
+                        availableAt: startsAt,
+                        payload: {
+                            auctionId: created.id,
+                            correlationId: getCorrelationId(),
+                        },
+                        idempotencyKey: `auction-schedule-start:${created.id}`,
+                    });
+                }
+                return created;
             },
         );
-        await this.auctionsQueue.add(
-            'end-auction',
-            { auctionId: auction.id },
-            {
-                delay: Math.max(0, endsAt.getTime() - Date.now()),
-                jobId: `auction-end-${auction.id}`,
-                attempts: 5,
-                backoff: { type: 'exponential', delay: 1000 },
-            },
-        );
-        if (auction.status === AuctionStatus.DRAFT) {
-            await this.auctionsQueue.add(
-                'start-auction',
-                { auctionId: auction.id },
-                {
-                    delay: Math.max(0, startsAt.getTime() - Date.now()),
-                    jobId: `auction-start-${auction.id}`,
-                    attempts: 5,
-                    backoff: { type: 'exponential', delay: 1000 },
-                },
-            );
-        }
         void this.logger.audit(BiddingService.name, 'Auction created', {
             auctionId: auction.id,
             productId: dto.productId,
@@ -367,6 +371,19 @@ export class BiddingService {
                     },
                     idempotencyKey: `auction-ended:${auctionId}`,
                 });
+                if (winner && result.checkoutExpiresAt) {
+                    await outboxRepository.create({
+                        aggregateType: 'Auction',
+                        aggregateId: auctionId,
+                        type: 'auction.schedule-checkout-expiry',
+                        availableAt: result.checkoutExpiresAt,
+                        payload: {
+                            auctionId,
+                            correlationId: getCorrelationId(),
+                        },
+                        idempotencyKey: `auction-schedule-checkout-expiry:${auctionId}`,
+                    });
+                }
                 return result;
             },
         );

@@ -1,5 +1,4 @@
 import { BadRequestException } from '@nestjs/common';
-import { getQueueToken } from '@nestjs/bullmq';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
     OrderStatus,
@@ -31,7 +30,6 @@ describe('OrdersService checkout', () => {
         sellerOrder: { findUnique: jest.fn(), findMany: jest.fn() },
         $transaction: transaction,
     };
-    const queue = { add: jest.fn() };
     const redis = { delByPattern: jest.fn() };
     const logger = { log: jest.fn() };
 
@@ -69,7 +67,6 @@ describe('OrdersService checkout', () => {
             providers: [
                 OrdersService,
                 { provide: PrismaService, useValue: prisma },
-                { provide: getQueueToken('orders'), useValue: queue },
                 { provide: RedisService, useValue: redis },
                 { provide: LoggerService, useValue: logger },
                 {

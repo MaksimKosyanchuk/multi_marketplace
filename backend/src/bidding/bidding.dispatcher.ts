@@ -46,7 +46,12 @@ export class BiddingDispatcher implements OnModuleInit, OnModuleDestroy {
                     availableAt: { lte: now },
                     attempts: { lt: 5 },
                 },
-                select: { id: true, payload: true },
+                    select: {
+                        id: true,
+                        type: true,
+                        aggregateId: true,
+                        payload: true,
+                    },
                 orderBy: { createdAt: 'asc' },
                 take: 50,
             });
@@ -63,10 +68,21 @@ export class BiddingDispatcher implements OnModuleInit, OnModuleDestroy {
                             ? String(rawCorrelationId)
                             : undefined;
 
+                    const jobName =
+                        event.type === 'auction.schedule-start'
+                            ? 'start-auction'
+                            : event.type === 'auction.schedule-end'
+                              ? 'end-auction'
+                              : event.type ===
+                                  'auction.schedule-checkout-expiry'
+                                ? 'expire-auction-checkout'
+                                : 'deliver-auction-event';
+
                     return this.auctionsQueue.add(
-                        'deliver-auction-event',
+                        jobName,
                         {
                             outboxEventId: event.id,
+                            auctionId: event.aggregateId,
                             correlationId,
                         },
                         {
