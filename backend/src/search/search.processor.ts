@@ -6,6 +6,7 @@ import { OutboxStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { runWithCorrelationId } from '../common/correlation/correlation.context';
 import { LoggerService } from '../logger/logger.service';
+import { MetricsService } from '../metrics/metrics.service';
 import { randomUUID } from 'node:crypto';
 
 interface SearchJob {
@@ -22,6 +23,7 @@ export class SearchProcessor extends WorkerHost {
         private readonly redis: RedisService,
         private readonly prisma: PrismaService,
         private readonly logger: LoggerService,
+        private readonly metrics: MetricsService,
     ) {
         super();
     }
@@ -34,6 +36,17 @@ export class SearchProcessor extends WorkerHost {
     }
 
     private async processJob(job: Job<SearchJob>): Promise<void> {
+        const started = Date.now();
+        try {
+            await this.runSearchJob(job);
+            this.metrics.recordQueueJob(Date.now() - started);
+        } catch (error) {
+            this.metrics.recordQueueJob(Date.now() - started, true);
+            throw error;
+        }
+    }
+
+    private async runSearchJob(job: Job<SearchJob>): Promise<void> {
         void this.logger.debug(
             SearchProcessor.name,
             'Search queue processing',

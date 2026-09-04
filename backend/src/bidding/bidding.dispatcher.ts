@@ -46,12 +46,12 @@ export class BiddingDispatcher implements OnModuleInit, OnModuleDestroy {
                     availableAt: { lte: now },
                     attempts: { lt: 5 },
                 },
-                    select: {
-                        id: true,
-                        type: true,
-                        aggregateId: true,
-                        payload: true,
-                    },
+                select: {
+                    id: true,
+                    type: true,
+                    aggregateId: true,
+                    payload: true,
+                },
                 orderBy: { createdAt: 'asc' },
                 take: 50,
             });
