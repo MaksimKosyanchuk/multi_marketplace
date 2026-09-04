@@ -112,7 +112,7 @@ jobs:
 
       - name: Start Backend Server in Background
         run: |
-          npm run start:prod --prefix backend &
+          NODE_ENV=production node backend/dist/main &
           echo "Waiting for backend to start..."
           for i in {1..30}; do
             nc -z localhost 3001 && echo "Backend is up!" && exit 0
