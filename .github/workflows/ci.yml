@@ -24,7 +24,7 @@ jobs:
         run: docker build --check -f frontend/Dockerfile frontend/
 
   unit-and-build:
-    name: Build, Lint & Unit Tests
+    name: Build & Unit Tests
     needs: infra-lint
     runs-on: ubuntu-latest
     steps:
@@ -48,14 +48,6 @@ jobs:
       - name: Generate Prisma Client
         run: npx prisma generate --schema=backend/prisma/schema.prisma
 
-      - name: Run Backend Linter
-        run: npm run lint
-        working-directory: backend
-
-      - name: Run Frontend Linter
-        run: npm run lint
-        working-directory: frontend
-
       - name: Build Backend Application
         run: NODE_OPTIONS="--max-old-space-size=2048" npm run build --prefix backend
 
@@ -73,7 +65,7 @@ jobs:
           JWT_REFRESH_SECRET: insiders_refresh_jwt
 
   e2e-and-load:
-    name: Production Environment & Heavy Tests
+    name: Docker Environment, Linter & Heavy Tests
     needs: unit-and-build
     runs-on: ubuntu-latest
     steps:
@@ -89,6 +81,9 @@ jobs:
 
       - name: Run Prisma Migrations
         run: docker compose exec -T backend npx prisma migrate deploy
+
+      - name: Run Backend Linter in Docker
+        run: docker compose exec -T backend npm run lint
 
       - name: Run Backend E2E Tests
         run: docker compose exec -T backend npm run test:e2e
