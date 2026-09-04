@@ -7,8 +7,25 @@ on:
     branches: [ main, master, develop ]
 
 jobs:
+  infra-lint:
+    name: Infrastructure Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Validate Docker Compose Configuration
+        run: docker compose -f docker-compose.yml config --quiet
+
+      - name: Lint Backend Dockerfile
+        run: docker build --check -f backend/Dockerfile backend/
+
+      - name: Lint Frontend Dockerfile
+        run: docker build --check -f frontend/Dockerfile frontend/
+
   build-and-lint:
-    name: Install, Lint & Build
+    name: Install, Lint, Test & Build Both
+    needs: infra-lint
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -39,7 +56,14 @@ jobs:
         run: npm run lint
         working-directory: frontend
 
-      - name: Build Frontend
+      - name: Run Frontend Tests
+        run: npm run test --prefix frontend
+        # Если тесты интерактивные или требуют CI-флага, замените на: npm run test -- --watchAll=false (для Jest/Vitest)
+
+      - name: Build Backend Application
+        run: npm run build --prefix backend
+
+      - name: Build Frontend Application
         run: npm run build --prefix frontend
         env:
           VITE_API_URL: http://localhost:3001
@@ -114,9 +138,6 @@ jobs:
           JWT_REFRESH_SECRET: insiders_refresh_jwt
           CLIENT_URL: http://localhost:5173
 
-      - name: Build Backend Application
-        run: npm run build --prefix backend
-
       - name: Start Backend Server in Background
         run: |
           npm run start:prod --prefix backend &
@@ -164,19 +185,3 @@ jobs:
           JWT_ACCESS_SECRET: insiders_jwt
           JWT_REFRESH_SECRET: insiders_refresh_jwt
           CLIENT_URL: http://localhost:5173
-
-  infra-lint:
-    name: Infrastructure Lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Validate Docker Compose Configuration
-        run: docker compose -f docker-compose.yml config --quiet
-
-      - name: Lint Backend Dockerfile
-        run: docker build --check -f backend/Dockerfile backend/
-
-      - name: Lint Frontend Dockerfile
-        run: docker build --check -f frontend/Dockerfile frontend/
