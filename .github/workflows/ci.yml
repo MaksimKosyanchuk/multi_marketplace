@@ -44,7 +44,7 @@ jobs:
         run: docker compose exec -T frontend npm run test -- --run
 
       - name: Run Backend Unit Tests
-        run: docker compose exec -T backend npm run test
+        run: docker compose exec -T backend npm run test -- --runInBand
         env:
           DATABASE_URL: postgresql://postgres:password@postgres:5432/marketplace_test?schema=public
           REDIS_HOST: redis
