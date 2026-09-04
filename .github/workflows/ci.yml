@@ -23,14 +23,61 @@ jobs:
       - name: Lint Frontend Dockerfile
         run: docker build --check -f frontend/Dockerfile frontend/
 
-  ci-pipeline:
-    name: Build, Lint & Test via Docker Compose
+  unit-and-build:
+    name: Lint, Build & Unit Tests
+    needs: infra-lint
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Build and Start Containers via Docker Compose
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '26.3.0'
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install Dependencies
+        run: |
+          npm ci --prefix backend
+          npm ci --prefix frontend
+
+      - name: Run Backend Linter
+        run: npm run lint
+        working-directory: backend
+
+      - name: Run Frontend Linter
+        run: npm run lint
+        working-directory: frontend
+
+      - name: Build Backend Application
+        run: NODE_OPTIONS="--max-old-space-size=2048" npm run build --prefix backend
+
+      - name: Build Frontend Application
+        run: npm run build --prefix frontend
+
+      - name: Run Frontend Unit Tests
+        run: npm run test --prefix frontend -- --run
+
+      - name: Run Backend Unit Tests
+        run: npm run test --prefix backend
+        env:
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/marketplace_test?schema=public
+          JWT_ACCESS_SECRET: insiders_jwt
+          JWT_REFRESH_SECRET: insiders_refresh_jwt
+
+  e2e-and-load:
+    name: Production Environment & Heavy Tests
+    needs: unit-and-build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Build and Start Containers (Production Mode)
         run: docker compose up -d --build
         env:
           DATABASE_URL: postgresql://postgres:password@postgres:5432/marketplace_test?schema=public
@@ -39,18 +86,6 @@ jobs:
 
       - name: Run Prisma Migrations
         run: docker compose exec -T backend npx prisma migrate deploy
-
-      - name: Run Frontend Unit Tests
-        run: docker compose exec -T frontend npm run test -- --run
-
-      - name: Run Backend Unit Tests
-        run: docker compose exec -T backend npm run test -- --runInBand
-        env:
-          DATABASE_URL: postgresql://postgres:password@postgres:5432/marketplace_test?schema=public
-          REDIS_HOST: redis
-          REDIS_PORT: 6379
-          JWT_ACCESS_SECRET: insiders_jwt
-          JWT_REFRESH_SECRET: insiders_refresh_jwt
 
       - name: Run Backend E2E Tests
         run: docker compose exec -T backend npm run test:e2e
