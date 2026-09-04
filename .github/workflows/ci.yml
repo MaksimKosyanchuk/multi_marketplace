@@ -28,7 +28,7 @@ jobs:
         working-directory: backend
 
       - name: Install Frontend Dependencies
-        run: npm ci
+        run: npm ci --verbose
         working-directory: frontend
 
       - name: Run Backend Linter
@@ -165,3 +165,4 @@ jobs:
         with:
           files: docker-compose.yml
           workdir: .
+          targets: []
