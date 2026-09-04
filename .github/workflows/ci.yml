@@ -83,23 +83,13 @@ jobs:
         run: npm run test
 
   docker-tests:
-    name: Docker Lint, E2E & Load Tests
+    name: Docker E2E & Load Tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
-      - name: Verify Backend Lint Script
-        working-directory: backend
-        run: |
-          node -e "const p=require('./package.json'); if (!p.scripts?.lint || p.scripts.lint.includes('--fix')) { console.error('Backend lint script must exist and must not contain --fix'); process.exit(1); }"
-
-      - name: Verify Frontend Lint Script
-        working-directory: frontend
-        run: |
-          node -e "const p=require('./package.json'); if (!p.scripts?.lint || p.scripts.lint.includes('--fix')) { console.error('Frontend lint script must exist and must not contain --fix'); process.exit(1); }"
 
       - name: Remove Previous Docker Environment
         run: docker compose down -v --remove-orphans
@@ -123,12 +113,6 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@postgres:5432/marketplace?schema=public
         run: docker compose exec -T backend npx prisma migrate deploy
-
-      - name: Run Backend Linter
-        run: docker compose exec -T backend npm run lint
-
-      - name: Run Frontend Linter
-        run: docker compose exec -T frontend npm run lint
 
       - name: Run Backend E2E Tests
         env:
@@ -155,3 +139,33 @@ jobs:
       - name: Stop Docker Environment
         if: always()
         run: docker compose down -v --remove-orphans
+
+  lint:
+    name: Frontend & Backend Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '26.3.0'
+
+      - name: Install Backend Dependencies
+        working-directory: backend
+        run: npm ci --no-audit
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm ci --no-audit
+
+      - name: Run Backend Linter
+        working-directory: backend
+        run: npm run lint
+
+      - name: Run Frontend Linter
+        working-directory: frontend
+        run: npm run lint
