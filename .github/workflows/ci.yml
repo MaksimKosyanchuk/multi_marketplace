@@ -24,7 +24,7 @@ jobs:
             frontend/package-lock.json
 
       - name: Install Backend Dependencies
-        run: npm ci
+        run: npm ci --verbose
         working-directory: backend
 
       - name: Install Frontend Dependencies
@@ -79,7 +79,7 @@ jobs:
           cache-dependency-path: backend/package-lock.json
 
       - name: Install Dependencies
-        run: npm ci --prefix backend
+        run: npm ci --prefix backend --verbose
 
       - name: Generate Prisma Client
         run: npx prisma generate
@@ -166,4 +166,3 @@ jobs:
         with:
           files: docker-compose.yml
           workdir: .
-          action: lint
