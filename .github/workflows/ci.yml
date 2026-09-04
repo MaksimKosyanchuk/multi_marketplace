@@ -160,9 +160,5 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Lint Docker Compose File
-        uses: docker/bake-action@v5
-        with:
-          files: docker-compose.yml
-          workdir: .
-          targets: ""
+      - name: Validate Docker Compose Configuration
+        run: docker compose -f docker-compose.yml config --quiet
