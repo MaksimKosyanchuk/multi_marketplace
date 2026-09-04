@@ -7,8 +7,8 @@ on:
     branches: [ main, master, develop ]
 
 jobs:
-  lint-and-format:
-    name: Lint & Code Style
+  build-and-lint:
+    name: Install, Lint & Build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -24,7 +24,7 @@ jobs:
             frontend/package-lock.json
 
       - name: Install Backend Dependencies
-        run: npm ci --verbose
+        run: npm ci
         working-directory: backend
 
       - name: Install Frontend Dependencies
@@ -39,8 +39,14 @@ jobs:
         run: npm run lint
         working-directory: frontend
 
+      - name: Build Frontend
+        run: npm run build --prefix frontend
+        env:
+          VITE_API_URL: http://localhost:3001
+
   backend-test:
-    name: Backend Tests (Unit, E2E & Load)
+    name: Backend Tests & Load Tests
+    needs: build-and-lint
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -79,7 +85,7 @@ jobs:
           cache-dependency-path: backend/package-lock.json
 
       - name: Install Dependencies
-        run: npm ci --prefix backend --verbose
+        run: npm ci --prefix backend
 
       - name: Generate Prisma Client
         run: npx prisma generate
@@ -102,6 +108,24 @@ jobs:
           DATABASE_USER: postgres
           DATABASE_PASSWORD: password
           DATABASE_NAME: marketplace_test
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+
+      - name: Build Backend Application
+        run: npm run build --prefix backend
+
+      - name: Start Backend Server in Background
+        run: |
+          npm run start:prod --prefix backend &
+          echo "Waiting for backend to start..."
+          for i in {1..30}; do
+            nc -z localhost 3001 && echo "Backend is up!" && exit 0
+            sleep 1
+          done
+          echo "Backend failed to start" && exit 1
+        env:
+          PORT: 3001
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/marketplace_test?schema=public
           REDIS_HOST: localhost
           REDIS_PORT: 6379
 
@@ -128,31 +152,6 @@ jobs:
           DATABASE_NAME: marketplace_test
           REDIS_HOST: localhost
           REDIS_PORT: 6379
-
-  frontend-build:
-    name: Frontend Build & Test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '26.3.0'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install Dependencies
-        run: npm ci --prefix frontend
-
-      - name: Run Frontend Tests (if configured)
-        run: npm run test --prefix frontend -- --watchAll=false || echo "No tests configured, skipping"
-
-      - name: Build Frontend Application
-        run: npm run build --prefix frontend
-        env:
-          VITE_API_URL: http://localhost:3000
 
   infra-lint:
     name: Infrastructure Lint
