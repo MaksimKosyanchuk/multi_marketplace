@@ -24,7 +24,7 @@ jobs:
         run: docker build --check -f frontend/Dockerfile frontend/
 
   unit-and-build:
-    name: Lint, Build & Unit Tests
+    name: Build, Lint & Unit Tests
     needs: infra-lint
     runs-on: ubuntu-latest
     steps:
@@ -44,6 +44,9 @@ jobs:
         run: |
           npm ci --prefix backend
           npm ci --prefix frontend
+
+      - name: Generate Prisma Client
+        run: npx prisma generate --schema=backend/prisma/schema.prisma
 
       - name: Run Backend Linter
         run: npm run lint
