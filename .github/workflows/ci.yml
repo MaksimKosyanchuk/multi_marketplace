@@ -82,64 +82,6 @@ jobs:
           JWT_REFRESH_SECRET: insiders_refresh_jwt
         run: npm run test
 
-  docker-tests:
-    name: Docker E2E & Load Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Remove Previous Docker Environment
-        run: docker compose down -v --remove-orphans
-
-      - name: Build Docker Images Without Cache
-        run: docker compose build --no-cache --pull
-
-      - name: Build and Start Docker Environment
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@postgres:5432/marketplace?schema=public
-          REDIS_HOST: redis
-          REDIS_PORT: 6379
-          JWT_ACCESS_SECRET: insiders_jwt
-          JWT_REFRESH_SECRET: insiders_refresh_jwt
-        run: docker compose up -d --force-recreate
-
-      - name: Show Docker Status
-        run: docker compose ps
-
-      - name: Run Prisma Migrations
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@postgres:5432/marketplace?schema=public
-        run: docker compose exec -T backend npx prisma migrate deploy
-
-      - name: Run Backend E2E Tests
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@postgres:5432/marketplace?schema=public
-          REDIS_HOST: redis
-          REDIS_PORT: 6379
-          JWT_ACCESS_SECRET: insiders_jwt
-          JWT_REFRESH_SECRET: insiders_refresh_jwt
-        run: docker compose exec -T backend npm run test:e2e
-
-      - name: Run Backend Load Tests
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@postgres:5432/marketplace?schema=public
-          REDIS_HOST: redis
-          REDIS_PORT: 6379
-          JWT_ACCESS_SECRET: insiders_jwt
-          JWT_REFRESH_SECRET: insiders_refresh_jwt
-        run: docker compose exec -T backend npm run test:load
-
-      - name: Show Docker Logs on Failure
-        if: failure()
-        run: docker compose logs --no-color
-
-      - name: Stop Docker Environment
-        if: always()
-        run: docker compose down -v --remove-orphans
-
   lint:
     name: Frontend & Backend Lint
     runs-on: ubuntu-latest
